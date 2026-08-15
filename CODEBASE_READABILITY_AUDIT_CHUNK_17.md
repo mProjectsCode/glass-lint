@@ -83,7 +83,7 @@ handling as-is.
 
 ### Export resolution (`analysis/project/resolver.rs`, `linker/export.rs`, `identities.rs`)
 
-#### [ ] READ-003 — "Resolve a named import/export through a request target" is reimplemented in four call sites with drifted fallback semantics
+#### [x] READ-003 — "Resolve a named import/export through a request target" is reimplemented in four call sites with drifted fallback semantics
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -120,7 +120,7 @@ with `NAMESPACE_EXPORT`. Guardrails: keep `target_to_export_resolution` and
 authored-specifier fallback is a distinct contract), and preserve the
 fail-closed `Unknown` for unsupported/missing targets.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ExportResolver::resolve_request_target` owning the target match plus the `Internal` recursive lookup; routed `resolve_imported_identity` and `resolve_request_export` through it with each site's own `None` fallback. The `"*"` literal at identities.rs:235 was already `NAMESPACE_EXPORT`.
 
 ### Linking session and linker state (`analysis/project/state.rs`, `linker/mod.rs`, `linker/export.rs`)
 

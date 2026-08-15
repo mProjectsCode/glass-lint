@@ -127,12 +127,11 @@ impl<'a> ExportResolver<'a> {
 
         let mut resolved = None;
         for request in requests {
-            let candidate = match self.project.request_target(importer, request) {
-                Some(LinkedModuleTarget::Internal { id }) => self
-                    .lookup_export(&QualifiedExportId::new(*id, authored_export.clone()))
-                    .unwrap_or(ExportResolution::Unknown),
-                target => target_to_export_resolution(target, authored_module, authored_export),
-            };
+            let candidate = self
+                .resolve_request_target(importer, request, authored_export)
+                .unwrap_or_else(|| {
+                    target_to_export_resolution(None, authored_module, authored_export)
+                });
             if let Some(previous) = &resolved {
                 if previous != &candidate {
                     return ExportResolution::Unknown;
@@ -142,6 +141,24 @@ impl<'a> ExportResolver<'a> {
             }
         }
         resolved.unwrap_or(ExportResolution::Unknown)
+    }
+
+    /// Resolve an authored request through its recorded target: an `Internal`
+    /// target recurses into the qualified export lookup; other targets convert
+    /// directly. Returns `None` when no resolution is recorded for the request.
+    pub(super) fn resolve_request_target(
+        &mut self,
+        module: ModuleId,
+        request: ModuleRequestId,
+        exported: &SmolStr,
+    ) -> Option<ExportResolution> {
+        match self.project.request_target(module, request) {
+            Some(LinkedModuleTarget::Internal { id }) => {
+                self.lookup_export(&QualifiedExportId::new(*id, exported.clone()))
+            }
+            Some(target) => Some(linked_target_to_export_resolution(target, exported)),
+            None => None,
+        }
     }
 
     /// Resolve an export through direct and star re-exports with cycle bounds.

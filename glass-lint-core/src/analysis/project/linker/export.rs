@@ -320,13 +320,10 @@ impl ProjectLinker {
         else {
             return ExportResolution::Unknown;
         };
-        let key = QualifiedRequestId::new(module, request_index);
-        match self.resolutions.get(&key) {
-            Some(LinkedModuleTarget::Internal { id }) => self
-                .lookup_export(&QualifiedExportId::new(*id, imported.clone()))
-                .unwrap_or(ExportResolution::Unknown),
-            Some(target) => linked_target_to_export_resolution(target, imported),
-            None => ExportResolution::Unknown,
-        }
+        self.with_export_resolver(|resolver| {
+            resolver
+                .resolve_request_target(module, request_index, imported)
+                .unwrap_or(ExportResolution::Unknown)
+        })
     }
 }
