@@ -189,7 +189,7 @@ change — that is a separate storage decision.
 
 ### Scope model
 
-#### [ ] READ-005 — `ScopeBindings` is a one-field storage newtype with no domain operations
+#### [x] READ-005 — `ScopeBindings` is a one-field storage newtype with no domain operations
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -211,7 +211,7 @@ seven access methods. Guardrail: the map must remain private to
 `LexicalScope`; no caller currently reaches it directly and none should after
 the change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Inlined `ScopeBindings` as a private `HashMap<NameId, BindingProvenance>` field on `LexicalScope`, updating the constructor and all seven access methods; the map stays private.
 
 #### [ ] READ-006 — `CallableValue` is a one-field wrapper whose only member access is a passthrough getter
 

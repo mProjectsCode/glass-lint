@@ -187,7 +187,7 @@ pub struct LexicalScope {
     depth: usize,
     kind: ScopeKind,
     parent: Option<ScopeId>,
-    bindings: ScopeBindings,
+    bindings: HashMap<NameId, BindingProvenance>,
 }
 
 /// Ordered lexical-scope storage owned by the scope-analysis pipeline.
@@ -241,9 +241,6 @@ impl LexicalScopes {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct ScopeBindings(HashMap<NameId, BindingProvenance>);
-
 impl LexicalScope {
     pub(in crate::analysis) fn new(
         span: Span,
@@ -256,7 +253,7 @@ impl LexicalScope {
             depth,
             kind,
             parent,
-            bindings: ScopeBindings::default(),
+            bindings: HashMap::new(),
         }
     }
 
@@ -285,7 +282,7 @@ impl LexicalScope {
         name: NameId,
         provenance: BindingProvenance,
     ) {
-        self.bindings.0.insert(name, provenance);
+        self.bindings.insert(name, provenance);
     }
 
     pub(in crate::analysis) fn update_binding(
@@ -293,33 +290,33 @@ impl LexicalScope {
         name: NameId,
         provenance: BindingProvenance,
     ) {
-        if let Some(binding) = self.bindings.0.get_mut(&name) {
+        if let Some(binding) = self.bindings.get_mut(&name) {
             *binding = provenance;
         }
     }
 
     pub(in crate::analysis) fn binding(&self, name: NameId) -> Option<&BindingProvenance> {
-        self.bindings.0.get(&name)
+        self.bindings.get(&name)
     }
 
     pub(in crate::analysis) fn has_binding(&self, name: NameId) -> bool {
-        self.bindings.0.contains_key(&name)
+        self.bindings.contains_key(&name)
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_bindings(&self) -> bool {
-        !self.bindings.0.is_empty()
+        !self.bindings.is_empty()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn binding_entries(
         &self,
     ) -> impl Iterator<Item = (&NameId, &BindingProvenance)> {
-        self.bindings.0.iter()
+        self.bindings.iter()
     }
 
     pub(in crate::analysis) fn binding_names(&self) -> impl Iterator<Item = &NameId> {
-        self.bindings.0.keys()
+        self.bindings.keys()
     }
 }
 
