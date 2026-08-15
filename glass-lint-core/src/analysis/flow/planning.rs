@@ -189,13 +189,6 @@ impl<'rules> BoundLifecycleRoot<'rules> {
         }
     }
 
-    pub(in crate::analysis) fn from_flow_id(
-        flow_id: FlowId,
-        flow: &'rules CompiledObjectFlow,
-    ) -> Self {
-        Self { flow_id, flow }
-    }
-
     pub(in crate::analysis) fn flow_id(self) -> FlowId {
         self.flow_id
     }
@@ -312,14 +305,6 @@ impl<'rules> BoundFlowPlan<'rules> {
             sinks,
             req_members,
         }
-    }
-
-    pub(super) fn single(
-        flow_id: FlowId,
-        flow: &'rules CompiledObjectFlow,
-        names: &NameTable,
-    ) -> Self {
-        Self::new(&[BoundLifecycleRoot::from_flow_id(flow_id, flow)], names)
     }
 
     fn build_requirement_members(

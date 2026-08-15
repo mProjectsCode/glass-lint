@@ -43,12 +43,6 @@ use crate::{
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_PENDING: usize = 65_536;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct FlowPlanKey {
-    flow: FlowId,
-    module: ModuleId,
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct CrossProjectionOutcome {
     pub(in crate::analysis) completion: FlowCompletion,
@@ -132,11 +126,12 @@ impl<'a, 'session> ContextProjection<'a, 'session> {
 
 struct CrossWorklist<'a, 'arena> {
     project: &'a ProjectSemanticModel,
+    roots: &'a [BoundLifecycleRoot<'a>],
     flows: HashMap<FlowId, &'a CompiledObjectFlow>,
     evidence: HashMap<ModuleId, ModuleEvidence>,
     call_graph: QualifiedCallGraph,
     worklist: ContextWorklist,
-    flow_plan_cache: HashMap<FlowPlanKey, BoundFlowPlan<'a>>,
+    flow_plans: HashMap<ModuleId, BoundFlowPlan<'a>>,
     step_budget: Budget,
     arena: &'arena mut TraceArena,
     projections: usize,
@@ -180,12 +175,9 @@ impl CrossWorklist<'_, '_> {
             return;
         };
         let flow_plan = self
-            .flow_plan_cache
-            .entry(FlowPlanKey {
-                flow: context.state().flow_id(),
-                module: context.module(),
-            })
-            .or_insert_with(|| BoundFlowPlan::single(context.state().flow_id(), flow, names));
+            .flow_plans
+            .entry(context.module())
+            .or_insert_with(|| BoundFlowPlan::new(self.roots, names));
         let mut session = CrossProjectionSession {
             project: self.project,
             evidence: &mut self.evidence,
@@ -276,11 +268,12 @@ pub(in crate::analysis) fn collect(
     let step_budget = Budget::new(operation_limit);
     let mut collector = CrossWorklist {
         project,
+        roots,
         flows,
         evidence,
         call_graph,
         worklist,
-        flow_plan_cache: HashMap::new(),
+        flow_plans: HashMap::new(),
         step_budget,
         arena,
         projections: 0,

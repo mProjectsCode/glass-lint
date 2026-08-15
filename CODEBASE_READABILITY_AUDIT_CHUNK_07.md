@@ -32,7 +32,7 @@ indirection layers worth a deliberate second look.
 
 ### Cross-flow analysis
 
-#### [ ] READ-001 — Cross pass rebuilds `BoundFlowPlan` per (flow, module), duplicating the local projector's per-module plan
+#### [x] READ-001 — Cross pass rebuilds `BoundFlowPlan` per (flow, module), duplicating the local projector's per-module plan
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -65,7 +65,7 @@ and `FlowPlanKey`. Guardrails: plans are per-module because they intern
 execution state — only the immutable plan is shared; keep the flow-id filter on
 cross sink selection so all-flow plans do not change certainty or evidence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Cross pass now builds one all-roots `BoundFlowPlan` per module (`BoundFlowPlan::new(self.roots, names)`) over the same roots the local projector uses, cached by `ModuleId` in `flow_plans`. Deleted `FlowPlanKey` and `BoundFlowPlan::single`, and the now-unused `BoundLifecycleRoot::from_flow_id`. Cross queries keep their flow-id filtering, so results and certainty are unchanged.
 
 #### [ ] READ-002 — `value_root` identity-fallback lookup repeated across four sites
 
