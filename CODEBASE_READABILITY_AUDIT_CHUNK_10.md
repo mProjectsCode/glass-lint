@@ -206,7 +206,7 @@ field order exactly, so `finalize`/propagation ordering is unchanged.
 
 ### [tables.rs / state.rs — flow environment]
 
-#### [ ] READ-006 — `FlowEnvironment::reachable` field is more visible than its semantic accessor
+#### [x] READ-006 — `FlowEnvironment::reachable` field is more visible than its semantic accessor
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -232,7 +232,13 @@ Guardrail: `reachable` is written only in `FlowStateTable::capture`
 (tables.rs:466-471) and `FlowEnvironment::initial`; outside the state module it
 may only be read through `is_reachable()`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Narrowed `FlowEnvironment::reachable` from
+`pub(in crate::analysis::flow::projector)` to `pub(super)` (the state module,
+covering both `state.rs` and `state/tables.rs`), leaving `is_reachable()` as the
+sole read surface for callers outside the state module. In-module writes in
+`FlowStateTable::capture` and `FlowEnvironment::initial` still access the field
+directly; driver.rs continues to use `is_reachable()` both directly and as the
+`paths.retain` predicate.
 
 ### [summaries.rs — summary collection and propagation]
 

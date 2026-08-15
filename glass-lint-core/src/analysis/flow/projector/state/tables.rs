@@ -29,7 +29,7 @@ use crate::{
 pub(in crate::analysis::flow::projector) struct FlowEnvironment {
     pub(super) checkpoint: Checkpoint,
     /// Whether execution can reach the snapshot.
-    pub(in crate::analysis::flow::projector) reachable: bool,
+    pub(super) reachable: bool,
 }
 
 /// Canonical semantic shape of one live flow environment.
