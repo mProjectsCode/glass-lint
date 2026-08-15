@@ -360,18 +360,7 @@ impl<'a> ProjectSession<'a> {
                 .map_err(|error| ProjectError::Execution(ProjectExecutionError::Local(error)))?;
         }
         requests.sort_by(|left, right| {
-            (
-                left.importer().as_str(),
-                left.kind(),
-                left.range(),
-                left.specifier().as_str(),
-            )
-                .cmp(&(
-                    right.importer().as_str(),
-                    right.kind(),
-                    right.range(),
-                    right.specifier().as_str(),
-                ))
+            (left.key(), left.specifier()).cmp(&(right.key(), right.specifier()))
         });
         Ok(requests)
     }

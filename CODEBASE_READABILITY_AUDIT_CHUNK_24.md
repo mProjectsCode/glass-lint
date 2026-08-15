@@ -157,7 +157,7 @@ admission limits do not change.
 
 **Fix Applied:** Made `SourceTable::insert` private (staging helper used only by `admit_all`'s loop) and rewrote the three tests in `project/session/artifacts/tests.rs` to admit via `admit_all([source], usize::MAX, usize::MAX)`, leaving one public admission path that enforces real limits.
 
-#### [ ] READ-005 — `analyze_pending_sources` re-implements `ResolutionRequestKey`'s derived ordering field by field
+#### [x] READ-005 — `analyze_pending_sources` re-implements `ResolutionRequestKey`'s derived ordering field by field
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -180,7 +180,7 @@ reference is `Ord`) and the specifier, e.g. compare
 the duplicated destructure. Guardrail: keep the sort total and deterministic so
 reported request order stays worker-count independent.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the field-by-field tuple destructure in the final deterministic sort with `(left.key(), left.specifier()).cmp(&(right.key(), right.specifier()))`, keeping the total order worker-count independent.
 
 #### [ ] READ-006 — `ProjectInputError::InvalidPath` is overloaded for a missing-source lookup
 
