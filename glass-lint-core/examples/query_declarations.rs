@@ -71,13 +71,15 @@ fn returned_and_instance() -> (Rule, Rule) {
 
 fn lifecycle() -> Rule {
     let lifecycle = LifecycleQuery::catalog_builder("remote element")
-        .source(Ok(EventQuery::member_call_rooted("document.createElement")
-            .expect("valid source")
-            .with_arg(
-                0,
-                ValueMatcher::static_string().try_equals("script").unwrap(),
-            )
-            .expect("valid source argument")))
+        .source(
+            EventQuery::member_call_rooted("document.createElement")
+                .expect("valid source")
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                )
+                .expect("valid source argument"),
+        )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::static_string()
@@ -92,15 +94,13 @@ fn lifecycle() -> Rule {
     rule(
         "dom.remote",
         "Loads a remote script element",
-        QueryDecl::lifecycle(Ok(lifecycle)),
+        QueryDecl::lifecycle(lifecycle),
     )
 }
 
 fn correlated_sinks() -> Rule {
     let lifecycle = LifecycleQuery::catalog_builder("two sinks")
-        .source(Ok(
-            EventQuery::member_call_rooted("document.createElement").expect("valid source")
-        ))
+        .source(EventQuery::member_call_rooted("document.createElement").expect("valid source"))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
@@ -114,7 +114,7 @@ fn correlated_sinks() -> Rule {
     rule(
         "dom.two-sinks",
         "Uses one object at two later sinks",
-        QueryDecl::lifecycle(Ok(lifecycle)),
+        QueryDecl::lifecycle(lifecycle),
     )
 }
 

@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 use crate::api::rule::query::{
-    EventQuery, MemberChain, QueryBuildError,
+    EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
     checked_chain, limits,
     value::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
@@ -293,6 +293,9 @@ define_lifecycle_adapter!(
     into_lifecycle_completion,
     LifecycleCompletion
 );
+
+// Fallible lifecycle query input accepted by `QueryDecl::lifecycle`.
+define_lifecycle_adapter!(IntoLifecycleQuery, into_lifecycle_query, LifecycleQuery);
 
 // ── LifecycleSink ─────────────────────────────────────────────────────
 

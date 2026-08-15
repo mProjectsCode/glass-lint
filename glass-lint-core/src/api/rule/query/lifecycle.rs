@@ -10,9 +10,9 @@ mod types;
 pub(crate) use endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 #[allow(unused_imports)]
 pub use types::{
-    IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleSink,
-    IntoLifecycleSource, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-    LifecycleEventBuilder, LifecycleSink,
+    IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleQuery,
+    IntoLifecycleSink, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,
+    LifecycleEvent, LifecycleEventBuilder, LifecycleSink,
 };
 #[allow(unused_imports)]
 pub(crate) use types::{

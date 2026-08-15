@@ -181,7 +181,7 @@ bounds.
 
 ### [api/rule/query/composition.rs; api/rule/query/mod.rs]
 
-#### [ ] READ-007 — Fallible-input convention is applied three different ways, forcing callers into ad-hoc `Ok(...)` wrapping
+#### [x] READ-007 — Fallible-input convention is applied three different ways, forcing callers into ad-hoc `Ok(...)` wrapping
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -218,7 +218,7 @@ design is deliberate (see READ-002). Guardrails: keep `Result` inputs working
 at the deferred catalog boundary, keep the sealed traits (no blanket impls on
 foreign types), and preserve `QueryBuildError` mapping.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the sealed `IntoLifecycleQuery` adapter (via `define_lifecycle_adapter!`) so `QueryDecl::lifecycle` accepts a `LifecycleQuery` or `Result<LifecycleQuery, QueryBuildError>`, and exported it through `lifecycle.rs`, `api::rule`, and the public `rules` module. The `query_declarations` example now passes plain values (`QueryDecl::lifecycle(lifecycle)`, `.source(event)`) instead of no-op `Ok(...)` wrappers.
 
 ### [api/rule/query/mod.rs]
 

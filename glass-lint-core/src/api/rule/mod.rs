@@ -49,9 +49,9 @@ pub use query::{
     EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl,
     QueryDiagnostic,
     lifecycle::{
-        IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleSink,
-        IntoLifecycleSource, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-        LifecycleSink,
+        IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleQuery,
+        IntoLifecycleSink, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,
+        LifecycleEvent, LifecycleSink,
     },
     value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };

@@ -2,8 +2,9 @@
 
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
-    IdentitySpec, LifecycleQuery, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate,
-    VarId, checked_chain, checked_module_export, explain_expression, limits,
+    IdentitySpec, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId,
+    checked_chain, checked_module_export, explain_expression, lifecycle::IntoLifecycleQuery,
+    limits,
 };
 
 impl QueryDecl {
@@ -247,22 +248,19 @@ impl QueryDecl {
     }
 
     /// Wrap a [`LifecycleQuery`] into a [`QueryDecl`] with inferred evidence.
-    /// Accepts a `Result` from a builder for direct use in
-    /// the rule builder's `query` method.
-    pub fn lifecycle(
-        lc_result: Result<LifecycleQuery, QueryBuildError>,
-    ) -> Result<Self, QueryBuildError> {
-        lc_result.map(|lc| {
-            let symbol = lc.symbol.clone();
-            debug_assert_ne!(symbol.trim(), "");
-            Self {
-                expression: QueryExpr::lifecycle(lc),
-                emission: EmissionDecl {
-                    primary_var: VarId::new(0),
-                    kind: MatchKind::CallArgument,
-                    symbol,
-                },
-            }
+    /// Accepts a [`LifecycleQuery`] or a `Result` from a builder for direct
+    /// use in the rule builder's `query` method.
+    pub fn lifecycle(lc: impl IntoLifecycleQuery) -> Result<Self, QueryBuildError> {
+        let lc = lc.into_lifecycle_query()?;
+        let symbol = lc.symbol.clone();
+        debug_assert_ne!(symbol.trim(), "");
+        Ok(Self {
+            expression: QueryExpr::lifecycle(lc),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::CallArgument,
+                symbol,
+            },
         })
     }
 }
