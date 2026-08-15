@@ -185,7 +185,7 @@ diagnostics for the rejected case in `collect_graph_edges`.
 
 ### Projection helper and model limits (`analysis/project/projection.rs`, `model.rs`)
 
-#### [ ] READ-006 — `project_facts` repeats the same default early return and double-checks effect availability
+#### [x] READ-006 — `project_facts` repeats the same default early return and double-checks effect availability
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -215,7 +215,7 @@ skip constrained matching, not just flow — and keep the
 `effects.completion().is_incomplete()` record distinct from the
 not-available case.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the empty-flow, `None`-effects, and not-available guards in `project_facts` into one `effects.filter(is_available)` guard; the not-projectable short-circuit and the `record_effects` decision are unchanged.
 
 #### [ ] READ-007 — `ProjectSemanticModel` duplicates a constant as a field and carries a stale `#[allow(dead_code)]`
 

@@ -258,15 +258,9 @@ fn project_facts(
         &mut projected_evidence,
         matcher_context.project(),
     )?;
-    if plan.flow_matchers.is_empty() {
-        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
-    }
-    let Some(effects) = effects else {
+    let Some(effects) = effects.filter(|effects| effects.is_available()) else {
         return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     };
-    if !effects.is_available() {
-        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
-    }
     let outcome = object_flow::collect_into(
         facts.stream(),
         effects,
