@@ -149,7 +149,7 @@ pub(crate) enum QueryPredicate {
 /// [`EventQuery::call_global`], [`EventQuery::member_call_rooted`], etc.
 /// Then call [`into_query`](Self::into_query) to produce a [`QueryDecl`]
 /// with inferred evidence.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EventQuery {
     /// Variable bound by this event selection.
     var: VarId,

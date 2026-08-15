@@ -169,6 +169,34 @@ fn all_sink_completion_is_bounded_and_deterministic() {
 }
 
 #[test]
+fn lifecycle_sources_are_order_independent_and_deduplicated() {
+    let first = EventQuery::member_call_rooted("document.createElement").unwrap();
+    let second = EventQuery::member_call_rooted("document.body").unwrap();
+    let condition = LifecycleCondition::event(LifecycleEvent::property_write(
+        "type",
+        ValueMatcher::any_value(),
+    ));
+    let completion = || LifecycleCompletion::configuration();
+    let a = LifecycleQuery::catalog_builder("input")
+        .source(first.clone())
+        .source(second.clone())
+        .source(first.clone())
+        .condition(condition.clone())
+        .completion(completion())
+        .build()
+        .unwrap();
+    let b = LifecycleQuery::catalog_builder("input")
+        .source(second)
+        .source(first)
+        .condition(condition)
+        .completion(completion())
+        .build()
+        .unwrap();
+    assert_eq!(a, b);
+    assert_eq!(a.sources().len(), 2);
+}
+
+#[test]
 fn lifecycle_source_arg_adds_argument_constraint() {
     let s = EventQuery::member_call_rooted("foo.bar")
         .unwrap()

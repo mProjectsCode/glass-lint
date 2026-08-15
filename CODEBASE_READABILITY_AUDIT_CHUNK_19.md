@@ -149,7 +149,7 @@ must not be collapsed.
 
 **Fix Applied:** `build` now lives on `LifecycleBuilderState`, which destructures the state and takes the first error once; both per-builder `build` bodies delegate to it, and `LifecycleBuilderState::record_operation` delegates to the shared `record_first_error`. The immediate-vs-deferred setter split is unchanged.
 
-#### [ ] READ-008 — Lifecycle sources are exempt from the chunk's canonical-ordering invariant
+#### [x] READ-008 — Lifecycle sources are exempt from the chunk's canonical-ordering invariant
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -181,7 +181,7 @@ equality then becomes order-independent and the compiler's dedup/sort at
 compiler's `first-wins` duplicate semantics, and its deterministic evidence
 order; do not change which source events may appear.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EventQuery` now derives `Ord`, and `LifecycleStages::build` sorts and dedups `sources` after the empty and size checks; `LifecycleQuery` equality is order-independent and the compiler's sort/dedup at `normalize.rs` is now a no-op safety net. Added a focused order-independence/dedup test.
 
 ### [api/rule/query/value.rs]
 

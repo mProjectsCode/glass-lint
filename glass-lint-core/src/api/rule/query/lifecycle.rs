@@ -71,7 +71,7 @@ impl LifecycleStages {
     fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
         let Self {
             symbol,
-            sources,
+            mut sources,
             condition,
             completion,
         } = self;
@@ -88,8 +88,11 @@ impl LifecycleStages {
             ));
         }
 
-        // Validate only relationships between lifecycle stages. Collection
-        // invariants are established by LifecycleEvents and LifecycleSinks.
+        // Canonicalize source order so `LifecycleQuery` equality is
+        // order-independent, matching the events and sinks collections.
+        sources.sort();
+        sources.dedup();
+
         if let Some(ref completion) = completion {
             match completion.kind() {
                 LifecycleCompletionKind::AnySink(_) | LifecycleCompletionKind::AllSinks(_) => {}
