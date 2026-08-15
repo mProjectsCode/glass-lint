@@ -3,8 +3,7 @@
 use crate::analysis::scope::{
     frozen_assignments::{BindingResolution, BindingResolutionStatus},
     query::{
-        BindingKey, BindingProvenance, BindingVersion, Expr, FrozenScopeGraph, Ident, ScopeId,
-        ScopeKind, Span,
+        BindingKey, BindingProvenance, Expr, FrozenScopeGraph, Ident, ScopeId, ScopeKind, Span,
     },
 };
 
@@ -119,25 +118,13 @@ impl FrozenScopeGraph {
 
     fn lexical_identifier_key(&self, ident: &Ident) -> Option<BindingKey> {
         let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
-        let binding = self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?;
+        let name = self.name_id(ident.sym.as_ref())?;
+        let binding = self.binding_id_at(scope, name)?;
         Some(BindingKey::lexical(
             self.function_scope_at(scope),
             binding,
-            self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+            self.binding_version(scope, name, ident.span),
         ))
-    }
-
-    /// Return the assignment version visible at a source position.
-    pub(in crate::analysis) fn binding_version_at(
-        &self,
-        scope: ScopeId,
-        name: &str,
-        span: Span,
-    ) -> BindingVersion {
-        let Some(name) = self.name_id(name) else {
-            return BindingVersion::new(0);
-        };
-        self.binding_version(scope, name, span)
     }
 
     /// Find the nearest lexical declaration and its owning scope.

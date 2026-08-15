@@ -8,7 +8,7 @@ use swc_common::Span;
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use crate::analysis::{
-    model::scope::{BindingKey, BindingVersion, FunctionId},
+    model::scope::{BindingKey, FunctionId},
     scope::{
         BindingProvenance, FrozenScopeGraph, IdentValueSeed, MemberValueSeed, ScopeId, ScopeKind,
     },

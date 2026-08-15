@@ -135,31 +135,6 @@ impl ScopeGraph {
         self.data.names.name_path(path)
     }
 
-    // -- Lexical-scope helpers on ScopeGraph --
-
-    pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
-        self.read_view().scope_at(span)
-    }
-
-    // -- Binding helpers on ScopeGraph --
-
-    pub(super) fn assignment_at(&self, scope: ScopeId, name: &str, span: Span) -> AssignmentAt<'_> {
-        let Some(name) = self.name_id(name) else {
-            return AssignmentAt::Absent;
-        };
-        self.read_view().assignment_at(scope, name, span)
-    }
-
-    pub(super) fn parameter_alias_for(
-        &self,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<&BindingProvenance> {
-        let name = self.name_id(name)?;
-        let view = self.read_view();
-        view.parameter_alias_for_scope(scope, name)
-    }
-
     /// Convert collector-side property events into sorted query indexes.
     pub(in crate::analysis) fn finish_collected_properties(
         &mut self,
@@ -222,23 +197,13 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<&BindingProvenance> {
-        let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        let parameter = self.parameter_alias_for(scope, name);
-        self.assignment_at(scope, name, span)
+        let name = self.name_id(name)?;
+        let view = self.read_view();
+        let (scope, declaration) = view.nearest_binding_at(name, span)?;
+        let parameter = view.parameter_alias_for_scope(scope, name);
+        view.assignment_at(scope, name, span)
             .resolve(parameter, declaration)
             .preferred_witness()
-    }
-
-    /// Find the nearest lexical declaration and its owning scope.
-    fn binding_with_scope_at(
-        &self,
-        name: &str,
-        span: Span,
-    ) -> Option<(ScopeId, &BindingProvenance)> {
-        let name_id = self.name_id(name)?;
-        let scope = self.scope_at(span)?;
-        let view = self.read_view();
-        view.data.binding_with_scope_at(name_id, scope)
     }
 
     /// Build a stable key for a name, using a global root when unbound.

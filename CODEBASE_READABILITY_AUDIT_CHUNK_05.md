@@ -58,7 +58,7 @@ version-at `BindingVersion::new(0)` default.
 
 **Fix Applied:** Added `ScopeReadView::binding_key_for_name` (storage.rs) as the single lexical-key constructor; both `ScopeGraph::binding_key_for_name` and the frozen-phase method (hoisted into graph.rs) delegate to it. Deleted `ScopeGraph::binding_version_at` plus the now-dead `ScopeGraph::binding_version`, `ScopeGraph::binding_id_at`, and `ScopeGraph::function_scope_at`. Fallback order (lexical then `BindingKey::global`) and the `BindingVersion::new(0)` default are unchanged.
 
-#### [ ] READ-002 — `&str` vs `NameId` arguments and the `binding_version`/`binding_version_at` names mean different things on `ScopeGraph` vs `FrozenScopeGraph`
+#### [x] READ-002 — `&str` vs `NameId` arguments and the `binding_version`/`binding_version_at` names mean different things on `ScopeGraph` vs `FrozenScopeGraph`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -88,7 +88,7 @@ names must keep returning `AssignmentAt::Absent`, `None`, or
 `BindingVersion::new(0)` exactly as today; fail-closed results feed
 matching certainty and must not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Unified on the NameId convention: `ScopeGraph::preferred_binding_witness_at` now resolves the string once at the facade and works through the shared `ScopeReadView`; the collection-phase `assignment_at`, `parameter_alias_for`, `binding_with_scope_at`, and `scope_at` wrappers were deleted (dead after the unification). On the frozen phase, the `&str`-accepting `binding_version_at` was deleted; `lexical_identifier_key` now resolves the `NameId` once and calls the NameId-based `binding_version`. Uninterned names still yield `None`/absent exactly as before.
 
 #### [ ] READ-003 — `ident_binding_seed` reimplements the `binding_resolution_at` resolution pipeline and the dynamic-lookup predicate
 
