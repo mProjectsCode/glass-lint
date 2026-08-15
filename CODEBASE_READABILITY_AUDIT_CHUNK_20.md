@@ -233,7 +233,7 @@ strings; do not split the vocabulary into two enums.
 
 ### [Compiler: normalization]
 
-#### [ ] READ-007 — `normalize_event_from_query` carries an unused `emission` parameter through every normalize call
+#### [x] READ-007 — `normalize_event_from_query` carries an unused `emission` parameter through every normalize call
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -253,7 +253,7 @@ passing it at the `normalize_lifecycle_root` call site); keep it only on the Any
 normalization path where `primary_var` is actually read. Guardrail: none — this is
 purely mechanical.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the unused `emission` parameter from `normalize_event_from_query` and from `normalize_lifecycle_root` (including the per-source map call). `emission` remains threaded through `normalize_root`/`normalize_any_root`/`normalize_all_root`, where `check_branch_evidence_compatibility` reads `primary_var` and the All path forwards it for single-branch normalization.
 
 #### [ ] READ-008 — `all_share_some` in same-event normalization has a misleading name and a convoluted shape
 

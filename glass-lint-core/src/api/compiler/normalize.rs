@@ -141,7 +141,7 @@ pub(crate) fn normalize_root(
 ) -> Result<NormalizedRoot, QueryCompileError> {
     match expr.kind() {
         QueryExprKind::Event(eq) => {
-            let ev = normalize_event_from_query(eq, emission)?;
+            let ev = normalize_event_from_query(eq)?;
             Ok(NormalizedRoot::Event(ev))
         }
         QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => {
@@ -153,7 +153,7 @@ pub(crate) fn normalize_root(
         }
         QueryExprKind::Any(any) => normalize_any_root(any, emission),
         QueryExprKind::All(all) => normalize_all_root(all, emission),
-        QueryExprKind::Lifecycle(lc) => normalize_lifecycle_root(lc, emission),
+        QueryExprKind::Lifecycle(lc) => normalize_lifecycle_root(lc),
     }
 }
 
@@ -250,14 +250,11 @@ fn branch_var_type(root: &NormalizedRoot) -> Option<BranchVarType> {
 
 // ── Lifecycle normalization ────────────────────────────────────────────────
 
-fn normalize_lifecycle_root(
-    lc: &LifecycleQuery,
-    emission: &EmissionDecl,
-) -> Result<NormalizedRoot, QueryCompileError> {
+fn normalize_lifecycle_root(lc: &LifecycleQuery) -> Result<NormalizedRoot, QueryCompileError> {
     let mut sources: Vec<NormalizedEvent> = lc
         .sources()
         .iter()
-        .map(|src| normalize_event_from_query(src, emission))
+        .map(normalize_event_from_query)
         .collect::<Result<Vec<_>, _>>()?;
 
     // Deduplicate sources — two sources are equal when their event, identity,
@@ -376,10 +373,7 @@ fn normalize_lifecycle_sink(
 
 // ── NormalizedEvent construction from EventQuery ───────────────────────────
 
-fn normalize_event_from_query(
-    eq: &EventQuery,
-    _emission: &EmissionDecl,
-) -> Result<NormalizedEvent, QueryCompileError> {
+fn normalize_event_from_query(eq: &EventQuery) -> Result<NormalizedEvent, QueryCompileError> {
     let arguments = CanonicalArgumentConstraints::from_constraints(eq.constraints());
 
     let subject = NormalizedSubject::Direct {
