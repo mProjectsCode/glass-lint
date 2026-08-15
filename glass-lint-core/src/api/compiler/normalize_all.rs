@@ -43,22 +43,12 @@ pub(crate) fn normalize_all_root(
     let branches = all.iter().collect::<Vec<_>>();
     find_common_event_var(&branches, &branch_facts).map_or_else(
         || {
-            // No shared variable — check correlation scope.
-            let all_share_some = branch_facts
-                .first()
-                .is_some_and(|first| {
-                    branch_facts
-                        .iter()
-                        .skip(1)
-                        .any(|facts| {
-                            facts
-                                .variables()
-                                .iter()
-                                .any(|v| first.variables().contains(v))
-                        })
-                });
-
-            if all_share_some {
+            // Some branches correlate through a shared variable, but no single
+            // event variable is common to every branch, so the conjunction
+            // cannot merge into one event node. That is `UnsupportedRelation`,
+            // not `UncorrelatedConjunction`, which is reserved for branches
+            // that share no variables at all.
+            if first_branch_correlates_with_any(&branch_facts) {
                 Err(QueryCompileError::UnsupportedRelation {
                     relation: "all",
                     detail:
@@ -71,6 +61,18 @@ pub(crate) fn normalize_all_root(
         },
         |var| merge_same_event(all, var),
     )
+}
+
+/// Whether the first branch shares a variable with at least one other branch.
+fn first_branch_correlates_with_any(branch_facts: &[QueryShapeFacts]) -> bool {
+    branch_facts.first().is_some_and(|first| {
+        branch_facts.iter().skip(1).any(|facts| {
+            facts
+                .variables()
+                .iter()
+                .any(|v| first.variables().contains(v))
+        })
+    })
 }
 
 /// Find a variable bound as an event by the first branch that also

@@ -255,7 +255,7 @@ purely mechanical.
 
 **Fix Applied:** Dropped the unused `emission` parameter from `normalize_event_from_query` and from `normalize_lifecycle_root` (including the per-source map call). `emission` remains threaded through `normalize_root`/`normalize_any_root`/`normalize_all_root`, where `check_branch_evidence_compatibility` reads `primary_var` and the All path forwards it for single-branch normalization.
 
-#### [ ] READ-008 — `all_share_some` in same-event normalization has a misleading name and a convoluted shape
+#### [x] READ-008 — `all_share_some` in same-event normalization has a misleading name and a convoluted shape
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -278,7 +278,7 @@ and add a comment stating why partial correlation without a shared event variabl
 `UnsupportedRelation` rather than `UncorrelatedConjunction`. Guardrail: keep the two
 error outcomes distinct — they surface as different author-facing diagnostics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed `all_share_some` to `first_branch_correlates_with_any`, extracted it into a named helper over `QueryShapeFacts`, and added a comment explaining that partial correlation without a common event variable cannot merge into one event node and is therefore `UnsupportedRelation` while branches sharing no variables stay `UncorrelatedConjunction`. The two diagnostics remain distinct.
 
 ### [Compiler: plan accumulation]
 
