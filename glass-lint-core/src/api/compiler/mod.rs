@@ -179,38 +179,28 @@ impl From<&IdentitySpec> for IdentityConstraint {
     }
 }
 
-struct QueryPlanAccumulator {
-    roots: Vec<physical::PhysicalRoot>,
-    budget: physical::RootBudget,
-}
-
-impl QueryPlanAccumulator {
-    fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
-        PhysicalPlan::from_planned_roots(physical::optimize_roots(self.roots))
-            .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
-    }
-}
-
 /// Compile query declarations into one deterministic, aggregate physical plan.
 fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
-    let mut accumulator = QueryPlanAccumulator {
-        roots: Vec::new(),
-        budget: physical::RootBudget::new(),
-    };
+    let mut budget = physical::RootBudget::new();
+    let mut roots = Vec::new();
 
     for query in queries {
         validate_query_decl(query).map_err(map_query_compile_error)?;
         let normalized: NormalizedQuery =
             normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
-        physical::plan_normalized_roots_into(
-            &normalized,
-            &mut accumulator.budget,
-            &mut accumulator.roots,
-        )
-        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))?;
+        physical::plan_normalized_roots_into(&normalized, &mut budget, &mut roots)
+            .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))?;
     }
 
-    accumulator.finish()
+    seal_planned_roots(roots)
+}
+
+/// Seal the accumulated roots into a validated, optimized physical plan.
+fn seal_planned_roots(
+    roots: Vec<physical::PhysicalRoot>,
+) -> Result<PhysicalPlan, MatcherBuildError> {
+    PhysicalPlan::from_planned_roots(physical::optimize_roots(roots))
+        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
 }
 
 fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildError {

@@ -282,7 +282,7 @@ error outcomes distinct — they surface as different author-facing diagnostics.
 
 ### [Compiler: plan accumulation]
 
-#### [ ] READ-009 — `QueryPlanAccumulator` is a single-use two-field grouping with no added invariant
+#### [x] READ-009 — `QueryPlanAccumulator` is a single-use two-field grouping with no added invariant
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -304,7 +304,7 @@ finished `Vec<PhysicalRoot>`), preserving the `MatcherBuildError` mapping in
 `finish`. Guardrail: keep the `RootBudget` reserve/limit enforcement and the
 `from_planned_roots` validation boundary unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `QueryPlanAccumulator` and replaced it with the `budget`/`roots` locals in `compile_queries`, extracting the seal step into a small `seal_planned_roots(Vec<PhysicalRoot>)` helper that preserves the `MatcherBuildError` mapping from the old `finish`. `RootBudget` reserve/limit enforcement and the `from_planned_roots` validation boundary are unchanged.
 
 ## Systemic Themes
 
