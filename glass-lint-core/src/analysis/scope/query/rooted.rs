@@ -58,6 +58,10 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
             OptChainBase::Call(call) => rooted_expr_chain_with(context, &call.callee),
         },
         Expr::Paren(paren) => rooted_expr_chain_with(context, &paren.expr),
+        Expr::Seq(sequence) => sequence
+            .exprs
+            .last()
+            .and_then(|expr| rooted_expr_chain_with(context, expr)),
         _ => None,
     }
 }

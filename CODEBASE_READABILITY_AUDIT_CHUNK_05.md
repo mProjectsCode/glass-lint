@@ -205,7 +205,7 @@ the read resolver.
 
 **Fix Applied:** Extracted `FrozenScopeGraph::rooted_witness_path` (first rooted-available witness over the complete witnesses, with the `rooted_path_available` gate) in chain.rs. `resolve_provenance_alternatives` derives from it and keeps suffix appending; `rooted_ident_chain` derives from it (dropping the last-wins overwrite and the unrooted un-gated targets) and keeps the global-absent fallback. `callable_member_chain_from_resolution` intentionally keeps its preferred-witness-only, fail-closed rule: unifying it with first-rooted-available would let a joined binding with an incompatible non-rooted alternative claim a rooted identity, which the flow projector's value identity would accept as a witness (guarded by `incompatible_branch_facts_do_not_form_a_flow_witness`). `rooted_write_member_chain` is unchanged.
 
-#### [ ] READ-006 — Parallel expression-shape normalizers with divergent `Seq` coverage
+#### [x] READ-006 — Parallel expression-shape normalizers with divergent `Seq` coverage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -231,7 +231,7 @@ rooted path legitimately handles `Call`/`OptChain`/`This` and rejects
 `Seq` value transparent (expression.rs:34-36, static_values.rs:51-54), so
 unwrap `Seq` in the rooted path rather than failing closed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the `Seq` arm to `rooted_expr_chain_with`, resolving the final sequence value just as `expression_key` and the resolution-layer rooted resolver do. The rooted path still handles `Call`/`OptChain`/`This` and rejects `Await`; `Paren` and `Seq` are now both transparent.
 
 ### Scope storage / index plumbing
 
