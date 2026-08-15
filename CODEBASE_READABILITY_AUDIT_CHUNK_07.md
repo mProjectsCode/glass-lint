@@ -164,7 +164,7 @@ same rule can share a symbol), but stop letting callers choose them freely.
 
 **Fix Applied:** Added private `EvidenceKey::for_call(flow, event)` (encodes the `CallArgument` key of the flow's evidence symbol) and routed `mark_nonmatching`, `emit`, and `evidence/tests.rs` through it.
 
-#### [ ] READ-006 — `seed_from_calls` re-scans the candidate set per flow and per call argument
+#### [x] READ-006 — `seed_from_calls` re-scans the candidate set per flow and per call argument
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -186,7 +186,7 @@ Guardrails: keep the `Duplicate`/unknown-source semantics — a call site with n
 candidate still seeds an `unknown` context so incomplete alternatives downgrade
 `Definite` to `Possible`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `seed_from_calls` now computes the `present` flow set once per argument from the already-materialized candidate list and iterates `source_flows.difference(&present)` for the unknown-seed loop, dropping the per-flow candidate re-scan.
 
 #### [ ] READ-007 — `FlowLimits::from_flow_operations(x).operation_limit()` is an identity round-trip
 

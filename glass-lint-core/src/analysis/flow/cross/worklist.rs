@@ -213,6 +213,10 @@ impl ContextWorklist {
                         let root = effect.root_value(argument.value());
                         let source_key = SourceKey::new(module.id(), effect.id(), root);
                         let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
+                        let present = candidates
+                            .iter()
+                            .map(|candidate| candidate.flow_id())
+                            .collect::<BTreeSet<_>>();
                         for candidate in candidates {
                             let state = CrossFlowState::known(
                                 candidate.flow_id(),
@@ -233,13 +237,7 @@ impl ContextWorklist {
                         // same parameter/call projection with an explicit
                         // unknown source so it can downgrade a matching
                         // witness to Possible without contributing evidence.
-                        for &flow in source_flows {
-                            let has_source = sources
-                                .candidates(&source_key)
-                                .any(|item| item.flow_id() == flow);
-                            if has_source {
-                                continue;
-                            }
+                        for &flow in source_flows.difference(&present) {
                             self.enqueue_parameters(
                                 project,
                                 target.module(),
