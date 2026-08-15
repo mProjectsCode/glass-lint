@@ -65,7 +65,7 @@ now takes `FrozenStorage` directly, `Resolver::freeze_into` builds it via
 
 ### Module interface builder (`interface/`)
 
-#### [ ] READ-002 — Parallel pattern-local collection paths: one returns a set that the only caller discards, the other re-collects the same pattern
+#### [x] READ-002 — Parallel pattern-local collection paths: one returns a set that the only caller discards, the other re-collects the same pattern
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -97,6 +97,12 @@ declarator, and `add_local` must stay idempotent (it inserts into a
 `BTreeSet`), so the export arm re-inserting the same names is a no-op;
 non-`Pat::Ident` patterns (object/array destructuring) must still export
 their local names.
+**Fix Applied:** The `Decl::Var` export arm now calls
+`ModuleInterfaceBuilder::record_pattern_locals` (which records and returns
+the collected names) and uses the returned set for the export work; the
+static `collect_pattern_locals` helper was deleted. `add_local` stays
+idempotent and `visit_var_declarator` still records every declarator, so the
+later re-insertion is a no-op and destructured exports keep their names.
 
 #### [ ] READ-003 — Module-export-name `(original, exported)` normalization is repeated in two export functions
 

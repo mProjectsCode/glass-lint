@@ -41,11 +41,11 @@ impl ModuleInterfaceBuilder {
             swc_ecma_ast::Decl::Var(variable) => {
                 // The export pass runs before the visitor descends into the
                 // declarator (visit_export_decl calls record_export_decl first),
-                // so it must collect the names itself here; the visitor's later
-                // record_pattern_locals re-collects the same set for the
-                // interface's local table.
+                // so it records the names itself here; the visitor's later
+                // record_pattern_locals re-inserts the same names, which is a
+                // no-op because add_local is idempotent.
                 for declarator in &variable.decls {
-                    let names = Self::collect_pattern_locals(&declarator.name);
+                    let names = self.record_pattern_locals(&declarator.name);
                     for name in names {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(id) =
