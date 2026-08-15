@@ -26,7 +26,7 @@ existing owners; none propose new abstractions.
 
 ### Fact stream and freeze boundary
 
-#### [ ] READ-001 — `FrozenFactTables` and `FrozenStorage` are parallel two-field wrappers over the same name/value table pair
+#### [x] READ-001 — `FrozenFactTables` and `FrozenStorage` are parallel two-field wrappers over the same name/value table pair
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -57,6 +57,11 @@ for_test` constructor on the surviving type and update `facts/tests/stream.rs`
 and `facts/mod.rs:222-228` accordingly. Guardrail: keep the names/values pair
 crossing atomically in one call so no path can freeze with a half-consistent
 table bundle.
+**Fix Applied:** Deleted `FrozenFactTables` and its `into_storage`; `freeze`
+now takes `FrozenStorage` directly, `Resolver::freeze_into` builds it via
+`FrozenStorage::from_tables`, and `FrozenStorage::for_test` replaced
+`FrozenFactTables::for_test` in `facts/mod.rs::into_stream` and
+`facts/tests/stream.rs`, preserving the single atomic names/values handoff.
 
 ### Module interface builder (`interface/`)
 

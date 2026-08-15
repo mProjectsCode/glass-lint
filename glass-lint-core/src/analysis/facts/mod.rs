@@ -53,12 +53,12 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use self::instance::InstanceCallable;
+#[cfg(test)]
+use crate::analysis::facts::stream::FrozenStorage;
 pub(in crate::analysis) use crate::analysis::model::fact::{
     ArgumentView, Building, CallArgInfo, CallUnwrap, ClassFactRole, ControlKind, ControlRegionId,
     FactId, FactPayload, Frozen, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
 };
-#[cfg(test)]
-use crate::analysis::resolution::FrozenFactTables;
 #[cfg(test)]
 use crate::analysis::semantic::with_test_collection;
 use crate::analysis::{
@@ -221,11 +221,11 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
 
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream<Frozen> {
-        let tables = FrozenFactTables::for_test(
+        let storage = FrozenStorage::for_test(
             self.resolver.name_snapshot(),
             self.resolver.value_snapshot(),
         );
-        self.stream.freeze(tables)
+        self.stream.freeze(storage)
     }
 
     pub(in crate::analysis) fn into_built_facts(self) -> BuiltFacts {

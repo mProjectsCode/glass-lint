@@ -20,7 +20,6 @@ use crate::analysis::{
         scope::FunctionId,
         value::ValueTable,
     },
-    resolution::FrozenFactTables,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,6 +77,11 @@ pub(in crate::analysis) struct FrozenStorage {
 
 impl FrozenStorage {
     pub(in crate::analysis) fn from_tables(names: NameTable, values: ValueTable) -> Self {
+        Self { names, values }
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn for_test(names: NameTable, values: ValueTable) -> Self {
         Self { names, values }
     }
 }
@@ -322,12 +326,12 @@ impl FactStream<Building> {
 
     /// Consume the building stream and return a frozen stream with the
     /// resolver-owned name/value tables permanently attached.
-    pub(in crate::analysis) fn freeze(self, tables: FrozenFactTables) -> FactStream<Frozen> {
+    pub(in crate::analysis) fn freeze(self, storage: FrozenStorage) -> FactStream<Frozen> {
         FactStream {
             facts: self.facts,
             max_facts: self.max_facts,
             paths: self.paths,
-            storage: tables.into_storage(),
+            storage,
             function_parameters: self.function_parameters,
             valid: self.valid,
             issues: self.issues,

@@ -172,32 +172,6 @@ pub(super) struct Resolver<'a> {
     pub(super) budget: &'a SemanticBudget,
 }
 
-/// The only table bundle accepted by the fact-stream freeze transition.
-///
-/// The resolver creates this bundle after consuming its scope-owned names and
-/// value arena, so the two artifact-local ID spaces cross the phase boundary
-/// together.
-#[derive(Debug)]
-pub(in crate::analysis) struct FrozenFactTables {
-    names: NameTable,
-    values: ValueTable,
-}
-
-impl FrozenFactTables {
-    fn from_resolver(names: NameTable, values: ValueTable) -> Self {
-        Self { names, values }
-    }
-
-    pub(in crate::analysis) fn into_storage(self) -> FrozenStorage {
-        FrozenStorage::from_tables(self.names, self.values)
-    }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn for_test(names: NameTable, values: ValueTable) -> Self {
-        Self { names, values }
-    }
-}
-
 impl Lookup for Resolver<'_> {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         self.scopes.ident_value_seed(ident).constant
@@ -240,8 +214,7 @@ impl Resolver<'_> {
         self,
         stream: FactStream<Building>,
     ) -> FactStream<Frozen> {
-        let tables = FrozenFactTables::from_resolver(self.names, self.values);
-        stream.freeze(tables)
+        stream.freeze(FrozenStorage::from_tables(self.names, self.values))
     }
 
     /// Convert a canonical member chain into the arena's structured value.
