@@ -151,7 +151,7 @@ to whichever type survives the change.
 
 **Fix Applied:** Deleted `LinkingSession` and threaded `ExportLookupCache` directly through the linker, projection session, model, identities, and cross-flow callers; one cache per pass retained and the `assert_send` check updated to `ExportLookupCache`.
 
-#### [ ] READ-005 — `ProjectLinker` transient state is over-wrapped (`Option<graph>` plus a three-state enum) and forces a `mem::replace` borrow dance
+#### [x] READ-005 — `ProjectLinker` transient state is over-wrapped (`Option<graph>` plus a three-state enum) and forces a `mem::replace` borrow dance
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -181,7 +181,7 @@ the bespoke three-state enum and the dead `Option`. Guardrails: keep the
 on a rejected partition (fail-closed), and keep the budget-exhaustion
 diagnostics for the rejected case in `collect_graph_edges`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Stored `NormalizedModuleGraph` directly (added `Default`) and replaced `SccPartitionState` with `Option<SccPartition>`, using a standard `take()`/restore in `resolve_export_table` and keeping the fail-closed `is_some()` gate.
 
 ### Projection helper and model limits (`analysis/project/projection.rs`, `model.rs`)
 

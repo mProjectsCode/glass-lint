@@ -23,18 +23,6 @@ use crate::{
     project::AnalysisDiagnostic,
 };
 
-enum SccPartitionState {
-    Pending,
-    Ready(SccPartition),
-    Rejected,
-}
-
-impl SccPartitionState {
-    fn is_ready(&self) -> bool {
-        matches!(self, Self::Ready(_))
-    }
-}
-
 // ---------------------------------------------------------------------------
 // ProjectLinker
 // ---------------------------------------------------------------------------
@@ -45,8 +33,8 @@ impl SccPartitionState {
 pub(super) struct ProjectLinker {
     modules: BTreeMap<ModuleId, ProjectModule>,
     resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    graph: Option<NormalizedModuleGraph>,
-    scc_partition: SccPartitionState,
+    graph: NormalizedModuleGraph,
+    scc_partition: Option<SccPartition>,
     exports: ExportTable,
     lookup_session: ExportLookupCache,
     link_budget: BudgetTracker,
@@ -79,8 +67,8 @@ impl ProjectLinker {
         Self {
             modules,
             resolutions,
-            graph: None,
-            scc_partition: SccPartitionState::Pending,
+            graph: NormalizedModuleGraph::default(),
+            scc_partition: None,
             exports: ExportTable::default(),
             lookup_session: ExportLookupCache::new(export_lookup_capacity),
             link_cycle_rounds: 0,
@@ -123,17 +111,15 @@ impl ProjectLinker {
         if result.exhausted {
             self.link_budget.mark_exhausted();
         }
-        self.graph = Some(result.graph);
-        self.scc_partition = result
-            .scc_partition
-            .map_or(SccPartitionState::Rejected, SccPartitionState::Ready);
+        self.graph = result.graph;
+        self.scc_partition = result.scc_partition;
     }
 
     /// Build edges, resolve exports via SCC-DAG topological walk, validate
     /// imports, and canonicalize diagnostics.
     pub(super) fn build_graph_and_exports(&mut self) {
         self.collect_graph_edges();
-        if self.scc_partition.is_ready() {
+        if self.scc_partition.is_some() {
             self.resolve_export_table();
             self.validate_imported_exports();
         }
@@ -147,10 +133,7 @@ impl ProjectLinker {
         self,
         limits: &crate::AnalysisLimits,
     ) -> super::model::ProjectSemanticModel {
-        let edge_count = self
-            .graph
-            .as_ref()
-            .map_or(0, NormalizedModuleGraph::edge_count);
+        let edge_count = self.graph.edge_count();
         super::model::ProjectSemanticModel::from_linker(
             super::model::LinkedProjectState {
                 modules: self.modules,

@@ -41,7 +41,7 @@ impl ModuleGraph {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct NormalizedModuleGraph {
     forward: BTreeMap<ModuleId, Vec<ModuleId>>,
 }
