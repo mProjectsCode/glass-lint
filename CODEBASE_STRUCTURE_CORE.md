@@ -40,6 +40,9 @@ deterministic findings.
 - `facts::functions::FunctionBodyKind` — Classifies function and method bodies during fact construction.
 - `analysis::facts::instance` — Tracks callable constructed instances.
 - `facts::instance::InstanceCallable` — Describes a callable associated with an instance.
+
+#### Chunk 2: Fact interface and stream
+
 - `analysis::facts::interface` — Builds a module's export interface from facts.
 - `facts::interface::ModuleInterfaceBuilder` — Accumulates a module's export interface.
 - `analysis::facts::interface::commonjs` — Interprets CommonJS export assignments.
@@ -64,7 +67,7 @@ deterministic findings.
 - `facts::stream::FrozenStorage` — Stores names and values exposed by a frozen fact stream.
 - `analysis::facts::visitor` — Traverses syntax to feed the fact builder.
 
-#### Chunk 2: Scope, syntax, and evidence frontend
+#### Chunk 3: Scope collection frontend
 
 - `analysis::scope` — Builds lexical scopes, bindings, assignments, and provenance.
 - `analysis::scope::binding_index` — Indexes bindings and parameter aliases.
@@ -95,6 +98,9 @@ deterministic findings.
 - `analysis::scope::build::analysis::classification` — Classifies declaration candidates.
 - `scope::build::analysis::classification::Candidate` — Represents a declaration classification candidate.
 - `scope::build::analysis::classification::DeclarationClassification` — Classifies a declaration's semantic role.
+
+#### Chunk 4: Scope collection subsystems
+
 - `analysis::scope::build::assignments` — Collects assignment history.
 - `scope::build::assignments::JoinedPathAssignments` — Groups assignment facts joined across paths.
 - `analysis::scope::build::assignments::control_flow` — Tracks scope-collector checkpoints across if, loop, switch, and try/catch control flow to join assignment alternatives.
@@ -135,6 +141,9 @@ deterministic findings.
 - `scope::build::traversal::ScopeEntry` — Classifies entry into or rejection from a lexical scope.
 - `scope::build::traversal::ScopeTraversal` — Traverses a planned scoped program.
 - `analysis::scope::build::visitor` — Visits syntax while collecting scope information.
+
+#### Chunk 5: Scope storage and queries
+
 - `analysis::scope::expression` — Normalizes syntax expression shapes used by scope provenance.
 - `scope::expression::ScopeExpression` — Represents normalized syntax expression shapes for provenance.
 - `analysis::scope::frozen_assignments` — Exposes frozen assignment state for analysis queries.
@@ -169,6 +178,9 @@ deterministic findings.
 - `analysis::scope::scope_index` — Indexes lexical scopes by source position.
 - `scope::scope_index::LexicalScopeIndex` — Finds lexical scopes by source position.
 - `analysis::scope::static_value` — Resolves static values from lexical scope state.
+
+#### Chunk 6: Syntax helpers and trace
+
 - `analysis::syntax` — Provides syntax-level names, constants, and provenance helpers.
 - `analysis::syntax::constant` — Handles syntax-level constant evaluation.
 - `analysis::syntax::constant::eval` — Evaluates constant expressions with bounded lookup.
@@ -192,7 +204,7 @@ deterministic findings.
 - `trace::TraceNodeId` — Identifies a trace node.
 - `trace::TraceStep` — Represents one user-visible evidence step.
 
-#### Chunk 3: Flow analysis
+#### Chunk 7: Cross-flow analysis
 
 - `analysis::flow` — Performs bounded local and cross-call flow analysis.
 - `flow::FlowCompletion` — Tracks completion across bounded flow-analysis phases.
@@ -229,6 +241,9 @@ deterministic findings.
 - `flow::cross::worklist::ContextAdmission` — Classifies admission of a cross-flow context.
 - `flow::cross::worklist::ContextWorklist` — Maintains bounded context work items.
 - `flow::cross::worklist::FifoAdmission` — Classifies insertion into the bounded FIFO.
+
+#### Chunk 8: Flow effects and planning
+
 - `analysis::flow::effect` — Models function effects on arguments, returns, and calls.
 - `flow::effect::FunctionEffect` — Summarizes one function's effect behavior.
 - `flow::effect::FunctionEffects` — Stores all effect records for a function.
@@ -252,6 +267,9 @@ deterministic findings.
 - `flow::planning::BoundTargetIndex` — Indexes bound flow targets.
 - `flow::planning::FlowMatchView` — Provides the planned flow data used during matching.
 - `flow::planning::PropertyRequirementMatch` — Stores a matched flow property requirement.
+
+#### Chunk 9: Flow projector core
+
 - `analysis::flow::projector` — Projects object state through local control flow.
 - `flow::projector::ActivePaths` — Tracks complete and incomplete paths during projection.
 - `flow::projector::AlternativeCompleteness` — Classifies whether a path alternative is complete.
@@ -281,6 +299,9 @@ deterministic findings.
 - `analysis::flow::projector::loops` — Computes bounded loop admissions and fixed points.
 - `flow::projector::loops::LoopFixedPoint` — Stores a loop's stabilized abstract state.
 - `flow::projector::loops::LoopFixedPointOutcome` — Reports loop fixed-point computation.
+
+#### Chunk 10: Flow projector state and summaries
+
 - `analysis::flow::projector::state` — Defines canonical flow environments and snapshots.
 - `flow::projector::state::AbruptExit` — Describes a return, throw, break, or continue exit.
 - `flow::projector::state::ControlFrame` — Represents one active control-flow frame.
@@ -319,7 +340,7 @@ deterministic findings.
 - `flow::summary::summaries::SummaryPropagation` — Propagates summaries across calls.
 - `flow::summary::summaries::SummarySinkBudget` — Bounds sink-summary collection.
 
-#### Chunk 4: Retained models and resolution
+#### Chunk 11: Retained model facts and flow
 
 - `analysis::model` — Exposes retained semantic domain models to the rest of core.
 - `analysis::model::fact` — Defines retained semantic events and their payloads.
@@ -354,6 +375,9 @@ deterministic findings.
 - `analysis::model::flow::state` — Models one object's per-flow lifecycle state recording requirement and sink evidence.
 - `model::flow::state::FlowState` — Stores the abstract state of one flow value.
 - `model::flow::state::FlowStateKey` — Keys a flow state for deduplication.
+
+#### Chunk 12: Retained module, scope, and value models
+
 - `analysis::model::module` — Defines module interfaces, imports, exports, and requests.
 - `model::module::ExportEntry` — Stores one internal module export record.
 - `model::module::ExportMerge` — Classifies how an export observation changes module state.
@@ -399,6 +423,9 @@ deterministic findings.
 - `model::value::ValueConstruction` — Classifies how a resolved value was constructed.
 - `model::value::ValueId` — Identifies a value in a value table.
 - `model::value::ValueTable` — Stores artifact-local values and their identities.
+
+#### Chunk 13: Module requests and resolution
+
 - `analysis::module_request` — Recognizes and validates module request shapes.
 - `module_request::ModuleRequestKind` — Classifies a recognized module request shape.
 - `module_request::ModuleRequestPolicy` — Defines which module requests are recognized.
@@ -418,7 +445,7 @@ deterministic findings.
 - `resolution::expression::ResolutionStart` — Classifies the starting state of expression resolution.
 - `analysis::resolution::expression::static_values` — Interprets statically known expressions and interns constant, rooted, and freshly allocated values.
 
-#### Chunk 5: Local artifacts and semantic analysis
+#### Chunk 14: Local artifacts and semantic analysis
 
 - `analysis::local` — Owns local semantic artifacts and their bounded cache.
 - `local::ArtifactCache` — Caches bounded semantic artifacts by content and configuration identity.
@@ -452,7 +479,7 @@ deterministic findings.
 - `semantic::status::StatusEntry` — Records one scoped analysis status.
 - `semantic::status::StatusScope` — Identifies the artifact scope of a status.
 
-#### Chunk 6: Matching
+#### Chunk 15: Matching and argument evaluation
 
 - `analysis::matching` — Indexes semantic occurrences and executes local matches.
 - `matching::GlobalPromotion` — Controls whether global occurrence promotion is allowed.
@@ -496,6 +523,9 @@ deterministic findings.
 - `matching::indexes::ConstructionIndexes` — Indexes construction occurrences.
 - `matching::indexes::LiteralIndexes` — Indexes literal occurrences.
 - `matching::indexes::MemberIndexes` — Indexes member reads and calls.
+
+#### Chunk 16: Occurrence and query indexes
+
 - `analysis::matching::occurrence` — Represents and merges candidate semantic occurrences.
 - `matching::occurrence::BorrowedOccurrenceIter` — Iterates borrowed local occurrences.
 - `matching::occurrence::BorrowedPackageOccurrenceIter` — Iterates borrowed package occurrences.
@@ -527,7 +557,7 @@ deterministic findings.
 - `matching::query::view::RootedIndex` — Selects a rooted occurrence index.
 - `analysis::matching::query::view::private_network` — Finds localhost and private IPv4/IPv6 address spans embedded in string values.
 
-#### Chunk 7: Project linking
+#### Chunk 17: Project linking
 
 - `analysis::project` — Links local artifacts into a project semantic model.
 - `analysis::project::identities` — Resolves project-wide module and export identities.
@@ -576,7 +606,7 @@ deterministic findings.
 
 ### Public API, query compiler, and linting
 
-#### Chunk 8: Rule authoring and catalog integration
+#### Chunk 18: Rule authoring and query declarations
 
 - `api` — Owns validated rule authoring and compiler boundaries.
 - `api::rule` — Exposes validated declarative rule construction.
@@ -625,6 +655,9 @@ deterministic findings.
 - `api::rule::query::expression::QueryExprKind` — Classifies a logical query expression.
 - `api::rule::query::expression::QueryShapeFacts` — Stores variables and bindings found in a query expression.
 - `api::rule::query::expression::VarRole` — Classifies how a query variable participates.
+
+#### Chunk 19: Lifecycle and value queries
+
 - `api::rule::query::lifecycle` — Defines bounded multi-event lifecycle queries.
 - `api::rule::query::lifecycle::CatalogLifecycleQueryBuilder` — Builds lifecycle queries while deferring construction errors.
 - `api::rule::query::lifecycle::LifecycleBuilderState` — Accumulates lifecycle stages and retains the first build error from fallible operations.
@@ -664,7 +697,7 @@ deterministic findings.
 - `rule_id::RuleId` — Stores a validated namespaced rule identifier.
 - `rules` — Provides the top-level rule integration boundary.
 
-#### Chunk 9: Query classification and compilation
+#### Chunk 20: Classification and compilation
 
 - `api::classification` — Classifies matched capabilities and evidence.
 - `api::classification::ClassificationEvidence` — Stores evidence supporting a capability classification.
@@ -706,6 +739,9 @@ deterministic findings.
 - `api::compiler::normalized::NormalizedRoot` — Stores a canonical physical-root candidate.
 - `api::compiler::normalized::NormalizedSubject` — Stores a normalized event subject relation.
 - `api::compiler::normalized::ObjectSlot` — Identifies an object variable in a normalized plan.
+
+#### Chunk 21: Physical planning and validation
+
 - `api::compiler::object_flow` — Compiles object-flow declarations.
 - `api::compiler::object_flow::CompiledObjectFlow` — Stores a compiled object-flow relation.
 - `api::compiler::object_flow::CompiledObjectRequirement` — Stores one compiled flow requirement.
@@ -745,7 +781,7 @@ deterministic findings.
 
 ### Runtime, linting, and project API
 
-#### Chunk 10: Configuration, parsing, and runtime environment
+#### Chunk 22: Configuration, parsing, and runtime environment
 
 - `config` — Stores core-wide configuration.
 - `config::CoreConfig` — Holds core runtime configuration.
@@ -786,7 +822,7 @@ deterministic findings.
 - `parse::depth::Delimiter` — Classifies a delimiter used by depth scanning.
 - `parse::depth::DepthScanner` — Bounds syntax depth before full parsing.
 
-#### Chunk 11: Lint execution and reporting
+#### Chunk 23: Lint execution and reporting
 
 - `lint` — Selects rules, runs linting, and assembles reports.
 - `lint::batch` — Runs bounded batches of independent source lint operations.
@@ -836,7 +872,7 @@ deterministic findings.
 - `lint::selection::RuleState` — Classifies whether a rule is enabled and at what level.
 - `lint::selection::rule_state_as_bool` — Serializes rule state as a Boolean for serde.
 
-#### Chunk 12: Project sessions, inputs, and reports
+#### Chunk 24: Project sessions and input types
 
 - `project` — Exposes owned project inputs, sessions, and reports.
 - `project::input` — Re-exports validated project input types.
@@ -884,6 +920,9 @@ deterministic findings.
 - `project::types::input::resolution::ResolutionRequestKey` — Keys a resolution request.
 - `project::types::input::resolution::ResolutionRequestKind` — Classifies a resolution request.
 - `project::types::input::resolution::ResolverOutcome` — Stores a typed resolver outcome.
+
+#### Chunk 25: Project report types
+
 - `project::types::report` — Defines public diagnostics, findings, evidence, and report values.
 - `project::types::report::analysis_report` — Defines complete analysis reports and summaries.
 - `project::types::report::analysis_report::AnalysisReport` — Represents the complete deterministic lint report.
