@@ -153,6 +153,12 @@ impl FunctionSummary {
         &self.calls
     }
 
+    /// Snapshot the call ids so a caller can iterate them while this summary
+    /// is borrowed mutably elsewhere.
+    pub(super) fn call_ids(&self) -> Vec<FactId> {
+        self.calls.clone()
+    }
+
     pub(super) fn id(&self) -> FunctionId {
         self.id
     }

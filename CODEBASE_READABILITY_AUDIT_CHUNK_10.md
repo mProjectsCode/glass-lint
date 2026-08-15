@@ -242,7 +242,7 @@ directly; driver.rs continues to use `is_reachable()` both directly and as the
 
 ### [summaries.rs — summary collection and propagation]
 
-#### [ ] READ-007 — Index-based call iteration with per-index re-lookup duplicated across two callers
+#### [x] READ-007 — Index-based call iteration with per-index re-lookup duplicated across two callers
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -266,7 +266,12 @@ have both `collect_direct_sinks` and `run` consume it. Guardrail: keep the
 snapshot semantics — a summary's call list must not change while it is being
 collected, and the mutation log / budget charges must stay unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `FunctionSummary::call_ids()` which snapshots the call
+ids into an owned `Vec<FactId>`, and both `collect_direct_sinks` and
+`SummaryPropagation::run` now iterate that snapshot per caller instead of the
+`for index in 0..count { calls().get(index) }` convention with per-index
+`by_id.get(caller)` re-lookup. Snapshot semantics (a summary's call list cannot
+change while being collected) and the mutation-log/budget charges are unchanged.
 
 ## Systemic Themes
 

@@ -151,31 +151,27 @@ impl<'a> FunctionSummaries<'a> {
         plan: &BoundFlowPlan<'_>,
         budget: &mut Budget,
     ) {
-        let entries: Vec<(FunctionId, usize)> = self
+        let entries: Vec<(FunctionId, Vec<FactId>)> = self
             .by_id
             .iter()
-            .map(|(id, summary)| (id, summary.calls().len()))
+            .map(|(id, summary)| (id, summary.call_ids()))
             .collect();
-        for (id, count) in entries {
+        for (id, call_ids) in entries {
             if self.completion.is_incomplete() {
                 return;
             }
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
-            for idx in 0..count {
+            for call_id in call_ids {
                 if self.completion.is_incomplete() {
                     return;
                 }
-                if let Some(call_id) = summary.calls().get(idx).copied() {
-                    let candidates =
-                        summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
-                    if let Err(completion) =
-                        self.sink_budget.admit_sinks(summary, candidates, budget)
-                    {
-                        self.completion = completion;
-                        return;
-                    }
+                let candidates =
+                    summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
+                if let Err(completion) = self.sink_budget.admit_sinks(summary, candidates, budget) {
+                    self.completion = completion;
+                    return;
                 }
             }
         }
@@ -272,19 +268,11 @@ impl<'a> SummaryPropagation<'a> {
             self.worklist.clear();
             let mut changed = BTreeSet::new();
             for caller in current_round {
-                let call_count = summaries
+                let call_ids = summaries
                     .by_id
                     .get(caller)
-                    .map_or(0, |summary| summary.calls().len());
-                for index in 0..call_count {
-                    let Some(call_id) = summaries
-                        .by_id
-                        .get(caller)
-                        .and_then(|summary| summary.calls().get(index))
-                        .copied()
-                    else {
-                        continue;
-                    };
+                    .map_or(Vec::new(), FunctionSummary::call_ids);
+                for call_id in call_ids {
                     let changed_now = match summaries.propagate_call_sinks(
                         call_id,
                         caller,
