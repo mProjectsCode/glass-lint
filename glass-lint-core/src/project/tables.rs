@@ -17,9 +17,9 @@ pub struct SourceTable {
 }
 
 impl SourceTable {
-    /// Insert one normalized source path, rejecting replacement of an existing
-    /// source.
-    pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
+    /// Insert one normalized source path into an empty staging table,
+    /// rejecting replacement of an existing source.
+    fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         let path = source.path().clone();
         if self.sources.contains_key(&path) {
             return Err(ProjectInputError::DuplicateSource(path.to_string()));

@@ -127,7 +127,7 @@ constructor with a production caller.
 
 ### Project session (`project/session/mod.rs`, `project/tables.rs`)
 
-#### [ ] READ-004 — `SourceTable::insert` duplicates `admit_all` with fabricated limits and is exposed publicly
+#### [x] READ-004 — `SourceTable::insert` duplicates `admit_all` with fabricated limits and is exposed publicly
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -155,7 +155,7 @@ Guardrail: preserve atomic admission and the duplicate-rejection behavior of
 `admit_all`; keep `source_bytes` accounting exactly as is so deterministic
 admission limits do not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `SourceTable::insert` private (staging helper used only by `admit_all`'s loop) and rewrote the three tests in `project/session/artifacts/tests.rs` to admit via `admit_all([source], usize::MAX, usize::MAX)`, leaving one public admission path that enforces real limits.
 
 #### [ ] READ-005 — `analyze_pending_sources` re-implements `ResolutionRequestKey`'s derived ordering field by field
 

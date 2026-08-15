@@ -40,7 +40,9 @@ fn needs_analysis_tracks_completed_and_failed_sources() {
 fn successful_retry_replaces_a_parse_failure() {
     let source = SourceFile::new("retry.js", "fetch('/x');").unwrap();
     let mut sources = SourceTable::default();
-    sources.insert(source.clone()).unwrap();
+    sources
+        .admit_all([source.clone()], usize::MAX, usize::MAX)
+        .unwrap();
     let mut artifacts = AnalysisArtifacts::default();
     artifacts.record_parse_failure(source.path().clone(), parse_failure("retry.js"));
     artifacts.record_analyzed(
@@ -56,7 +58,9 @@ fn successful_retry_replaces_a_parse_failure() {
 fn parse_failure_replaces_a_previous_success() {
     let source = SourceFile::new("retry.js", "fetch('/x');").unwrap();
     let mut sources = SourceTable::default();
-    sources.insert(source.clone()).unwrap();
+    sources
+        .admit_all([source.clone()], usize::MAX, usize::MAX)
+        .unwrap();
     let mut artifacts = AnalysisArtifacts::default();
     artifacts.record_analyzed(
         source.path(),
@@ -89,7 +93,9 @@ fn qualified_ids_reject_missing_importer_modules() {
 fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
     let source = SourceFile::new("main.js", "import value from './dep.js';").unwrap();
     let mut sources = SourceTable::default();
-    sources.insert(source.clone()).unwrap();
+    sources
+        .admit_all([source.clone()], usize::MAX, usize::MAX)
+        .unwrap();
 
     let (link_input, parse_diagnostics) = {
         let mut artifacts = AnalysisArtifacts::default();
