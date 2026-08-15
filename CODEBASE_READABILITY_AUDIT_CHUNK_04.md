@@ -190,7 +190,7 @@ increasing in source order.
 
 ### Pattern projection and alias collection
 
-#### [ ] READ-004 — Declaration and assignment alias projection are near-identical wrappers
+#### [x] READ-004 — Declaration and assignment alias projection are near-identical wrappers
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -217,7 +217,7 @@ operation. Guardrail: preserve the exact behavior difference — declarations
 assignments call `record_assignment` (history + version), and `Unsupported`
 must stay a silent no-op while `Exhausted` must set `name_exhausted`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by chunk 03 read 004 (commit 0b8cc159): `collect_value_aliases` and `collect_assignment_aliases` are thin sinks over one `collect_destructuring_aliases` that owns the append closure and the `Unsupported`/`Exhausted` handling, parameterizing only the write operation. Verified the guardrails hold in the current code: declarations call `update_binding` (no history entry, no version bump), assignments call `record_assignment` (history + version), `Unsupported` stays a silent no-op, and `Exhausted` sets `name_exhausted`. No further work needed.
 
 ### Visitor completion hooks
 
