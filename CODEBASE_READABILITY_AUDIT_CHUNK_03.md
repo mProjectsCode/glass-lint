@@ -141,7 +141,7 @@ assignment's scope span against a use span — semantics must not change in
 
 **Fix Applied:** Added `syntax::span_contains` as the single implementation; `LexicalScope::contains` and `query/provenance/chain.rs` now delegate to it; deleted the `aliases.rs` free function and the `query/mod.rs` re-export.
 
-#### [ ] READ-004 — `collect_value_aliases` and `collect_assignment_aliases` duplicate the projection/error sequence
+#### [x] READ-004 — `collect_value_aliases` and `collect_assignment_aliases` duplicate the projection/error sequence
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -170,7 +170,7 @@ updating binding provenance while assignment aliases append an
 `AliasAssignment`; the `Exhausted` arm must keep setting
 `name_exhausted` and the `Unsupported` arm must remain a no-op.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the two methods into `collect_destructuring_aliases` parameterized by the assignment flag and a sink closure; projection and Unsupported/Exhausted handling now live in one place. Changed the `ObjectPatProp::Assign` arm to `module.clone()` for the single `SmolStr` conversion path.
 
 ### Collector interning surface
 

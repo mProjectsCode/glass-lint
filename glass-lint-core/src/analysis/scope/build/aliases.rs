@@ -24,25 +24,9 @@ impl ScopeCollector<'_> {
     /// projection would make a later use look more precise than the source
     /// warrants, so callers should leave the binding unresolved instead.
     pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &NamePath, scope: ScopeId) {
-        let result = {
-            let mut append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
-            project_destructuring(pat, target, false, &mut append)
-        };
-        match result {
-            Ok(bindings) => {
-                for (name, path) in bindings {
-                    self.update_binding(
-                        scope,
-                        name,
-                        BindingProvenance::ValueAlias { target: path },
-                    );
-                }
-            }
-            Err(ProjectionError::Unsupported) => {}
-            Err(ProjectionError::Exhausted) => {
-                self.lexical.name_exhausted = true;
-            }
-        }
+        self.collect_destructuring_aliases(pat, target, false, |collector, name, path| {
+            collector.update_binding(scope, name, BindingProvenance::ValueAlias { target: path });
+        });
     }
 
     /// Record aliases introduced by a destructuring assignment.
@@ -53,19 +37,33 @@ impl ScopeCollector<'_> {
         span: Span,
         scope: ScopeId,
     ) {
+        self.collect_destructuring_aliases(pat, target, true, |collector, name, path| {
+            collector.record_assignment(
+                span,
+                scope,
+                name.as_str(),
+                BindingProvenance::ValueAlias { target: path },
+            );
+        });
+    }
+
+    /// Project a destructuring pattern into aliases, reporting projection
+    /// errors once for both declarations and assignments.
+    fn collect_destructuring_aliases(
+        &mut self,
+        pat: &Pat,
+        target: &NamePath,
+        is_assignment: bool,
+        mut sink: impl FnMut(&mut Self, SmolStr, NamePath),
+    ) {
         let result = {
             let mut append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
-            project_destructuring(pat, target, true, &mut append)
+            project_destructuring(pat, target, is_assignment, &mut append)
         };
         match result {
             Ok(bindings) => {
                 for (name, path) in bindings {
-                    self.record_assignment(
-                        span,
-                        scope,
-                        name.as_str(),
-                        BindingProvenance::ValueAlias { target: path },
-                    );
+                    sink(self, name, path);
                 }
             }
             Err(ProjectionError::Unsupported) => {}
@@ -104,7 +102,7 @@ impl ScopeCollector<'_> {
                                 scope,
                                 local.clone(),
                                 BindingProvenance::ModuleExport {
-                                    module: module.as_str().into(),
+                                    module: module.clone(),
                                     export: local,
                                 },
                             );
