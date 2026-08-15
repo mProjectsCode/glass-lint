@@ -32,7 +32,7 @@ query namespace from a pattern-projection module.
 
 ### Scope binding index
 
-#### [ ] READ-001 — Parameter aliases are re-keyed ScopeId→FunctionId and converted back on every lookup
+#### [x] READ-001 — Parameter aliases are re-keyed ScopeId→FunctionId and converted back on every lookup
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -71,7 +71,7 @@ is gone, `BindingIndexError` is produced only by that path, so its
 discards it) can be dropped to a bare marker while the fail-closed
 `InvalidBindingIndex` fallback stays.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept `parameter_aliases` keyed by `ScopedName`; deleted `ParameterAliasKey` and `resolve_parameter_aliases`; `parameter_alias_for_scope(scope, name)` is now a direct map access and `storage.rs` no longer hops through `function_for_scope`. `BindingIndexError` is a bare marker with the `scope` payload dropped.
 
 #### [ ] READ-002 — Freeze transition builds two levels of one-shot bundle structs that are immediately destructured
 

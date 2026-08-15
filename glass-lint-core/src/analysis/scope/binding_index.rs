@@ -10,18 +10,6 @@ use crate::analysis::{
     scope::frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
 };
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct ParameterAliasKey {
-    function: FunctionId,
-    name: NameId,
-}
-
-impl ParameterAliasKey {
-    fn new(function: FunctionId, name: NameId) -> Self {
-        Self { function, name }
-    }
-}
-
 /// Stable IDs allocated from the collector's lexical scopes.
 #[derive(Debug)]
 pub(super) struct BindingAllocation {
@@ -41,9 +29,7 @@ pub(super) struct BindingFreezeInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct BindingIndexError {
-    pub(super) scope: ScopeId,
-}
+pub(super) struct BindingIndexError;
 
 #[derive(Debug)]
 pub(super) struct BindingIndex {
@@ -53,7 +39,7 @@ pub(super) struct BindingIndex {
     function_spans: HashMap<FunctionId, Span>,
     function_bindings: HashMap<ScopedName, FunctionId>,
     function_aliases: HashMap<ScopedName, FunctionId>,
-    parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
+    parameter_aliases: HashMap<ScopedName, BindingProvenance>,
 }
 
 impl BindingIndex {
@@ -72,7 +58,6 @@ impl BindingIndex {
         } = input;
         let function_bindings = resolve_function_targets(function_bindings, &function_ids)?;
         let function_aliases = resolve_function_targets(function_aliases, &function_ids)?;
-        let parameter_aliases = resolve_parameter_aliases(parameter_aliases, &function_ids)?;
         Ok(Self {
             assignments: FrozenAssignmentIndex::from_assignments(assignments),
             binding_ids,
@@ -97,27 +82,11 @@ fn resolve_function_targets(
         .collect()
 }
 
-fn resolve_parameter_aliases(
-    entries: HashMap<ScopedName, BindingProvenance>,
-    function_ids: &HashMap<ScopeId, FunctionId>,
-) -> Result<HashMap<ParameterAliasKey, BindingProvenance>, BindingIndexError> {
-    entries
-        .into_iter()
-        .map(|(name, provenance)| {
-            function_for_scope(function_ids, name.scope())
-                .map(|function| (ParameterAliasKey::new(function, name.name()), provenance))
-        })
-        .collect()
-}
-
 fn function_for_scope(
     function_ids: &HashMap<ScopeId, FunctionId>,
     scope: ScopeId,
 ) -> Result<FunctionId, BindingIndexError> {
-    function_ids
-        .get(&scope)
-        .copied()
-        .ok_or(BindingIndexError { scope })
+    function_ids.get(&scope).copied().ok_or(BindingIndexError)
 }
 
 impl BindingIndex {
@@ -185,13 +154,12 @@ impl BindingIndex {
         self.binding_ids.get(&ScopedName::new(scope, name)).copied()
     }
 
-    pub(super) fn parameter_alias_for(
+    pub(super) fn parameter_alias_for_scope(
         &self,
-        function: FunctionId,
+        scope: ScopeId,
         name: NameId,
     ) -> Option<&BindingProvenance> {
-        self.parameter_aliases
-            .get(&ParameterAliasKey::new(function, name))
+        self.parameter_aliases.get(&ScopedName::new(scope, name))
     }
 
     pub(super) fn reassigned_between(

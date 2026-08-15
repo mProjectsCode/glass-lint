@@ -36,8 +36,7 @@ impl<M> ScopeData<M> {
         scope: ScopeId,
         name: NameId,
     ) -> Option<&BindingProvenance> {
-        let function = self.bindings.function_for_scope(scope)?;
-        self.bindings.parameter_alias_for(function, name)
+        self.bindings.parameter_alias_for_scope(scope, name)
     }
 
     pub(super) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
