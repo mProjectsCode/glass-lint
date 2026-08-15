@@ -93,7 +93,7 @@ unchanged for `semantic`, `project`, and `flow` consumers.
 
 **Fix Applied:** Deleted `ModuleInterfaceBuilder`; `FactBuilder` now owns a `ModuleInterface` directly, the `record_*` methods (pattern locals, local imports, module request) and the exports/commonjs record impls live on `ModuleInterface` inside `facts/interface`, and the construction mutators were narrowed to `pub(in crate::analysis)`.
 
-#### [ ] READ-007 — `ModuleRequest.kind` is a total function of `ModuleRequest.role`, stored and guarded by a test
+#### [x] READ-007 — `ModuleRequest.kind` is a total function of `ModuleRequest.role`, stored and guarded by a test
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -117,7 +117,7 @@ argument. Guardrail: `ResolutionRequestKey::new(importer, request.kind(),
 range)` (`module.rs:419`) must keep producing the identical kind values so
 resolution-record identity and project budgets are unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the stored `kind` field from `ModuleRequest` and the per-constructor argument; `kind()` now derives the kind from `ModuleRequestRole` with the same mapping, and the constructor test now guards the derived mapping.
 
 ### Value arena
 

@@ -34,7 +34,6 @@ pub enum ImportedBinding {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModuleRequest {
     span: ByteRange,
-    kind: ResolutionRequestKind,
     specifier: SmolStr,
     role: ModuleRequestRole,
 }
@@ -148,7 +147,13 @@ impl ModuleRequest {
     }
 
     pub fn kind(&self) -> ResolutionRequestKind {
-        self.kind
+        match &self.role {
+            ModuleRequestRole::Import { .. }
+            | ModuleRequestRole::ReExport
+            | ModuleRequestRole::StarExport => ResolutionRequestKind::StaticImport,
+            ModuleRequestRole::DynamicImport => ResolutionRequestKind::DynamicImport,
+            ModuleRequestRole::Require => ResolutionRequestKind::Require,
+        }
     }
 
     pub fn specifier(&self) -> &SmolStr {
@@ -168,14 +173,12 @@ impl ModuleInterface {
     fn add_request(
         &mut self,
         span: ByteRange,
-        kind: ResolutionRequestKind,
         specifier: impl Into<SmolStr>,
         role: ModuleRequestRole,
     ) -> ModuleRequestId {
         let index = ModuleRequestId(self.requests.len());
         self.requests.push(ModuleRequest {
             span,
-            kind,
             specifier: specifier.into(),
             role,
         });
@@ -192,12 +195,7 @@ impl ModuleInterface {
         specifier: impl Into<SmolStr>,
         bindings: Vec<ImportedBinding>,
     ) -> ModuleRequestId {
-        self.add_request(
-            span,
-            ResolutionRequestKind::StaticImport,
-            specifier,
-            ModuleRequestRole::Import { bindings },
-        )
+        self.add_request(span, specifier, ModuleRequestRole::Import { bindings })
     }
 
     pub(in crate::analysis) fn add_reexport_request(
@@ -205,12 +203,7 @@ impl ModuleInterface {
         span: ByteRange,
         specifier: impl Into<SmolStr>,
     ) -> ModuleRequestId {
-        self.add_request(
-            span,
-            ResolutionRequestKind::StaticImport,
-            specifier,
-            ModuleRequestRole::ReExport,
-        )
+        self.add_request(span, specifier, ModuleRequestRole::ReExport)
     }
 
     pub(in crate::analysis) fn add_dynamic_import_request(
@@ -218,12 +211,7 @@ impl ModuleInterface {
         span: ByteRange,
         specifier: impl Into<SmolStr>,
     ) -> ModuleRequestId {
-        self.add_request(
-            span,
-            ResolutionRequestKind::DynamicImport,
-            specifier,
-            ModuleRequestRole::DynamicImport,
-        )
+        self.add_request(span, specifier, ModuleRequestRole::DynamicImport)
     }
 
     pub(in crate::analysis) fn add_require_request(
@@ -231,12 +219,7 @@ impl ModuleInterface {
         span: ByteRange,
         specifier: impl Into<SmolStr>,
     ) -> ModuleRequestId {
-        self.add_request(
-            span,
-            ResolutionRequestKind::Require,
-            specifier,
-            ModuleRequestRole::Require,
-        )
+        self.add_request(span, specifier, ModuleRequestRole::Require)
     }
 
     pub(in crate::analysis) fn add_export(
@@ -295,19 +278,9 @@ impl ModuleInterface {
         specifier: impl Into<SmolStr>,
     ) -> ModuleRequestId {
         if self.unknown_exports {
-            self.add_request(
-                span,
-                ResolutionRequestKind::StaticImport,
-                specifier,
-                ModuleRequestRole::StarExport,
-            )
+            self.add_request(span, specifier, ModuleRequestRole::StarExport)
         } else {
-            let request = self.add_request(
-                span,
-                ResolutionRequestKind::StaticImport,
-                specifier,
-                ModuleRequestRole::StarExport,
-            );
+            let request = self.add_request(span, specifier, ModuleRequestRole::StarExport);
             self.star_exports.push(request);
             request
         }
