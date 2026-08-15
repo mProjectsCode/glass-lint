@@ -101,19 +101,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 self.join_paths(paths);
             }
             ControlKind::LoopEnd => {
-                let Ok(ControlFrame::Loop {
-                    body_start,
-                    baseline,
-                    guaranteed,
-                    breaks,
-                    continues,
-                    ..
-                }) = self.paths.control.loop_frame(region)
-                else {
+                let Ok(seed) = self.paths.control.take_loop_seed(region) else {
                     self.mark_control_stack_incomplete();
                     return;
                 };
-                self.finish_loop(body_start, fact, guaranteed, baseline, breaks, continues);
+                self.finish_loop(seed, fact);
             }
             _ => unreachable!(),
         }

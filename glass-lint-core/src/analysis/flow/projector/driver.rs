@@ -4,7 +4,7 @@ use super::{
     AbruptExit, AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowEvidence,
     FlowSemanticSnapshot, FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector,
     PendingFlowKey, PendingState, ProjectionInputs, ProjectionPathMachine, ProjectionRunState,
-    PropertyWriteUpdate, loops::LoopFixedPoint,
+    PropertyWriteUpdate, loops::LoopFixedPoint, state::LoopSeed,
 };
 use crate::{
     analysis::{
@@ -184,30 +184,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// canonicalized before it is admitted to the frontier, which prevents
     /// fresh object allocation in repeated iterations from becoming an
     /// unbounded sequence of equivalent alternatives.
-    pub(super) fn finish_loop(
-        &mut self,
-        body_start: FactId,
-        body_end: FactId,
-        guaranteed: bool,
-        baseline: Vec<FlowEnvironment>,
-        breaks: Vec<FlowEnvironment>,
-        mut continues: Vec<FlowEnvironment>,
-    ) {
+    pub(super) fn finish_loop(&mut self, mut seed: LoopSeed, body_end: FactId) {
         let mut entrance = self.paths.frontier.take_paths();
-        entrance.append(&mut continues);
+        entrance.append(&mut seed.continues);
         self.join_paths(entrance.clone());
         let entrance = self.paths.frontier.take_paths();
 
         let mut fixed_point = LoopFixedPoint::start(
             entrance,
-            baseline,
-            guaranteed,
-            breaks,
+            seed.baseline,
+            seed.guaranteed,
+            seed.breaks,
             self.run.limits.alternative_limit(),
         );
-        fixed_point.converge(&mut *self, body_start, body_end);
+        fixed_point.converge(&mut *self, seed.body_start, body_end);
 
-        if self.paths.control.pop_loop(body_start).is_err() {
+        if self.paths.control.pop_loop().is_err() {
             self.mark_control_stack_incomplete();
             return;
         }

@@ -253,6 +253,18 @@ pub(super) struct ControlStack {
     frames: Vec<ControlFrame>,
 }
 
+/// Loop-frame state taken out of the live stack at the loop end. The frame
+/// stays on the stack through the fixed point so the replayed body can keep
+/// routing breaks and continues into it.
+#[derive(Debug)]
+pub(super) struct LoopSeed {
+    pub(super) body_start: FactId,
+    pub(super) baseline: Vec<FlowEnvironment>,
+    pub(super) guaranteed: bool,
+    pub(super) breaks: Vec<FlowEnvironment>,
+    pub(super) continues: Vec<FlowEnvironment>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ControlStackError {
     Empty,
@@ -289,32 +301,45 @@ impl ControlStack {
         self.frames.pop().ok_or(ControlStackError::Empty)
     }
 
-    pub(super) fn loop_frame(
-        &self,
+    /// Move the fields of the live loop frame that the fixed point no longer
+    /// needs out of the stack. The frame itself stays on the stack so the
+    /// replayed body can keep routing breaks and continues into it.
+    pub(super) fn take_loop_seed(
+        &mut self,
         region: ControlRegionId,
-    ) -> Result<ControlFrame, ControlStackError> {
-        let frame = self.frames.last().ok_or(ControlStackError::Empty)?;
+    ) -> Result<LoopSeed, ControlStackError> {
+        let frame = self.frames.last_mut().ok_or(ControlStackError::Empty)?;
         if frame.region() != Some(region) {
             return Err(ControlStackError::WrongRegion);
         }
-        match frame {
-            ControlFrame::Loop { .. } => Ok(frame.clone()),
-            _ => Err(ControlStackError::WrongKind),
-        }
+        let ControlFrame::Loop {
+            body_start,
+            baseline,
+            guaranteed,
+            breaks,
+            continues,
+            ..
+        } = frame
+        else {
+            return Err(ControlStackError::WrongKind);
+        };
+        Ok(LoopSeed {
+            body_start: *body_start,
+            baseline: std::mem::take(baseline),
+            guaranteed: *guaranteed,
+            breaks: std::mem::take(breaks),
+            continues: continues.clone(),
+        })
     }
 
-    pub(super) fn pop_loop(&mut self, body_start: FactId) -> Result<(), ControlStackError> {
-        let frame = self.frames.last().ok_or(ControlStackError::Empty)?;
-        match frame {
-            ControlFrame::Loop {
-                body_start: expected,
-                ..
-            } if *expected == body_start => {
+    pub(super) fn pop_loop(&mut self) -> Result<(), ControlStackError> {
+        match self.frames.last() {
+            Some(ControlFrame::Loop { .. }) => {
                 self.frames.pop();
                 Ok(())
             }
-            ControlFrame::Loop { .. } => Err(ControlStackError::WrongRegion),
-            _ => Err(ControlStackError::WrongKind),
+            Some(_) => Err(ControlStackError::WrongKind),
+            None => Err(ControlStackError::Empty),
         }
     }
 

@@ -172,7 +172,7 @@ through the new projector `mark_incomplete` method instead of reaching into
 
 ### Unnecessary work and dead logic
 
-#### [ ] READ-003 — `ControlStack::loop_frame` clones three environment vectors while the live frame must stay on the stack through the fixed point
+#### [x] READ-003 — `ControlStack::loop_frame` clones three environment vectors while the live frame must stay on the stack through the fixed point
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -205,7 +205,12 @@ validation into the take and delete `loop_frame`. Owner: `ControlStack`.
 Guardrail: the region/`body_start` checks stay — popping the wrong frame must
 remain a `mark_control_stack_incomplete` failure, not a panic.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `loop_frame` with `ControlStack::take_loop_seed(region)`,
+which validates the region/kind, moves `baseline` and `breaks` out by `mem::take`,
+and clones only `continues` (which the replayed `LoopUpdate` marker must still
+drain from the live frame). The frame stays on the stack through the fixed
+point; `pop_loop` no longer re-validates `body_start` (validated by the take)
+and still fails rather than panics on a wrong top frame. `loop_frame` is deleted.
 
 #### [ ] READ-005 — Redundant conditionals in the transfer/record paths
 
