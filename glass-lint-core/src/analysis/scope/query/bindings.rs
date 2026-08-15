@@ -179,9 +179,7 @@ impl FrozenScopeGraph {
 
     /// Require a configured global to be unshadowed and dynamically resolvable.
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
-        self.is_global(name)
-            && !self.has_dynamic_lookup_at(span)
-            && self.binding_resolution_at(name, span).status() == BindingResolutionStatus::Absent
+        self.is_global(name) && self.unshadowed_unbound_at(name, span)
     }
 
     /// Require an identifier to have no lexical or dynamic binding.

@@ -120,7 +120,7 @@ scope/assignment searches to the hot seed path.
 
 **Fix Applied:** Added `FrozenScopeGraph::resolve_binding(name: NameId, use_scope, span) -> Option<(ScopeId, BindingResolution)>` as the shared core; `binding_resolution_at` and `ident_binding_seed` both derive from it, with the seed keeping its single-resolution guarantee and its `dynamic_lookup: true` when `scope_at` yields nothing. `ident_binding_seed` now derives its `BindingKey` from the returned scope via index lookups only.
 
-#### [ ] READ-008 — `unshadowed_global_at` and `unshadowed_unbound_at` are the same predicate differing by one conjunct
+#### [x] READ-008 — `unshadowed_global_at` and `unshadowed_unbound_at` are the same predicate differing by one conjunct
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -140,7 +140,7 @@ predicate lives once. Guardrails: keep the global check first and the
 fail-closed result (`false` under any dynamic scope or prior eval); neither
 method may consult mutation state.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `unshadowed_global_at` is now `self.is_global(name) && self.unshadowed_unbound_at(name, span)`, keeping the global check first; the unshadowed/unbound predicate lives once. Both methods remain mutation-free and fail closed under any dynamic scope or prior eval.
 
 ### Rooted-chain queries
 
