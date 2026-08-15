@@ -115,7 +115,7 @@ impl FrozenScopeGraph {
                 if let Some(source) = self.returned_object_source(object) {
                     return Some(source);
                 }
-                self.rooted_member_chain(member)
+                self.resolve_rooted_member_chain(member)
             }
             ScopeExpression::Call { callee: None, .. } => None,
             ScopeExpression::Await { .. } => None,

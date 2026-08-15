@@ -59,7 +59,7 @@ impl RootedExprContext for FrozenScopeGraph {
     }
 
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<SymbolPath> {
-        Self::rooted_member_chain(self, member)
+        self.resolve_rooted_member_chain(member)
     }
 }
 

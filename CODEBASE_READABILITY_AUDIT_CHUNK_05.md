@@ -144,7 +144,7 @@ method may consult mutation state.
 
 ### Rooted-chain queries
 
-#### [ ] READ-004 — `RootedExprContext::rooted_member_chain` forwards to an inherent method of the same name and reads as self-recursion
+#### [x] READ-004 — `RootedExprContext::rooted_member_chain` forwards to an inherent method of the same name and reads as self-recursion
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -166,7 +166,7 @@ impl. Guardrails: keep the trait with both implementors (`ScopeCollector`,
 build/collector.rs:222, and `FrozenScopeGraph`), and keep the member-root
 resolution semantics unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed the inherent `FrozenScopeGraph::rooted_member_chain` resolver to `resolve_rooted_member_chain` (chain.rs) and made the trait impl a thin explicit delegator; updated the object.rs caller. The trait keeps both implementors with unchanged member-root semantics.
 
 #### [ ] READ-005 — Three parallel `BindingProvenance` → rooted-path extractions disagree on witness selection and rootedness
 

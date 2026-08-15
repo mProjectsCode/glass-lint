@@ -38,7 +38,7 @@ impl FrozenScopeGraph {
         Some(member.as_str().into())
     }
 
-    pub(in crate::analysis) fn rooted_member_chain(
+    pub(in crate::analysis) fn resolve_rooted_member_chain(
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
