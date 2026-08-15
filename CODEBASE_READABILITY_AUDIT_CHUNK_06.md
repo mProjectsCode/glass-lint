@@ -98,7 +98,7 @@ for shorthand properties stays unchanged.
 
 ### [analysis/syntax — name bounds and provenance]
 
-#### [ ] READ-003 — `MAX_NAMES` duplicates `DEFAULT_MAX_NAMES` across the crate boundary
+#### [x] READ-003 — `MAX_NAMES` duplicates `DEFAULT_MAX_NAMES` across the crate boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -128,7 +128,7 @@ cache key (`LocalAnalysisConfig`), so silently tracking the `NameTable` default
 would change artifacts without invalidating the cache. Guardrail: the
 cache-identity and `NameTable` capacity semantics must not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MAX_NAMES` stays core's deliberate artifact bound, now pinned at compile time via `const _: () = assert!(MAX_NAMES == glass_lint_datastructures::DEFAULT_MAX_NAMES)`. `DEFAULT_MAX_NAMES` was re-exported at the datastructures crate root (`pub use name::{DEFAULT_MAX_NAMES, ...}`), and the `MAX_NAMES` doc comment now states it matches both the datastructures default and the default semantic-operation bound. Cache-identity and `NameTable` capacity semantics are unchanged.
 
 #### [ ] READ-004 — `BudgetComponent` is a single-variant enum with an always-`None` `observed` payload
 

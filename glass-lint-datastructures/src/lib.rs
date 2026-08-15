@@ -30,7 +30,7 @@ pub use diagnostic::{
 };
 pub use fingerprint::Fingerprint;
 pub use history::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
-pub use name::{NameExhausted, NameId, NameTable};
+pub use name::{DEFAULT_MAX_NAMES, NameExhausted, NameId, NameTable};
 pub use path::{NamePath, Path, PathView, SymbolPath};
 pub use path_trie::{
     ParentRef, PathId, PathLink, PathSegment, PathSegmentInput, PathSegments, PathStore,
