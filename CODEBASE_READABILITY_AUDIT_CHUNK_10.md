@@ -178,7 +178,7 @@ carrier are unchanged.
 
 ### [sink.rs — sink summary set]
 
-#### [ ] READ-005 — `SinkSet::sort_and_dedup` re-implements the field-order comparison manually
+#### [x] READ-005 — `SinkSet::sort_and_dedup` re-implements the field-order comparison manually
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -199,7 +199,10 @@ closure with `self.set.sort()` (or keep `sort_by` with `|a, b| a.cmp(b)` if
 dedup must run after sorting). Guardrail: iteration order of the sorted set must
 remain deterministic, since `finalize`/propagation depend on stable ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Derived `PartialOrd, Ord` on `FunctionSinkSummary` and replaced
+the manual field-order closure in `SinkSet::sort_and_dedup` with
+`self.set.sort()`. The sorted iteration order matches the former lexicographic
+field order exactly, so `finalize`/propagation ordering is unchanged.
 
 ### [tables.rs / state.rs — flow environment]
 

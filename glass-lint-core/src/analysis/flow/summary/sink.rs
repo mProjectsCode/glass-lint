@@ -9,7 +9,7 @@ use crate::analysis::{
     model::{flow::FlowId, scope::FunctionId, value::ValueId},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(in crate::analysis::flow) struct FunctionSinkSummary {
     flow: FlowId,
     parameter_index: usize,
@@ -61,13 +61,7 @@ impl SinkSet {
     }
 
     pub(super) fn sort_and_dedup(&mut self) {
-        self.set.sort_by(|left, right| {
-            (left.flow(), left.parameter_index(), left.path()).cmp(&(
-                right.flow(),
-                right.parameter_index(),
-                right.path(),
-            ))
-        });
+        self.set.sort();
     }
 }
 
