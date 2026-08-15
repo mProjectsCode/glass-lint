@@ -165,6 +165,15 @@ impl AnalysisReport {
         files: &[FileReport],
         diagnostics: &[Diagnostic],
     ) -> FinalizedReportAggregate {
+        Self::aggregate_and_evidence(files, diagnostics).0
+    }
+
+    /// Compute the summary aggregate and the evidence metrics that the
+    /// serialized operation counts own, in a single scan.
+    pub(crate) fn aggregate_and_evidence(
+        files: &[FileReport],
+        diagnostics: &[Diagnostic],
+    ) -> (FinalizedReportAggregate, usize, usize) {
         FinalizedReportAggregate::from_parts(files, diagnostics)
     }
 }
@@ -183,59 +192,51 @@ pub struct AnalysisReportSummary {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FinalizedReportAggregate {
     summary: AnalysisReportSummary,
-    evidence_steps: usize,
-    rendered_traces: usize,
 }
 
 impl FinalizedReportAggregate {
-    fn from_parts(files: &[FileReport], diagnostics: &[Diagnostic]) -> Self {
-        let mut aggregate = Self {
-            summary: AnalysisReportSummary {
-                files: files.len(),
-                ..AnalysisReportSummary::default()
-            },
-            ..Self::default()
+    /// Compute the report summary and the evidence metrics in one scan. The
+    /// evidence metrics are recorded into the serialized operation counts
+    /// rather than retained in the aggregate.
+    fn from_parts(files: &[FileReport], diagnostics: &[Diagnostic]) -> (Self, usize, usize) {
+        let mut summary = AnalysisReportSummary {
+            files: files.len(),
+            ..AnalysisReportSummary::default()
         };
+        let mut evidence_steps = 0usize;
+        let mut rendered_traces = 0usize;
 
         for file in files {
-            aggregate.summary.findings += file.findings().len();
-            aggregate.summary.parse_diagnostics += file
+            summary.findings += file.findings().len();
+            summary.parse_diagnostics += file
                 .diagnostics()
                 .iter()
                 .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
                 .count();
-            aggregate.summary.file_diagnostics += file
+            summary.file_diagnostics += file
                 .diagnostics()
                 .iter()
                 .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
                 .count();
             for finding in file.findings() {
-                aggregate.evidence_steps += finding
+                evidence_steps += finding
                     .evidence()
                     .traces()
                     .iter()
                     .map(|trace| trace.steps().len())
                     .sum::<usize>();
-                aggregate.rendered_traces += finding.evidence().traces().len();
+                rendered_traces += finding.evidence().traces().len();
             }
         }
-        aggregate.summary.report_diagnostics = diagnostics
+        summary.report_diagnostics = diagnostics
             .iter()
             .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
             .count();
-        aggregate
+        (Self { summary }, evidence_steps, rendered_traces)
     }
 
     pub(crate) const fn summary(self) -> AnalysisReportSummary {
         self.summary
-    }
-
-    pub(crate) const fn evidence_steps(self) -> usize {
-        self.evidence_steps
-    }
-
-    pub(crate) const fn rendered_traces(self) -> usize {
-        self.rendered_traces
     }
 }
 

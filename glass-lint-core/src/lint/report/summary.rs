@@ -13,10 +13,11 @@ pub(super) fn assemble_project_report(
     outcome: &ProjectionOutcome,
 ) -> AnalysisReport {
     diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
-    let aggregate = AnalysisReport::aggregate(&files, &diagnostics);
+    let (aggregate, evidence_steps, rendered_traces) =
+        AnalysisReport::aggregate_and_evidence(&files, &diagnostics);
 
     let mut operations = project.operation_counts();
-    operations.record_evidence(aggregate.evidence_steps());
+    operations.record_evidence(evidence_steps);
     let metrics = outcome.metrics();
     operations.record_effect_projections(metrics.effect_projections());
     operations.record_path_metrics(ReportPathMetrics {
@@ -25,7 +26,7 @@ pub(super) fn assemble_project_report(
         trace_heads: metrics.trace_heads(),
         coalescing_comparisons: metrics.coalescing_comparisons(),
         fixed_point_iterations: metrics.fixed_point_iterations(),
-        rendered_traces: aggregate.rendered_traces(),
+        rendered_traces,
     });
 
     AnalysisReport::new_with_aggregate(

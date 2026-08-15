@@ -926,7 +926,7 @@ deterministic findings.
 - `project::types::report::analysis_report` — Defines complete analysis reports and summaries.
 - `project::types::report::analysis_report::AnalysisReport` — Represents the complete deterministic lint report.
 - `project::types::report::analysis_report::AnalysisReportSummary` — Summarizes report findings and completion.
-- `project::types::report::analysis_report::FinalizedReportAggregate` — Stores finalized report summary and trace metrics.
+- `project::types::report::analysis_report::FinalizedReportAggregate` — Stores the finalized report summary.
 - `project::types::report::analysis_report::ReportCompletion` — Classifies whether analysis completed fully.
 - `project::types::report::code` — Defines stable diagnostic codes and kinds.
 - `project::types::report::code::DiagnosticCode` — Stores a stable diagnostic code.

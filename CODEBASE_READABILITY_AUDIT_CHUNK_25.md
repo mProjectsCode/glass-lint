@@ -29,7 +29,7 @@ canonical diagnostic orderings depending on construction path, a flag-routed
 
 ### report/analysis_report.rs — report aggregation and summaries
 
-#### [ ] READ-001 — Trace metrics are stored twice in `AnalysisReport`
+#### [x] READ-001 — Trace metrics are stored twice in `AnalysisReport`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -56,7 +56,7 @@ serialized `evidence` and `rendered_traces` fields in `AnalysisOperationCounts`
 unchanged (stable schema), keep `summary()` an O(1) accessor, and keep
 `max_live_alternatives` merge semantics (max, not sum) untouched.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `evidence_steps`/`rendered_traces` from `FinalizedReportAggregate`; `from_parts` now returns them alongside the summary from one scan via `AnalysisReport::aggregate_and_evidence`, and `assemble_project_report` records them once into `AnalysisOperationCounts` (the serialized owner).
 
 #### [ ] READ-002 — Two canonical diagnostic orderings, one per construction path
 
