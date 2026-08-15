@@ -103,7 +103,7 @@ the body are not misdetected as default parameters.
 
 ### [environment]
 
-#### [ ] READ-001 — `Environment::is_promoted_global_member` duplicates `is_global_member` with a misleading name
+#### [x] READ-001 — `Environment::is_promoted_global_member` duplicates `is_global_member` with a misleading name
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -127,7 +127,7 @@ Guardrail: `global_object_name_paths_match` (lines 320-350) must keep its
 current alias/promoted-member behavior; the existing environment tests
 (`environment/tests.rs:83-136`) cover both paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `is_promoted_global_member` and the private `is_global_object`; `is_promoted_global_member_path` now calls the public `is_global_member`, which already returns `false` for unconfigured objects.
 
 #### [ ] READ-008 — `add_globals` and `add_global_object_with_members` repeat the same validate-and-collect sequence
 

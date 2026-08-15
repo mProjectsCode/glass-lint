@@ -294,10 +294,6 @@ impl Environment {
         }
     }
 
-    pub(crate) fn is_promoted_global_member(&self, object: &str, member: &str) -> bool {
-        self.is_global_object(object) && self.is_global_member(object, member)
-    }
-
     /// Whether two configured complete global-object bindings represent the
     /// same promoted realm identity. Restricted foreign-realm objects remain
     /// distinct even when their names are similar.
@@ -366,11 +362,7 @@ impl Environment {
         let Some(member) = names.resolve(*member) else {
             return false;
         };
-        self.is_promoted_global_member(root, member)
-    }
-
-    fn is_global_object(&self, name: &str) -> bool {
-        self.inner().global_objects.contains_key(name)
+        self.is_global_member(root, member)
     }
 
     /// Hash a deterministic byte representation for cache fingerprinting
