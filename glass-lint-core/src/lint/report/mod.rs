@@ -200,17 +200,17 @@ impl ProjectReportAssembler {
             .project
             .classify_with_evidence_limit(catalog.compiled(), enabled, evidence_limit)
         {
-            Ok(result) => result,
+            Ok((classifications, projection_outcome, trace_arena)) => {
+                (classifications, projection_outcome, Some(trace_arena))
+            }
             Err(error) => {
                 self.session.record_rule_selection_failure(error);
-                (
-                    BTreeMap::new(),
-                    ProjectionOutcome::default(),
-                    TraceArena::new(0),
-                )
+                (BTreeMap::new(), ProjectionOutcome::default(), None)
             }
         };
-        self.session.set_trace_arena(trace_arena);
+        if let Some(trace_arena) = trace_arena {
+            self.session.set_trace_arena(trace_arena);
+        }
         self.session
             .record_projection_status(&self.project, &projection_outcome);
         let matching = matching_start.elapsed();

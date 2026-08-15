@@ -184,7 +184,7 @@ point.
 
 ### [analysis/trace]
 
-#### [ ] READ-006 — `TraceArena::new(0)` used as a magic "traces disabled" sentinel
+#### [x] READ-006 — `TraceArena::new(0)` used as a magic "traces disabled" sentinel
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -208,7 +208,7 @@ path instead of constructing a zero-limit arena, and keep
 missing arena, so report output and operation counts are unchanged; do not
 change the positive-limit contract of `TraceArena`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `match_project` no longer constructs a zero-limit arena on rule-selection failure. The success branch wraps the arena in `Some` and the failure branch yields `None`; `set_trace_arena` is called only when an arena exists, so "no traces" is expressed by the session's own `Option<TraceArena>` rather than a sentinel. `reconstruct_trace`/`trace_node_count` return values are unchanged for the missing-arena case.
 
 #### [ ] READ-007 — Trace arena API-shape nits: redundant constructor argument and a coordination free function
 
