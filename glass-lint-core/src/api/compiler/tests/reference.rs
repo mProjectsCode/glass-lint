@@ -4,7 +4,6 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         normalize::normalize_query_decl,
         normalized::NormalizedQuery,
@@ -16,7 +15,7 @@ use crate::api::{
         },
     },
     rule::{
-        ArgumentIndex, ValueMatcher,
+        ArgumentIndex, MatchKind, ValueMatcher,
         query::{
             EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
             QueryExpr,

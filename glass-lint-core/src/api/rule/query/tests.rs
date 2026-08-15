@@ -2,7 +2,7 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use super::*;
-use crate::api::{classification::MatchKind, rule::ValueMatcher};
+use crate::api::rule::ValueMatcher;
 
 // ── VarId tests ────────────────────────────────────────────────
 

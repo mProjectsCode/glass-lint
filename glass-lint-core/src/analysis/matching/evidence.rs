@@ -8,7 +8,10 @@ use glass_lint_datastructures::ByteRange;
 use crate::api::rule::Rule;
 use crate::{
     analysis::matching::occurrence::Occurrence,
-    api::classification::{ClassificationEvidence, ClassificationEvidenceOccurrence, MatchKind},
+    api::{
+        classification::{ClassificationEvidence, ClassificationEvidenceOccurrence},
+        rule::MatchKind,
+    },
     diagnostic::SourceLineIndex,
     project::MatchCertainty,
 };

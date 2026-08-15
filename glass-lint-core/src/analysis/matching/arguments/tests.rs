@@ -12,12 +12,11 @@ use crate::{
         syntax::SymbolCallProvenance,
     },
     api::{
-        classification::MatchKind,
         compiler::{
             physical::{PhysicalRoot, compile_argument_constraints},
             rule::{CompiledMatcherPlan, EventSpec, EvidenceDescriptor, IdentityConstraint},
         },
-        rule::{ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher},
+        rule::{ArgumentConstraint, ArgumentMatcher, EventQuery, MatchKind, ValueMatcher},
     },
     project::SourceText,
 };

@@ -51,14 +51,14 @@ pub(crate) use rule::{CompiledRuleRecord, CompiledRuleSelection};
 use smol_str::SmolStr;
 
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         normalized::{NormalizedEmission, NormalizedQuery},
         physical::PhysicalPlan,
         validate::validate_query_decl,
     },
     rule::{
-        CompilerInvariantDiagnostic, MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
+        CompilerInvariantDiagnostic, MatchKind, MatcherBuildError, ModuleSpecifierPattern,
+        QueryDiagnostic,
         query::{IdentitySpec, QueryDecl},
     },
 };

@@ -1,12 +1,11 @@
 use glass_lint_datastructures::SymbolPath;
 
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         physical,
         rule::{CompiledMatcherPlan, EventSpec, IdentityConstraint},
     },
-    rule::{EventQuery, QueryDecl, ValueMatcher},
+    rule::{EventQuery, MatchKind, QueryDecl, ValueMatcher},
 };
 
 #[test]

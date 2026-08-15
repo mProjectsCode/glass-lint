@@ -5,7 +5,6 @@ use smol_str::SmolStr;
 
 #[allow(unused_imports)]
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         normalize::{self},
         normalized::{NormalizedQuery, NormalizedRoot},
@@ -13,7 +12,7 @@ use crate::api::{
         requirements::{PlanRequirements, ProjectRequirement, ValueResolutionRequirement},
     },
     rule::{
-        ValueMatcher,
+        MatchKind, ValueMatcher,
         query::{
             AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
             LifecycleQuery, QueryDecl, QueryExpr, VarId,

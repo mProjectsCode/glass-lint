@@ -13,12 +13,13 @@ use crate::{
         project::model::ExportResolution,
     },
     api::{
-        classification::{MatchKind, RuleEvidenceError, RuleEvidenceTable, RuleIndex},
+        classification::{RuleEvidenceError, RuleEvidenceTable, RuleIndex},
         compiler::{
             normalized::CanonicalArgumentConstraints,
             physical::PhysicalRoot,
             rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
         },
+        rule::MatchKind,
     },
 };
 

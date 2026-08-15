@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 
 use crate::{
     analysis::{DerivedPhaseAvailability, project::model::ExportResolution},
-    api::classification::{ClassificationEvidence, MatchKind},
+    api::{classification::ClassificationEvidence, rule::MatchKind},
 };
 
 pub(super) mod evidence;

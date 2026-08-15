@@ -19,23 +19,6 @@ impl ClassificationResult {
     }
 }
 
-impl MatchKind {
-    /// Return the stable serialized spelling of this occurrence kind.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Call => "call",
-            Self::MemberCall => "member_call",
-            Self::MemberRead => "member_read",
-            Self::PropertyWrite => "property_write",
-            Self::Import => "import",
-            Self::StringContains => "string_contains",
-            Self::Class => "class",
-            Self::Constructor => "constructor",
-            Self::CallArgument => "call_argument",
-        }
-    }
-}
-
 impl MatchedCapability {
     /// Borrow the capability label.
     pub fn label(&self) -> &str {

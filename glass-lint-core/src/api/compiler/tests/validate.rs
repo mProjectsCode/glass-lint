@@ -5,13 +5,12 @@ use smol_str::SmolStr;
 
 #[allow(unused_imports)]
 use crate::api::{
-    classification::MatchKind,
     compiler::validate::{
         QueryCompileError, pass_correlation_evidence, pass_scope_types, pass_structure,
         validate_query_decl,
     },
     rule::{
-        ArgumentConstraint, QueryDecl, ValueMatcher,
+        ArgumentConstraint, MatchKind, QueryDecl, ValueMatcher,
         query::{
             AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery,
             QueryExpr, QueryPredicate, VarId,

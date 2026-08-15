@@ -56,7 +56,7 @@ fn empty_loop_operations_report_missing_frames() {
 
 fn test_evidence() -> ClassificationEvidence {
     ClassificationEvidence::from_occurrences(
-        crate::api::classification::MatchKind::CallArgument,
+        crate::api::rule::MatchKind::CallArgument,
         "test".to_owned(),
         vec![
             crate::api::classification::ClassificationEvidenceOccurrence::new(

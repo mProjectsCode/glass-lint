@@ -46,8 +46,8 @@ pub use error::{
 pub use module::ModuleSpecifierPattern;
 pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
 pub use query::{
-    EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl,
-    QueryDiagnostic,
+    EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, MatchKind, QueryBuildError,
+    QueryDecl, QueryDiagnostic,
     lifecycle::{
         IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleQuery,
         IntoLifecycleSink, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,

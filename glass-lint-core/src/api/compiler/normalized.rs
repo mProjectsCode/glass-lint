@@ -2,12 +2,9 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::api::{
-    classification::MatchKind,
-    rule::{
-        ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
-        query::{EventSpec, IdentitySpec, VarId},
-    },
+use crate::api::rule::{
+    ArgumentConstraint, ArgumentIndex, ArgumentMatcher, MatchKind,
+    query::{EventSpec, IdentitySpec, VarId},
 };
 
 // ── Normalized IR ──────────────────────────────────────────────────────────

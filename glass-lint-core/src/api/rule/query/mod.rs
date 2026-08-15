@@ -17,16 +17,12 @@
 //! the former [`QueryDecl`] builder.
 use std::fmt;
 
-use crate::api::{
-    classification::MatchKind,
-    rule::{
-        ModuleSpecifierPattern,
-        query::{
-            lifecycle::{LifecycleCompletion, LifecycleCondition},
-            value::{
-                ArgumentConstraint, ArgumentConstraints, ArgumentIndex, ArgumentMatcher,
-                ValueMatcher,
-            },
+use crate::api::rule::{
+    ModuleSpecifierPattern,
+    query::{
+        lifecycle::{LifecycleCompletion, LifecycleCondition},
+        value::{
+            ArgumentConstraint, ArgumentConstraints, ArgumentIndex, ArgumentMatcher, ValueMatcher,
         },
     },
 };
@@ -52,6 +48,50 @@ pub(crate) mod event;
 pub(crate) use event::{EventSpec, IdentitySpec};
 pub(crate) mod error;
 pub use error::{QueryBuildError, QueryDiagnostic};
+
+/// Semantic kind of API occurrence represented in a report.
+///
+/// This is the shared occurrence-kind vocabulary for rule declarations,
+/// compiler IR, and reports; `api::classification` re-exports it for
+/// serialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum MatchKind {
+    /// A callable symbol invocation.
+    Call,
+    /// Invocation of a member chain.
+    MemberCall,
+    /// Non-call member access.
+    MemberRead,
+    /// Assignment to a member property.
+    PropertyWrite,
+    /// A module import occurrence.
+    Import,
+    /// A matched static string occurrence.
+    StringContains,
+    /// A matched class declaration/use.
+    Class,
+    /// A constructor invocation/use.
+    Constructor,
+    /// Evidence attached to a call argument.
+    CallArgument,
+}
+
+impl MatchKind {
+    /// Return the stable serialized spelling of this occurrence kind.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Call => "call",
+            Self::MemberCall => "member_call",
+            Self::MemberRead => "member_read",
+            Self::PropertyWrite => "property_write",
+            Self::Import => "import",
+            Self::StringContains => "string_contains",
+            Self::Class => "class",
+            Self::Constructor => "constructor",
+            Self::CallArgument => "call_argument",
+        }
+    }
+}
 
 // ── Typed logical query algebra ───────────────────────────────────────
 

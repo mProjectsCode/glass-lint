@@ -201,7 +201,7 @@ roots.
 
 ### [Compiler: vocabulary ownership]
 
-#### [ ] READ-006 — `api::rule` declarations and the compiler IR reach into `api::classification` for the `MatchKind` occurrence vocabulary
+#### [x] READ-006 — `api::rule` declarations and the compiler IR reach into `api::classification` for the `MatchKind` occurrence vocabulary
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -226,6 +226,8 @@ update its module doc to state that it is the shared occurrence-kind vocabulary 
 rule declarations, compiler IR, and reports. Guardrail: the `as_str()` spellings
 (`call`, `member_call`, ...) are a stable serialized contract — preserve exact
 strings; do not split the vocabulary into two enums.
+
+**Fix Applied:** Relocated `MatchKind` (definition and `as_str` contract) to `api/rule/query` as the shared occurrence-kind vocabulary, re-exported it from `api::rule`, and made `api::classification` re-export it for serialization (module doc updated accordingly). The public `rules::MatchKind` re-export now points at `api::rule::MatchKind`. Migrated the compiler IR, matching, and flow consumers plus all test imports to the canonical `crate::api::rule::MatchKind` path. Exact `as_str()` spellings preserved; no vocabulary split.
 
 **Fix Applied:** None so far.
 

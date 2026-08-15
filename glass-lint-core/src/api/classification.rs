@@ -2,12 +2,15 @@
 //!
 //! Evidence keeps canonical fact spans and related cross-module events
 //! separate. `rule_index` and event IDs are internal correlation keys and are
-//! intentionally omitted from serialized reports.
+//! intentionally omitted from serialized reports. The occurrence-kind
+//! vocabulary ([`MatchKind`]) lives with the rule declarations and is
+//! re-exported here for serialization.
 
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::ByteRange;
 
+pub use crate::api::rule::MatchKind;
 use crate::{analysis::trace::TraceNodeId, api::rule::Severity, project::MatchCertainty};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -309,26 +312,3 @@ mod tests;
 
 mod result;
 pub use result::ClassificationResult;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-/// Semantic kind of API occurrence represented in a report.
-pub enum MatchKind {
-    /// A callable symbol invocation.
-    Call,
-    /// Invocation of a member chain.
-    MemberCall,
-    /// Non-call member access.
-    MemberRead,
-    /// Assignment to a member property.
-    PropertyWrite,
-    /// A module import occurrence.
-    Import,
-    /// A matched static string occurrence.
-    StringContains,
-    /// A matched class declaration/use.
-    Class,
-    /// A constructor invocation/use.
-    Constructor,
-    /// Evidence attached to a call argument.
-    CallArgument,
-}

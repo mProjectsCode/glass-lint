@@ -44,7 +44,10 @@ use crate::{
         },
         trace::TraceArena,
     },
-    api::classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable},
+    api::{
+        classification::{ClassificationEvidence, RuleEvidenceTable},
+        rule::MatchKind,
+    },
     project::{MatchCertainty, ModuleId},
 };
 

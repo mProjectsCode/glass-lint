@@ -13,8 +13,9 @@ use crate::{
         trace::{QualifiedEvent, TraceArena, TraceNodeId},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
+        classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
+        rule::MatchKind,
     },
     project::{EvidenceRole, ModuleId},
 };

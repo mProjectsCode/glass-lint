@@ -1,7 +1,6 @@
 use glass_lint_datastructures::SymbolPath;
 
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
@@ -19,7 +18,7 @@ use crate::api::{
         rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
     },
     rule::{
-        ArgumentIndex, ArgumentMatcher, EventQuery, QueryDecl, ValueMatcher,
+        ArgumentIndex, ArgumentMatcher, EventQuery, MatchKind, QueryDecl, ValueMatcher,
         query::{QueryBuildError, VarId, limits},
     },
 };
