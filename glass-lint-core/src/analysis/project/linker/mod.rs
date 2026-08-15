@@ -20,7 +20,7 @@ use crate::{
         project::state::{ExportLookupCache, ExportTable, NormalizedModuleGraph, SccPartition},
         semantic::status::AnalysisStatus,
     },
-    project::AnalysisDiagnostic,
+    project::{AnalysisDiagnostic, SourceLocation},
 };
 
 // ---------------------------------------------------------------------------
@@ -123,8 +123,18 @@ impl ProjectLinker {
             self.resolve_export_table();
             self.validate_imported_exports();
         }
-        self.diagnostics
-            .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
+        self.diagnostics.sort_by(|left, right| {
+            (
+                left.location().map(SourceLocation::path),
+                left.code().as_str(),
+                left.message(),
+            )
+                .cmp(&(
+                    right.location().map(SourceLocation::path),
+                    right.code().as_str(),
+                    right.message(),
+                ))
+        });
         self.diagnostics.dedup();
     }
 

@@ -34,16 +34,6 @@ impl AnalysisDiagnostic {
     pub(crate) fn set_location(&mut self, location: Option<SourceLocation>) {
         self.location = location;
     }
-
-    pub(crate) fn ordering_key(
-        &self,
-    ) -> (&str, Option<&ProjectRelativePath>, Option<&SourceRange>) {
-        (
-            self.code.as_str(),
-            self.location.as_ref().map(SourceLocation::path),
-            self.location.as_ref().map(SourceLocation::range),
-        )
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
