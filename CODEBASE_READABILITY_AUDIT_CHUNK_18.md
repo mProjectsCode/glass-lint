@@ -147,7 +147,7 @@ reclassified.
 
 ### [api/rule/query/value.rs, lifecycle/types.rs]
 
-#### [ ] READ-005 — Duplicated bounded canonical-collection helpers, with the sink pre-bound keyed to the events limit
+#### [x] READ-005 — Duplicated bounded canonical-collection helpers, with the sink pre-bound keyed to the events limit
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -177,7 +177,7 @@ distinct error variants (`EmptyLifecycleCondition` vs `EmptyLifecycleSinks`,
 sort determinism, and the separate `MAX_LIFECYCLE_EVENTS` / `MAX_LIFECYCLE_SINKS`
 bounds.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one shared `api::rule::query::canonical::CanonicalCollection<T>` that bounds, sorts, dedups, and rejects empty input with caller-supplied limit/empty-error/label. `value.rs` static-alternative helpers and `lifecycle/types.rs` event/sink collections now build on it; `bounded_lifecycle_items` was deleted and sinks pre-bound with `MAX_LIFECYCLE_SINKS` instead of the hardcoded events limit.
 
 ### [api/rule/query/composition.rs; api/rule/query/mod.rs]
 

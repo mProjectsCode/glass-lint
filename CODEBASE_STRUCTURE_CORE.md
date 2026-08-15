@@ -665,8 +665,8 @@ deterministic findings.
 - `api::rule::query::lifecycle::endpoint` — Binds a lifecycle call endpoint to its validated member chain and parsed identity target.
 - `api::rule::query::lifecycle::endpoint::LifecycleCallEndpoint` — Stores a typed lifecycle call endpoint.
 - `api::rule::query::lifecycle::endpoint::LifecycleCallTarget` — Identifies a lifecycle call target.
+- `api::rule::query::canonical::CanonicalCollection` — Non-empty, bounded, sorted, and deduplicated collection shared by static-value and lifecycle construction.
 - `api::rule::query::lifecycle::types` — Defines lifecycle event, condition, completion, and sink types over canonical bounded collections.
-- `api::rule::query::lifecycle::types::CanonicalLifecycleItems` — Holds a non-empty, sorted, deduplicated, and bounded boxed slice of lifecycle items.
 - `api::rule::query::lifecycle::types::LifecycleCompletion` — Declares lifecycle completion behavior.
 - `api::rule::query::lifecycle::types::LifecycleCompletionKind` — Classifies lifecycle completion.
 - `api::rule::query::lifecycle::types::LifecycleCondition` — Declares one lifecycle condition.

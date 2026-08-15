@@ -28,6 +28,7 @@ use crate::api::{
     },
 };
 
+mod canonical;
 mod composition;
 mod constructors;
 mod declarations;

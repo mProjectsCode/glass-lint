@@ -4,7 +4,9 @@ use smol_str::SmolStr;
 
 use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 use crate::api::rule::query::{
-    EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
+    EventQuery, MemberChain, QueryBuildError,
+    canonical::CanonicalCollection,
+    checked_chain, limits,
     value::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
 };
 
@@ -138,48 +140,21 @@ pub struct LifecycleCondition {
     kind: LifecycleConditionKind,
 }
 
-/// Non-empty, bounded, deterministic lifecycle event collections.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct CanonicalLifecycleItems<T>(Box<[T]>);
-
-impl<T: Ord> CanonicalLifecycleItems<T> {
-    fn new(
-        mut items: Vec<T>,
-        empty: QueryBuildError,
-        label: &'static str,
-        limit: usize,
-    ) -> Result<Self, QueryBuildError> {
-        if items.is_empty() {
-            return Err(empty);
-        }
-        items.sort();
-        items.dedup();
-        if items.len() > limit {
-            return Err(QueryBuildError::CollectionTooLarge(label, items.len()));
-        }
-        Ok(Self(items.into_boxed_slice()))
-    }
-
-    fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.0.iter()
-    }
-
-    #[cfg(test)]
-    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
-        self.0.len()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct LifecycleEvents(CanonicalLifecycleItems<LifecycleEvent>);
+pub(crate) struct LifecycleEvents(CanonicalCollection<LifecycleEvent>);
 
 impl LifecycleEvents {
-    fn new(events: Vec<LifecycleEvent>) -> Result<Self, QueryBuildError> {
-        Ok(Self(CanonicalLifecycleItems::new(
+    fn new<I>(events: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator,
+        I::Item: IntoLifecycleEvent,
+    {
+        Ok(Self(CanonicalCollection::collect(
             events,
+            limits::MAX_LIFECYCLE_EVENTS,
             QueryBuildError::EmptyLifecycleCondition,
             "lifecycle condition events",
-            limits::MAX_LIFECYCLE_EVENTS,
+            IntoLifecycleEvent::into_lifecycle_event,
         )?))
     }
 
@@ -193,28 +168,6 @@ impl LifecycleEvents {
     }
 }
 
-fn bounded_lifecycle_items<I, T, F>(
-    items: I,
-    label: &'static str,
-    mut convert: F,
-) -> Result<Vec<T>, QueryBuildError>
-where
-    I: IntoIterator,
-    F: FnMut(I::Item) -> Result<T, QueryBuildError>,
-{
-    let mut converted = Vec::new();
-    for item in items {
-        if converted.len() >= limits::MAX_LIFECYCLE_EVENTS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                label,
-                converted.len() + 1,
-            ));
-        }
-        converted.push(convert(item)?);
-    }
-    Ok(converted)
-}
-
 impl LifecycleCondition {
     pub(crate) fn kind(&self) -> &LifecycleConditionKind {
         &self.kind
@@ -225,11 +178,6 @@ impl LifecycleCondition {
         I: IntoIterator,
         I::Item: IntoLifecycleEvent,
     {
-        let events = bounded_lifecycle_items(
-            events,
-            "lifecycle condition events",
-            IntoLifecycleEvent::into_lifecycle_event,
-        )?;
         Ok(Self {
             kind: LifecycleConditionKind::AnyOf(LifecycleEvents::new(events)?),
         })
@@ -246,11 +194,6 @@ impl LifecycleCondition {
         I: IntoIterator,
         I::Item: IntoLifecycleEvent,
     {
-        let events = bounded_lifecycle_items(
-            events,
-            "lifecycle condition events",
-            IntoLifecycleEvent::into_lifecycle_event,
-        )?;
         Ok(Self {
             kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(events)?),
         })
@@ -258,9 +201,7 @@ impl LifecycleCondition {
 
     pub fn event(event: impl IntoLifecycleEvent) -> Result<Self, QueryBuildError> {
         Ok(Self {
-            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(vec![
-                event.into_lifecycle_event()?,
-            ])?),
+            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new([event])?),
         })
     }
 }
@@ -281,15 +222,20 @@ pub struct LifecycleCompletion {
 
 /// Non-empty, bounded, deterministic lifecycle sink collections.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct LifecycleSinks(CanonicalLifecycleItems<LifecycleSink>);
+pub(crate) struct LifecycleSinks(CanonicalCollection<LifecycleSink>);
 
 impl LifecycleSinks {
-    fn new(sinks: Vec<LifecycleSink>) -> Result<Self, QueryBuildError> {
-        Ok(Self(CanonicalLifecycleItems::new(
+    fn new<I>(sinks: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator,
+        I::Item: IntoLifecycleSink,
+    {
+        Ok(Self(CanonicalCollection::collect(
             sinks,
+            limits::MAX_LIFECYCLE_SINKS,
             QueryBuildError::EmptyLifecycleSinks,
             "lifecycle completion sinks",
-            limits::MAX_LIFECYCLE_SINKS,
+            IntoLifecycleSink::into_lifecycle_sink,
         )?))
     }
 
@@ -319,11 +265,6 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let sinks = bounded_lifecycle_items(
-            sinks,
-            "lifecycle completion sinks",
-            IntoLifecycleSink::into_lifecycle_sink,
-        )?;
         Ok(Self {
             kind: LifecycleCompletionKind::AnySink(LifecycleSinks::new(sinks)?),
         })
@@ -340,11 +281,6 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let sinks = bounded_lifecycle_items(
-            sinks,
-            "lifecycle completion sinks",
-            IntoLifecycleSink::into_lifecycle_sink,
-        )?;
         Ok(Self {
             kind: LifecycleCompletionKind::AllSinks(LifecycleSinks::new(sinks)?),
         })

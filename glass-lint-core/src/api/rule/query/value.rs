@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{QueryBuildError, checked_chain, limits};
+use super::{QueryBuildError, canonical::CanonicalCollection, checked_chain, limits};
 
 /// A validated authored argument position in a call query.
 ///
@@ -70,59 +70,26 @@ impl StaticStringPredicate {
     }
 }
 
-fn canonicalize_strings(values: &mut Vec<String>) {
-    for value in values.iter_mut() {
-        *value = value.trim().to_owned();
-    }
-    values.sort();
-    values.dedup();
-}
-
-fn bounded_canonical_values<I, S, F>(
-    values: I,
-    empty_label: &'static str,
-    mut parse: F,
-) -> Result<Vec<String>, QueryBuildError>
-where
-    I: IntoIterator<Item = S>,
-    F: FnMut(S) -> Result<String, QueryBuildError>,
-{
-    let mut parsed: Vec<String> = Vec::new();
-    for value in values {
-        if parsed.len() >= limits::MAX_STATIC_ALTERNATIVES {
-            return Err(QueryBuildError::CollectionTooLarge(
-                empty_label,
-                parsed.len() + 1,
-            ));
-        }
-        parsed.push(parse(value)?);
-    }
-    canonicalize_strings(&mut parsed);
-    if parsed.is_empty() {
-        return Err(QueryBuildError::EmptyCollection(empty_label));
-    }
-    if parsed.len() > limits::MAX_STATIC_ALTERNATIVES {
-        return Err(QueryBuildError::CollectionTooLarge(
-            empty_label,
-            parsed.len(),
-        ));
-    }
-    Ok(parsed)
-}
-
 fn bounded_strings<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    bounded_canonical_values(values, "static alternatives", |value| {
-        let value = value.into();
-        if value.trim().is_empty() {
-            Err(QueryBuildError::EmptyStaticValue)
-        } else {
-            Ok(value)
-        }
-    })
+    Ok(CanonicalCollection::collect(
+        values,
+        limits::MAX_STATIC_ALTERNATIVES,
+        QueryBuildError::EmptyCollection("static alternatives"),
+        "static alternatives",
+        |value| {
+            let value = value.into();
+            if value.trim().is_empty() {
+                Err(QueryBuildError::EmptyStaticValue)
+            } else {
+                Ok(value.trim().to_owned())
+            }
+        },
+    )?
+    .into_vec())
 }
 
 fn canonical_exact(value: impl Into<String>) -> Result<Vec<String>, QueryBuildError> {
@@ -134,9 +101,14 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    bounded_canonical_values(values, "rooted expression paths", |value| {
-        checked_chain(value).map(|chain| chain.as_str().to_owned())
-    })
+    Ok(CanonicalCollection::collect(
+        values,
+        limits::MAX_STATIC_ALTERNATIVES,
+        QueryBuildError::EmptyCollection("rooted expression paths"),
+        "rooted expression paths",
+        |value| checked_chain(value).map(|chain| chain.as_str().to_owned()),
+    )?
+    .into_vec())
 }
 
 impl ValueMatcher {
