@@ -118,19 +118,16 @@ impl LocalAnalysisStatus {
         self.0.record(StatusScope::Local, reason);
     }
 
+    #[cfg(test)]
+    pub(in crate::analysis) fn is_complete(&self) -> bool {
+        self.0.is_complete()
+    }
+
     pub(in crate::analysis) fn materialize_file(
         &self,
         path: &ProjectRelativePath,
     ) -> AnalysisStatus {
-        self.0.materialize_local_file(path)
-    }
-}
-
-impl std::ops::Deref for LocalAnalysisStatus {
-    type Target = AnalysisStatus;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.materialize_file(path)
     }
 }
 
@@ -148,7 +145,7 @@ impl AnalysisStatus {
     }
 
     /// Attach local-artifact failures to the path that requested the artifact.
-    pub(in crate::analysis) fn materialize_local_file(&self, path: &ProjectRelativePath) -> Self {
+    pub(in crate::analysis) fn materialize_file(&self, path: &ProjectRelativePath) -> Self {
         Self {
             entries: self
                 .entries

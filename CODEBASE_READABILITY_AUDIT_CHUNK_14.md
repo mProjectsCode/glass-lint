@@ -72,7 +72,7 @@ fail-closed behavior — an exhausted budget must still yield an incomplete
 
 **Fix Applied:** Chunk 01 (commit 87f4d896) already deleted the dead `BudgetExhausted { Facts }` branch from `check_facts_budget` and removed the `Facts` arm from `AnalysisComponent::budget_diagnostic`, leaving `SemanticBudgetExhausted` as the sole local budget variant. This chunk finished option B's guardrail: removed the now-unproducible `DiagnosticKind::FactsBudgetExhausted` (`semantic_budget_exhausted`) from the report schema (`code.rs`) and updated its test assertions in `project/report/tests.rs`, `lint/report/files/tests.rs`, and `code/tests.rs` to use `FactCapacityExhausted` instead. Fail-closed behavior is preserved: `FactCapacityExhausted` still reports an incomplete status for an exhausted fact stream.
 
-#### [ ] READ-002 — `LocalAnalysisStatus` newtype leaks the general `AnalysisStatus` surface via `Deref`
+#### [x] READ-002 — `LocalAnalysisStatus` newtype leaks the general `AnalysisStatus` surface via `Deref`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -95,6 +95,8 @@ transition (`module.local().status().materialize_file(...)` at
 enforced only by reader discipline. The absence of `DerefMut` keeps mutation safe
 today, so this is an API-surface and naming problem rather than an active invariant
 violation.
+
+**Fix Applied:** Removed the `Deref` impl from `LocalAnalysisStatus` and added a narrow inherent `is_complete()` (delegating to `AnalysisStatus::is_complete`), keeping `record` and `materialize_file` as the only mutation/transition operations. Renamed `AnalysisStatus::materialize_local_file` to `materialize_file` so one canonical name exists per concept, and updated the three test callers (`status/tests.rs`, `analysis/semantic/tests.rs`) and the `LocalAnalysisStatus` delegation.
 
 **Recommendation:** Remove the `Deref` impl and give `LocalAnalysisStatus` narrow
 inherent methods for every genuinely needed query (at minimum `is_complete()`), while

@@ -43,7 +43,7 @@ fn name_exhaustion_invalidates_indexes_and_effects_with_an_accurate_status() {
     assert!(!artifact.effects().is_available());
     let (file_diagnostics, project_diagnostics) = artifact
         .status()
-        .materialize_local_file(&ProjectRelativePath::new("name-exhaustion.js").unwrap())
+        .materialize_file(&ProjectRelativePath::new("name-exhaustion.js").unwrap())
         .diagnostics();
     assert_eq!(project_diagnostics.len(), 0);
     assert_eq!(file_diagnostics.len(), 1);
@@ -154,7 +154,7 @@ fn invalid_parser_span_records_incomplete_without_fake_location() {
     assert!(artifact.facts().stream().facts().is_empty());
     let (files, project) = artifact
         .status()
-        .materialize_local_file(&ProjectRelativePath::new("main.js").unwrap())
+        .materialize_file(&ProjectRelativePath::new("main.js").unwrap())
         .diagnostics();
     assert_eq!(files.len(), 1);
     assert_eq!(project.len(), 0);

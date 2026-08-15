@@ -59,7 +59,7 @@ fn local_file_materialization_preserves_other_scopes() {
     status.record(StatusScope::Local, reason.clone());
     status.record(StatusScope::File(file()), reason);
 
-    let converted = status.materialize_local_file(&ProjectRelativePath::new("other.js").unwrap());
+    let converted = status.materialize_file(&ProjectRelativePath::new("other.js").unwrap());
     let (files, project) = converted.diagnostics();
 
     assert_eq!(project.len(), 0);
