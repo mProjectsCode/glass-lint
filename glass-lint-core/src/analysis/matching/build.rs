@@ -13,6 +13,7 @@ use crate::analysis::{
         OccurrenceIndexes,
         occurrence::{InstanceMemberKey, ModuleExportKey, Occurrence, ReturnedMemberKey},
     },
+    model::fact::ClassIdentity,
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 
@@ -25,7 +26,7 @@ struct CallProjection<'a> {
     rooted_chain: Option<&'a NamePath>,
     module_member: Option<&'a SymbolMemberProvenance>,
     returned_member: Option<&'a (NamePath, NamePath)>,
-    instance_class: Option<&'a (SmolStr, SmolStr)>,
+    instance_class: Option<&'a ClassIdentity>,
     unwrap: Option<&'a CallUnwrap>,
 }
 
@@ -136,10 +137,10 @@ impl OccurrenceIndexes {
                         .record_class(name.clone(), Occurrence::new(fact.id, fact.span));
                 }
                 if !matches!(role, ClassFactRole::Declaration)
-                    && let Some((module, export)) = provenance
+                    && let Some(identity) = provenance
                 {
                     self.constructions.record_module_class(
-                        ModuleExportKey::new(module.clone(), export.clone()),
+                        ModuleExportKey::new(identity.module().clone(), identity.export().clone()),
                         Occurrence::new(fact.id, fact.span),
                     );
                 }
@@ -204,7 +205,7 @@ impl OccurrenceIndexes {
                 call.occurrence(),
             );
         }
-        if let Some((module, export)) = call.instance_class
+        if let Some(identity) = call.instance_class
             && let Some(member_name) = call
                 .syntactic_path
                 .and_then(NamePath::last_segment)
@@ -212,7 +213,11 @@ impl OccurrenceIndexes {
                 .and_then(|id| names.resolve(id))
         {
             self.members.record_instance_call(
-                InstanceMemberKey::new(module.clone(), export.clone(), SmolStr::new(member_name)),
+                InstanceMemberKey::new(
+                    identity.module().clone(),
+                    identity.export().clone(),
+                    SmolStr::new(member_name),
+                ),
                 call.occurrence(),
             );
         }

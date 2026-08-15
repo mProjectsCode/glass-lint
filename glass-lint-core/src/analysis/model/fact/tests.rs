@@ -169,7 +169,7 @@ mod fact_payload_tests {
         let payload = FactPayload::Class {
             name: None,
             role: ClassFactRole::InstanceofOperand,
-            provenance: Some((SmolStr::new("React"), SmolStr::new("Component"))),
+            provenance: Some(ClassIdentity::new("React", "Component")),
         };
         let FactPayload::Class {
             role, provenance, ..
@@ -179,8 +179,12 @@ mod fact_payload_tests {
         };
         assert_eq!(*role, ClassFactRole::InstanceofOperand);
         assert_eq!(
-            provenance.as_ref().map(|(m, e)| (m.as_str(), e.as_str())),
-            Some(("React", "Component"))
+            provenance.as_ref().map(ClassIdentity::module),
+            Some(&SmolStr::new("React"))
+        );
+        assert_eq!(
+            provenance.as_ref().map(ClassIdentity::export),
+            Some(&SmolStr::new("Component"))
         );
     }
 }

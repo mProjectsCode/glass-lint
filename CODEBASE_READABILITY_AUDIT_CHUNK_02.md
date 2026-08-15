@@ -216,7 +216,7 @@ leaving the arg visitation (and thus evidence order) at each call site.
 
 ### Class provenance representation
 
-#### [ ] READ-006 — Class/instance provenance is a bare `(SmolStr, SmolStr)` tuple interpreted at every use site
+#### [x] READ-006 — Class/instance provenance is a bare `(SmolStr, SmolStr)` tuple interpreted at every use site
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -250,6 +250,15 @@ Guardrail: keep the instance-origin and class-origin channels
 (`provenance.rs:33-36`) as separate maps — the newtype must not collapse
 distinct provenance channels — and preserve the pair's current by-value
 `Clone` semantics (`SmolStr` is not `Copy`).
+**Fix Applied:** Added `ClassIdentity { module, export }` to `analysis/model`
+with private fields, `new`/`module`/`export` accessors, and a
+`From<(SmolStr, SmolStr)>` conversion. Replaced the raw tuple spellings in
+`provenance.rs` (superseding the `Origin` alias; instance and class channels
+stay separate `OriginMap`s), `state.rs`, `functions.rs`, `calls/callee.rs`,
+`construction.rs` (transitive), `instance.rs` (now stores a `ClassIdentity`),
+`model/fact.rs` (`CallEvent.instance_class` and `FactPayload::Class`
+`provenance`), and `matching/build.rs`. The instance-origin and class-origin
+maps remain distinct and `ClassIdentity` keeps by-value `Clone` semantics.
 
 ## Systemic Themes
 

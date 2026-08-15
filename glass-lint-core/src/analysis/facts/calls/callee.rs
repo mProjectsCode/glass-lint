@@ -7,7 +7,7 @@ use crate::analysis::{
         Callee, Expr, FactBuilder, InstanceCallable, MemberExpr, OptChainBase,
         SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
     },
-    model::scope::FunctionId,
+    model::{fact::ClassIdentity, scope::FunctionId},
     syntax::{effective_callee_expr, literal_member_property_name},
 };
 
@@ -24,7 +24,7 @@ pub(in crate::analysis::facts) struct ResolvedCallee {
     pub(in crate::analysis::facts) returned_member: Option<(SymbolPath, SymbolPath)>,
     pub(in crate::analysis::facts) bound_arguments:
         Option<Vec<Option<crate::analysis::scope::BoundArgument>>>,
-    pub(in crate::analysis::facts) instance_class: Option<(SmolStr, SmolStr)>,
+    pub(in crate::analysis::facts) instance_class: Option<ClassIdentity>,
     pub(in crate::analysis::facts) target_function: Option<FunctionId>,
 }
 
@@ -137,7 +137,7 @@ impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn instance_class_for_receiver(
         &mut self,
         receiver: &Expr,
-    ) -> Option<(SmolStr, SmolStr)> {
+    ) -> Option<ClassIdentity> {
         if self.traversal.in_static_method() {
             return None;
         }
@@ -164,7 +164,7 @@ impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn instance_origin_for_expr(
         &mut self,
         expr: &Expr,
-    ) -> Option<(SmolStr, SmolStr)> {
+    ) -> Option<ClassIdentity> {
         match expr {
             Expr::New(new_expr) => {
                 let value = self.resolver.resolve_expr_id(expr);
@@ -178,9 +178,11 @@ impl FactBuilder<'_, '_> {
             }
             Expr::Ident(ident) => {
                 let value = self.resolver.resolve_ident_id(ident);
-                self.provenance
-                    .instance_origin(value)
-                    .or_else(|| self.resolver.constructed_instance_provenance(ident))
+                self.provenance.instance_origin(value).or_else(|| {
+                    self.resolver
+                        .constructed_instance_provenance(ident)
+                        .map(ClassIdentity::from)
+                })
             }
             Expr::Paren(paren) => self.instance_origin_for_expr(&paren.expr),
             Expr::Seq(sequence) => sequence
@@ -198,29 +200,35 @@ impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn constructor_origin_for_expr(
         &mut self,
         constructor: &Expr,
-    ) -> Option<(SmolStr, SmolStr)> {
-        self.resolver.class_provenance(constructor).or_else(|| {
-            let value = self.resolver.resolve_expr_id(constructor);
-            self.provenance
-                .class_origin(value)
-                .or_else(|| match constructor {
-                    Expr::Class(class_expr) => class_expr
-                        .class
-                        .super_class
-                        .as_deref()
-                        .and_then(|expr| self.resolver.class_provenance(expr)),
-                    Expr::Paren(paren) => self.constructor_origin_for_expr(&paren.expr),
-                    Expr::Seq(sequence) => sequence
-                        .exprs
-                        .last()
-                        .and_then(|expr| self.constructor_origin_for_expr(expr)),
-                    Expr::TsAs(value) => self.constructor_origin_for_expr(&value.expr),
-                    Expr::TsNonNull(value) => self.constructor_origin_for_expr(&value.expr),
-                    Expr::TsSatisfies(value) => self.constructor_origin_for_expr(&value.expr),
-                    Expr::TsTypeAssertion(value) => self.constructor_origin_for_expr(&value.expr),
-                    _ => None,
-                })
-        })
+    ) -> Option<ClassIdentity> {
+        self.resolver
+            .class_provenance(constructor)
+            .map(ClassIdentity::from)
+            .or_else(|| {
+                let value = self.resolver.resolve_expr_id(constructor);
+                self.provenance
+                    .class_origin(value)
+                    .or_else(|| match constructor {
+                        Expr::Class(class_expr) => class_expr
+                            .class
+                            .super_class
+                            .as_deref()
+                            .and_then(|expr| self.resolver.class_provenance(expr))
+                            .map(ClassIdentity::from),
+                        Expr::Paren(paren) => self.constructor_origin_for_expr(&paren.expr),
+                        Expr::Seq(sequence) => sequence
+                            .exprs
+                            .last()
+                            .and_then(|expr| self.constructor_origin_for_expr(expr)),
+                        Expr::TsAs(value) => self.constructor_origin_for_expr(&value.expr),
+                        Expr::TsNonNull(value) => self.constructor_origin_for_expr(&value.expr),
+                        Expr::TsSatisfies(value) => self.constructor_origin_for_expr(&value.expr),
+                        Expr::TsTypeAssertion(value) => {
+                            self.constructor_origin_for_expr(&value.expr)
+                        }
+                        _ => None,
+                    })
+            })
     }
 
     pub(in crate::analysis::facts) fn instance_callable_for_expr(
@@ -236,9 +244,9 @@ impl FactBuilder<'_, '_> {
                 if !self.resolver.instance_member_available(member) {
                     return None;
                 }
-                let (module, export) = self.instance_class_for_receiver(&member.obj)?;
+                let identity = self.instance_class_for_receiver(&member.obj)?;
                 let member = literal_member_property_name(&member.prop)?;
-                Some(InstanceCallable::new(module, export, member.into()))
+                Some(InstanceCallable::new(identity, member.into()))
             }
             Expr::Call(call) => {
                 let Callee::Expr(callee) = &call.callee else {

@@ -210,6 +210,37 @@ pub(in crate::analysis) struct CallUnwrap {
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
 
+/// Shared module/export identity of a class, produced by the fact builder and
+/// consumed by matchers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(in crate::analysis) struct ClassIdentity {
+    module: SmolStr,
+    export: SmolStr,
+}
+
+impl ClassIdentity {
+    pub(in crate::analysis) fn new(module: impl Into<SmolStr>, export: impl Into<SmolStr>) -> Self {
+        Self {
+            module: module.into(),
+            export: export.into(),
+        }
+    }
+
+    pub(in crate::analysis) fn module(&self) -> &SmolStr {
+        &self.module
+    }
+
+    pub(in crate::analysis) fn export(&self) -> &SmolStr {
+        &self.export
+    }
+}
+
+impl From<(SmolStr, SmolStr)> for ClassIdentity {
+    fn from((module, export): (SmolStr, SmolStr)) -> Self {
+        Self::new(module, export)
+    }
+}
+
 /// Fact-model owner for the semantic call-event contract. Producers use the
 /// named constructors and consumers use semantic accessors instead of the
 /// storage shape.
@@ -225,7 +256,7 @@ pub(in crate::analysis) struct CallEvent {
     rooted_chain: Option<NamePath>,
     module_member: Option<SymbolMemberProvenance>,
     returned_member: Option<(NamePath, NamePath)>,
-    instance_class: Option<(SmolStr, SmolStr)>,
+    instance_class: Option<ClassIdentity>,
     target_function: Option<FunctionId>,
     args: Vec<CallArgInfo>,
     unwrap: Option<Box<CallUnwrap>>,
@@ -268,7 +299,7 @@ impl CallEvent {
         rooted_chain: Option<NamePath>,
         module_member: Option<SymbolMemberProvenance>,
         returned_member: Option<(NamePath, NamePath)>,
-        instance_class: Option<(SmolStr, SmolStr)>,
+        instance_class: Option<ClassIdentity>,
         target_function: Option<FunctionId>,
         args: Vec<CallArgInfo>,
         unwrap: Option<Box<CallUnwrap>>,
@@ -331,7 +362,7 @@ impl CallEvent {
         self.returned_member.as_ref()
     }
 
-    pub(in crate::analysis) fn instance_class(&self) -> Option<&(SmolStr, SmolStr)> {
+    pub(in crate::analysis) fn instance_class(&self) -> Option<&ClassIdentity> {
         self.instance_class.as_ref()
     }
 
@@ -420,7 +451,7 @@ pub(in crate::analysis) enum FactPayload {
     Class {
         name: Option<SmolStr>,
         role: ClassFactRole,
-        provenance: Option<(SmolStr, SmolStr)>,
+        provenance: Option<ClassIdentity>,
     },
 }
 

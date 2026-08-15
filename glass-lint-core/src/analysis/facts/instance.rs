@@ -1,28 +1,20 @@
 use glass_lint_datastructures::SymbolPath;
-use smol_str::SmolStr;
+
+use crate::analysis::model::fact::ClassIdentity;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct InstanceCallable {
-    module: SmolStr,
-    export: SmolStr,
+    identity: ClassIdentity,
     member: SymbolPath,
 }
 
 impl InstanceCallable {
-    pub(super) fn new(
-        module: impl Into<SmolStr>,
-        export: impl Into<SmolStr>,
-        member: SymbolPath,
-    ) -> Self {
-        Self {
-            module: module.into(),
-            export: export.into(),
-            member,
-        }
+    pub(super) fn new(identity: ClassIdentity, member: SymbolPath) -> Self {
+        Self { identity, member }
     }
 
-    pub(super) fn class_identity(&self) -> (SmolStr, SmolStr) {
-        (self.module.clone(), self.export.clone())
+    pub(super) fn class_identity(&self) -> ClassIdentity {
+        self.identity.clone()
     }
 
     pub(super) fn member(&self) -> &SymbolPath {

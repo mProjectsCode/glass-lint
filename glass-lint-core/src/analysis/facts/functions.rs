@@ -13,6 +13,7 @@ use crate::analysis::{
         ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, Expr, FactBuilder,
         FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
     },
+    model::fact::ClassIdentity,
     syntax::literal_member_property_name,
 };
 
@@ -55,7 +56,7 @@ impl FactBuilder<'_, '_> {
 
     fn with_class_context(
         &mut self,
-        provenance: Option<(SmolStr, SmolStr)>,
+        provenance: Option<ClassIdentity>,
         visit: impl FnOnce(&mut Self),
     ) {
         self.traversal.push_class(provenance);
@@ -64,7 +65,7 @@ impl FactBuilder<'_, '_> {
     }
 
     /// Return the proven class provenance for the current non-static method.
-    pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
+    pub(super) fn current_class(&self) -> Option<ClassIdentity> {
         self.traversal.current_class()
     }
 
@@ -198,7 +199,8 @@ impl FactBuilder<'_, '_> {
             .class
             .super_class
             .as_deref()
-            .and_then(|expr| self.resolver.class_provenance(expr));
+            .and_then(|expr| self.resolver.class_provenance(expr))
+            .map(ClassIdentity::from);
         if let Some(provenance) = provenance.clone() {
             let value = self.resolver.resolve_ident_id(&class_decl.ident);
             self.provenance
@@ -223,7 +225,8 @@ impl FactBuilder<'_, '_> {
             .class
             .super_class
             .as_deref()
-            .and_then(|expr| self.resolver.class_provenance(expr));
+            .and_then(|expr| self.resolver.class_provenance(expr))
+            .map(ClassIdentity::from);
         if let Some(ident) = &class_expr.ident {
             self.emit(
                 ident.span(),
@@ -242,7 +245,10 @@ impl FactBuilder<'_, '_> {
 
     pub(super) fn record_instanceof(&mut self, binary: &BinExpr) {
         if binary.op == BinaryOp::InstanceOf {
-            let provenance = self.resolver.class_provenance(&binary.right);
+            let provenance = self
+                .resolver
+                .class_provenance(&binary.right)
+                .map(ClassIdentity::from);
             self.emit(
                 binary.right.span(),
                 FactPayload::Class {
@@ -259,7 +265,10 @@ impl FactBuilder<'_, '_> {
         let Some(expr) = expr else {
             return;
         };
-        let provenance = self.resolver.class_provenance(expr);
+        let provenance = self
+            .resolver
+            .class_provenance(expr)
+            .map(ClassIdentity::from);
         self.emit(
             expr.span(),
             FactPayload::Class {

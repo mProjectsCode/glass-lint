@@ -4,9 +4,10 @@
 //! visitor nesting and monotonic control-region allocation, and is restored by
 //! balanced enter/leave calls as the AST walk returns from a construct.
 
-use smol_str::SmolStr;
-
-use crate::analysis::{facts::ControlRegionId, model::scope::FunctionId};
+use crate::analysis::{
+    facts::ControlRegionId,
+    model::{fact::ClassIdentity, scope::FunctionId},
+};
 
 #[derive(Debug)]
 /// Ephemeral nesting state that affects how the current syntax is interpreted.
@@ -14,7 +15,7 @@ pub(super) struct TraversalState {
     /// Monotonic identity source for branch and loop regions.
     next_control_region: ControlRegionId,
     /// Class-superclass provenance for the current nesting stack.
-    class_stack: Vec<Option<(SmolStr, SmolStr)>>,
+    class_stack: Vec<Option<ClassIdentity>>,
     /// Number of function bodies currently being visited.
     function_depth: usize,
     /// Number of static class methods currently being visited.
@@ -47,7 +48,7 @@ impl TraversalState {
         region
     }
 
-    pub(super) fn push_class(&mut self, provenance: Option<(SmolStr, SmolStr)>) {
+    pub(super) fn push_class(&mut self, provenance: Option<ClassIdentity>) {
         self.class_stack.push(provenance);
     }
 
@@ -55,7 +56,7 @@ impl TraversalState {
         self.class_stack.pop();
     }
 
-    pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
+    pub(super) fn current_class(&self) -> Option<ClassIdentity> {
         self.class_stack.last().cloned().flatten()
     }
 

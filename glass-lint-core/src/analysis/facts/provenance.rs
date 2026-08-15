@@ -1,17 +1,18 @@
 use glass_lint_datastructures::ByteRange;
-use smol_str::SmolStr;
 
 use super::{OriginCheckpoint, OriginMap, OriginSnapshot};
-use crate::analysis::{SemanticBudget, facts::instance::InstanceCallable, model::value::ValueId};
-
-pub(in crate::analysis::facts) type Origin = (SmolStr, SmolStr);
+use crate::analysis::{
+    SemanticBudget,
+    facts::instance::InstanceCallable,
+    model::{fact::ClassIdentity, value::ValueId},
+};
 
 /// The four provenance channels: instance origins, class origins, instance
 /// callables, and static-string origins. Each lifecycle operation is
 /// expressed once here with the intentionally asymmetric per-map semantics.
 pub(in crate::analysis::facts) struct OriginChannels {
-    instances: OriginMap<Origin>,
-    classes: OriginMap<Origin>,
+    instances: OriginMap<ClassIdentity>,
+    classes: OriginMap<ClassIdentity>,
     instance_callables: OriginMap<InstanceCallable>,
     static_string_origins: OriginMap<ByteRange>,
 }
@@ -25,11 +26,11 @@ pub(in crate::analysis::facts) struct ProvenanceCheckpoint {
 
 pub(in crate::analysis::facts) struct BranchProvenance {
     instances: InstanceProvenanceSnapshot,
-    classes: OriginSnapshot<Origin>,
+    classes: OriginSnapshot<ClassIdentity>,
 }
 
 pub(in crate::analysis::facts) struct InstanceProvenanceSnapshot {
-    origins: OriginSnapshot<Origin>,
+    origins: OriginSnapshot<ClassIdentity>,
     callables: OriginSnapshot<InstanceCallable>,
     static_strings: OriginSnapshot<ByteRange>,
 }
@@ -37,8 +38,8 @@ pub(in crate::analysis::facts) struct InstanceProvenanceSnapshot {
 #[derive(Default)]
 pub(in crate::analysis::facts) struct TargetProvenance {
     pub(in crate::analysis::facts) callable: Option<InstanceCallable>,
-    pub(in crate::analysis::facts) instance_origin: Option<(SmolStr, SmolStr)>,
-    pub(in crate::analysis::facts) class_origin: Option<(SmolStr, SmolStr)>,
+    pub(in crate::analysis::facts) instance_origin: Option<ClassIdentity>,
+    pub(in crate::analysis::facts) class_origin: Option<ClassIdentity>,
     pub(in crate::analysis::facts) static_string_origin: Option<ByteRange>,
 }
 
@@ -110,7 +111,7 @@ impl OriginChannels {
     pub(in crate::analysis::facts) fn snapshot_classes(
         &self,
         budget: &SemanticBudget,
-    ) -> OriginSnapshot<Origin> {
+    ) -> OriginSnapshot<ClassIdentity> {
         self.classes.snapshot(budget)
     }
 
@@ -195,14 +196,17 @@ impl OriginChannels {
         }
     }
 
-    pub(in crate::analysis::facts) fn instance_origin(&self, value: ValueId) -> Option<Origin> {
+    pub(in crate::analysis::facts) fn instance_origin(
+        &self,
+        value: ValueId,
+    ) -> Option<ClassIdentity> {
         self.instances.get(value).cloned()
     }
 
     pub(in crate::analysis::facts) fn record_instance_origin(
         &mut self,
         value: ValueId,
-        origin: Origin,
+        origin: ClassIdentity,
         budget: &SemanticBudget,
     ) {
         self.instances.insert(value, origin, budget);
@@ -211,13 +215,13 @@ impl OriginChannels {
     pub(in crate::analysis::facts) fn record_class_origin(
         &mut self,
         value: ValueId,
-        origin: Origin,
+        origin: ClassIdentity,
         budget: &SemanticBudget,
     ) {
         self.classes.insert(value, origin, budget);
     }
 
-    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<Origin> {
+    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<ClassIdentity> {
         self.classes.get(value).cloned()
     }
 
@@ -338,14 +342,17 @@ impl FactProvenanceState {
         self.origins.finish_branch_without_else(checkpoint);
     }
 
-    pub(in crate::analysis::facts) fn instance_origin(&self, value: ValueId) -> Option<Origin> {
+    pub(in crate::analysis::facts) fn instance_origin(
+        &self,
+        value: ValueId,
+    ) -> Option<ClassIdentity> {
         self.origins.instance_origin(value)
     }
 
     pub(in crate::analysis::facts) fn record_instance_origin(
         &mut self,
         value: ValueId,
-        origin: Origin,
+        origin: ClassIdentity,
         budget: &SemanticBudget,
     ) {
         self.origins.record_instance_origin(value, origin, budget);
@@ -354,13 +361,13 @@ impl FactProvenanceState {
     pub(in crate::analysis::facts) fn record_class_origin(
         &mut self,
         value: ValueId,
-        origin: Origin,
+        origin: ClassIdentity,
         budget: &SemanticBudget,
     ) {
         self.origins.record_class_origin(value, origin, budget);
     }
 
-    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<Origin> {
+    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<ClassIdentity> {
         self.origins.class_origin(value)
     }
 
