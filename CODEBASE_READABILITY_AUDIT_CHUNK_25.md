@@ -125,7 +125,7 @@ site in the same change (`lint/report/evidence.rs:95`,
 
 ### report/operations.rs — operation-count accumulator surface
 
-#### [ ] READ-004 — `ReportPathMetrics` is a one-call-site DTO that dodges a six-argument call
+#### [x] READ-004 — `ReportPathMetrics` is a one-call-site DTO that dodges a six-argument call
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -155,7 +155,7 @@ max-merge for `max_live_alternatives` and saturating-add for the rest in
 `AddAssign` (operations.rs:138-159), and keep `operation_counts()` in
 `analysis/project/model.rs:449-463` working unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ReportPathMetrics` and `record_path_metrics`; the six path-metric fields are now recorded via individual setters (`record_max_live_alternatives`, `record_trace_nodes`, `record_trace_heads`, `record_coalescing_comparisons`, `record_fixed_point_iterations`, `record_rendered_traces`), matching the other single-field setters. Callers in `assemble_project_report` and the report tests call the setters directly; re-exports were removed.
 
 ### report/code.rs — diagnostic code vocabulary
 

@@ -950,4 +950,3 @@ deterministic findings.
 - `project::types::report::operations` — Defines analysis operation counters.
 - `project::types::report::operations::AnalysisOperationCounts` — Counts bounded analysis operations.
 - `project::types::report::operations::AnalysisOperationCountsBuilder` — Accumulates operation metrics before finalizing report counts.
-- `project::types::report::operations::ReportPathMetrics` — Stores path and trace metrics for report operation counts.
