@@ -26,7 +26,7 @@ is a total function of another field.
 
 ### Retained module model
 
-#### [ ] READ-001 — Parallel `ExportObservation`/`ExportEntry` records, a field-copy constructor, and a discarded merge classification
+#### [x] READ-001 — Parallel `ExportObservation`/`ExportEntry` records, a field-copy constructor, and a discarded merge classification
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -59,7 +59,7 @@ channel observation `mark_unknown`s the entry (resolution
 merge independently, and an unknown entry stays unknown for subsequent
 observations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ExportObservation` and `ExportMerge`; the three `add_*` methods pass their single channel to `observe_export`, which inserts a fresh `ExportEntry` for vacant names and otherwise calls `ExportEntry::observe` with the same merge semantics and no classification return.
 
 #### [ ] READ-002 — `ModuleInterfaceBuilder` facade forwards a `ModuleInterface` surface that is already `pub`
 
