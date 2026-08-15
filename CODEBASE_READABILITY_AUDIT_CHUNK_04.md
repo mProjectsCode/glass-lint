@@ -281,7 +281,7 @@ fixed at merge start and keep the fallback-to-incoming/unknown handling in
 
 **Fix Applied:** Replaced the `JoinedPathAssignments` triple alias with a private `JoinedAssignment { scope, name, value }` value type owned by the `assignments` module. `PathCollectionState::join_paths` produces `Vec<JoinedAssignment>` and `ScopeCollector::join_paths` hands each value to `record_join_assignment` by value, deleting the triple destructuring at the call site. The join bound stays fixed at merge start (`self.alternative_limit`) and the fallback-to-incoming/unknown handling remains in `join_paths`; the type is not exposed outside the `build` subtree.
 
-#### [ ] READ-008 — Needless deep pattern clone and an `if`-as-`Option` idiom
+#### [x] READ-008 — Needless deep pattern clone and an `if`-as-`Option` idiom
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -309,7 +309,7 @@ the exact gating — `current_scope` must return `None` (not an empty stack
 fallback) once issues exist, and the `ReturnedObject` candidate must skip the
 call when the rooted path is a root, exactly as the current predicate encodes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the deep `Pat` clone in `record_destructuring_assignment`: `collect_assignment_aliases` now accepts `&AssignTargetPat`, and the borrow is threaded through the projection entry via a new `BorrowedPattern<'a>` (`Decl(&Pat)` / `Assign(&AssignTargetPat)`) wrapper, with `project_destructuring` dispatching `AssignTargetPat::Object` into the shared `project_object` core and `Array`/`Invalid` into `Unsupported`. Rewrote both `.then(...).flatten()` sites as explicit `if` expressions: `current_scope` returns `None` once issues exist (no empty-stack fallback), and the `ReturnedObject` candidate skips the call exactly when the rooted path is a root.
 
 #### [ ] READ-009 — Field visibility wider than the owning type; redundant hand-written `Debug`
 

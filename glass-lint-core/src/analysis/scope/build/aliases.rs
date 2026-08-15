@@ -7,12 +7,12 @@
 use glass_lint_datastructures::NamePath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
-use swc_ecma_ast::{ObjectPatProp, Pat};
+use swc_ecma_ast::{AssignTargetPat, ObjectPatProp, Pat};
 
 use crate::analysis::{
     scope::{
         BindingProvenance, ScopeCollector, ScopeId,
-        build::projection::{ProjectionError, project_destructuring},
+        build::projection::{BorrowedPattern, ProjectionError, project_destructuring},
     },
     syntax::literal_property_name,
 };
@@ -24,34 +24,48 @@ impl ScopeCollector<'_> {
     /// projection would make a later use look more precise than the source
     /// warrants, so callers should leave the binding unresolved instead.
     pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &NamePath, scope: ScopeId) {
-        self.collect_destructuring_aliases(pat, target, false, |collector, name, path| {
-            collector.update_binding(scope, name, BindingProvenance::ValueAlias { target: path });
-        });
+        self.collect_destructuring_aliases(
+            BorrowedPattern::Decl(pat),
+            target,
+            false,
+            |collector, name, path| {
+                collector.update_binding(
+                    scope,
+                    name,
+                    BindingProvenance::ValueAlias { target: path },
+                );
+            },
+        );
     }
 
     /// Record aliases introduced by a destructuring assignment.
     pub(super) fn collect_assignment_aliases(
         &mut self,
-        pat: &Pat,
+        pat: &AssignTargetPat,
         target: &NamePath,
         span: Span,
         scope: ScopeId,
     ) {
-        self.collect_destructuring_aliases(pat, target, true, |collector, name, path| {
-            collector.record_assignment(
-                span,
-                scope,
-                name.as_str(),
-                BindingProvenance::ValueAlias { target: path },
-            );
-        });
+        self.collect_destructuring_aliases(
+            BorrowedPattern::Assign(pat),
+            target,
+            true,
+            |collector, name, path| {
+                collector.record_assignment(
+                    span,
+                    scope,
+                    name.as_str(),
+                    BindingProvenance::ValueAlias { target: path },
+                );
+            },
+        );
     }
 
     /// Project a destructuring pattern into aliases, reporting projection
     /// errors once for both declarations and assignments.
     fn collect_destructuring_aliases(
         &mut self,
-        pat: &Pat,
+        pat: BorrowedPattern<'_>,
         target: &NamePath,
         is_assignment: bool,
         mut sink: impl FnMut(&mut Self, SmolStr, NamePath),

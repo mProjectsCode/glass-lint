@@ -205,10 +205,12 @@ fn classify_candidates(
                 .and_then(|provenance| binding(name, provenance)),
             Candidate::ReturnedObject => {
                 let rooted_path = collector.rooted_name_path(expr);
-                (rooted_path.as_ref().is_none_or(|target| !target.is_root()))
-                    .then(|| collector.returned_object_provenance(expr))
-                    .flatten()
-                    .and_then(|provenance| binding(name, provenance))
+                let provenance = if rooted_path.as_ref().is_none_or(|target| !target.is_root()) {
+                    collector.returned_object_provenance(expr)
+                } else {
+                    None
+                };
+                provenance.and_then(|provenance| binding(name, provenance))
             }
             Candidate::RootedAlias if !derived_function_pattern => collector
                 .rooted_name_path(expr)

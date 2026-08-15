@@ -69,9 +69,11 @@ impl ScopePass for ScopeCollector<'_> {
     }
 
     fn current_scope(&self) -> Option<ScopeId> {
-        (!self.artifacts.has_issues())
-            .then(|| self.lexical.stack.last().copied())
-            .flatten()
+        if self.artifacts.has_issues() {
+            None
+        } else {
+            self.lexical.stack.last().copied()
+        }
     }
 
     fn is_budget_exhausted(&self) -> bool {
@@ -613,9 +615,8 @@ impl ScopeCollector<'_> {
         pattern: &swc_ecma_ast::AssignTargetPat,
         assignment: &AssignExpr,
     ) {
-        let pattern: Pat = pattern.clone().into();
         if let Some(target) = self.rooted_name_path(&assignment.right) {
-            self.collect_assignment_aliases(&pattern, &target, assignment.span, scope);
+            self.collect_assignment_aliases(pattern, &target, assignment.span, scope);
         }
     }
 
