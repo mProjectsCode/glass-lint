@@ -97,7 +97,7 @@ production caller and unit tests pass the bounds only at construction.
 
 ### Duplicated orchestration
 
-#### [ ] READ-002 — `transfer_paths` and `transfer_paths_without_finalization` duplicate the path-transfer skeleton
+#### [x] READ-002 — `transfer_paths` and `transfer_paths_without_finalization` duplicate the path-transfer skeleton
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -128,7 +128,13 @@ caller. Owner: `ObjectFlowProjector` (driver). Guardrail: preserve the
 `transfer_fact`, and the `finalize_pending` placement relative to `join_paths`
 — certainty and boundedness depend on them.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the two orchestrators into one
+`transfer_paths_with(transfer, finalize)` that always runs the shared
+restore/charge loop and path-token bookkeeping, gating only `finalize_pending`
+(and the empty-incoming early return) behind the `finalize` flag. `transfer_paths`
+passes the `transfer_fact` closure with `finalize = true`;
+`transfer_function`'s `Enter` branch passes its clear/reachable closure with
+`finalize = false`; `transfer_paths_without_finalization` is deleted.
 
 #### [ ] READ-004 — `loops.rs` duplicates the admit/deduplicate admission loop for replays and exits
 

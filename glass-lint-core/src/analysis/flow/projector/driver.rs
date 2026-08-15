@@ -80,8 +80,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn transfer_paths(&mut self, fact: &crate::analysis::facts::SemanticFact) {
+        self.transfer_paths_with(|projector| projector.transfer_fact(fact), true);
+    }
+
+    fn transfer_paths_with(&mut self, transfer: impl Fn(&mut Self), finalize: bool) {
         let incoming = self.paths.frontier.take_paths();
-        if incoming.is_empty() {
+        if finalize && incoming.is_empty() {
             return;
         }
         self.paths.frontier.begin_batch(incoming.len());
@@ -93,14 +97,16 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 PathRestoration::Ready => {}
             }
             self.paths.frontier.select_path(path_index);
-            self.transfer_fact(fact);
+            transfer(self);
             if self.run.reachable {
                 outgoing.push(self.environment());
             }
         }
         self.paths.frontier.replace_paths(outgoing);
         self.observe_alternatives(self.paths.frontier.path_count());
-        self.finalize_pending();
+        if finalize {
+            self.finalize_pending();
+        }
         let paths = self.paths.frontier.take_paths();
         self.join_paths(paths);
         self.paths.frontier.end_batch();
@@ -214,35 +220,19 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             FunctionBoundary::Enter => {
                 let caller = self.paths.frontier.snapshot_paths();
                 self.paths.control.push(ControlFrame::Function { caller });
-                self.transfer_paths_without_finalization(|projector| {
-                    projector.flow_state.clear();
-                    projector.run.reachable = true;
-                });
+                self.transfer_paths_with(
+                    |projector| {
+                        projector.flow_state.clear();
+                        projector.run.reachable = true;
+                    },
+                    false,
+                );
             }
             FunctionBoundary::Exit => match self.paths.control.pop_function() {
                 Ok(caller) => self.paths.frontier.replace_paths(caller),
                 Err(_) => self.mark_control_stack_incomplete(),
             },
         }
-    }
-
-    fn transfer_paths_without_finalization(&mut self, transfer: impl Fn(&mut Self)) {
-        let incoming = self.paths.frontier.take_paths();
-        let mut outgoing = Vec::with_capacity(incoming.len());
-        for environment in incoming {
-            match self.restore_path(environment) {
-                PathRestoration::Exhausted => break,
-                PathRestoration::Failed => continue,
-                PathRestoration::Ready => {}
-            }
-            transfer(self);
-            if self.run.reachable {
-                outgoing.push(self.environment());
-            }
-        }
-        self.paths.frontier.replace_paths(outgoing);
-        let paths = self.paths.frontier.take_paths();
-        self.join_paths(paths);
     }
 
     fn restore_path(&mut self, environment: FlowEnvironment) -> PathRestoration {
