@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::{
-    error::{QueryCompileError, classify_lifecycle_source, is_identity_empty},
+    error::{QueryCompileError, classify_lifecycle_source},
     pass1_3::validate_event_query,
 };
 use crate::api::rule::query::{
@@ -58,8 +58,6 @@ fn check_structure(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match expr.kind() {
         QueryExprKind::Event(eq) => {
             validate_event_query(eq)?;
-            // pass_relation_availability
-            check_identity_not_empty(eq.identity())?;
             // pass_boundedness
             let max_constraints = limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS;
             if eq.constraints().len() > max_constraints {
@@ -105,16 +103,6 @@ fn check_structure(expr: &QueryExpr) -> Result<(), QueryCompileError> {
         }
         QueryExprKind::Lifecycle(lc) => validate_lifecycle(lc),
     }
-}
-
-fn check_identity_not_empty(identity: &IdentitySpec) -> Result<(), QueryCompileError> {
-    if is_identity_empty(identity) {
-        return Err(QueryCompileError::UnsupportedRelation {
-            relation: identity.diagnostic_name(),
-            detail: format!("{} identity name is empty", identity.diagnostic_name()),
-        });
-    }
-    Ok(())
 }
 
 fn check_require_structure(predicate: &QueryPredicate) -> Result<(), QueryCompileError> {

@@ -32,7 +32,7 @@ test-support surfaces and single-use wrappers that add naming or conversion nois
 
 ### api/compiler/validate — duplicate empty-identity validation
 
-#### [ ] READ-001 — `check_identity_not_empty` is unreachable after `validate_event_query`
+#### [x] READ-001 — `check_identity_not_empty` is unreachable after `validate_event_query`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -54,7 +54,9 @@ stable `invalid_event_predicate` diagnostic; drop the now-unused `is_identity_em
 import (pass4_10.rs:4). Guardrail: keep the empty-identity rejection classified as an
 authored `InvalidEventPredicate`, not as `UnsupportedRelation`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `check_identity_not_empty` and its `pass_relation_availability`
+call site; empty-identity rejection now flows solely from `validate_event_query`
+(`invalid_event_predicate`); dropped the unused `is_identity_empty` import.
 
 ### api/compiler/object_flow — conflicting accessor names for one field
 
