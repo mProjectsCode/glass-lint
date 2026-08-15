@@ -105,7 +105,7 @@ path.
 
 ### [planning.rs — FlowMatchView and planning construction]
 
-#### [ ] READ-003 — `FlowMatchView` is a stateless pair re-constructed at every match site
+#### [x] READ-003 — `FlowMatchView` is a stateless pair re-constructed at every match site
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -134,7 +134,7 @@ accept `&FlowMatchView`, so only the construction moves. Guardrail: keep the
 view borrowed and immutable; do not store a `ValueTable` inside a plan that
 outlives the module's value arena.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The four construction sites are deleted. The view is now built once per phase boundary: in `ProjectionInputs::new` (local projector, used by `match_source` and `record_configuration`), once per module in the cross source collector (`collect_candidates`), and once per `UsageProjector` (cross `apply_receiver`). `UsageProjector` also hoists the per-module `FactStream` borrow that the three apply paths re-fetched. The view stays borrowed and immutable; no `ValueTable` is stored in any plan.
 
 #### [ ] READ-004 — `BoundLifecycleCallTarget::member`/`global` are single-call-site constructors and force a redundant clone
 

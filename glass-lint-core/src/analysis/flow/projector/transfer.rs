@@ -9,7 +9,6 @@ use smallvec::SmallVec;
 use crate::analysis::{
     flow::{
         effect::CallShape,
-        planning::FlowMatchView,
         projector::{
             CallArgInfo, FactId, FlowObjectId, FlowState, ObjectFlowProjector, ValueId,
             state::StateAdmission,
@@ -58,11 +57,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         source_fact: FactId,
     ) -> Option<(FlowObjectId, Vec<FlowState>)> {
-        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
+        let matcher = &self.inputs.matcher;
         let candidates = self.inputs.plan.source_candidates_for_call(call)?;
         let matching: SmallVec<[FlowId; 8]> = candidates
             .iter()
-            .filter(|candidate| candidate.matches_call(&matcher, args))
+            .filter(|candidate| candidate.matches_call(matcher, args))
             .map(super::super::planning::BoundSource::flow_id)
             .collect();
         if matching.is_empty() {

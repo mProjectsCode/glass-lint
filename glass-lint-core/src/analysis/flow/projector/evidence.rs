@@ -11,7 +11,6 @@ use crate::{
     analysis::{
         flow::{
             effect::CallShape,
-            planning::FlowMatchView,
             projector::{
                 CallArgInfo, ClassificationEvidence, FactId, FlowObjectId, FlowState, MatchKind,
                 ObjectFlowProjector, ValueId, history::ReportEvidenceKey,
@@ -38,7 +37,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
-        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
         let objects: SmallVec<[FlowObjectId; 4]> = match receiver {
             Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
@@ -54,7 +52,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     key.flow(),
                     Some(chain),
                     args,
-                    &matcher,
+                    &self.inputs.matcher,
                 ) {
                     self.flow_state
                         .record_requirement(key.object(), key.flow(), index, event);

@@ -106,6 +106,9 @@ impl CrossWorklist<'_, '_> {
         let Some(names) = self.project.module_names(context.module()) else {
             return;
         };
+        let Some(stream) = self.project.module_fact_stream(context.module()) else {
+            return;
+        };
         let flow_plan = self
             .flow_plans
             .entry(context.module())
@@ -128,6 +131,7 @@ impl CrossWorklist<'_, '_> {
             flow_plan,
             &mut state,
             &mut propagated,
+            stream,
         )
         .project();
         propagation::CallPropagation::new(

@@ -209,6 +209,7 @@ impl FlowSources {
         for module in project.modules() {
             let names = module.local().facts().names();
             let stream = module.local().facts().stream();
+            let matcher = FlowMatchView::new(names, stream.values());
             // Build a per-module source index so that candidate discovery
             // looks up flows by chain instead of scanning every flow for
             // every call.
@@ -227,7 +228,6 @@ impl FlowSources {
                         continue;
                     };
                     let args = shape.effective_args();
-                    let matcher = FlowMatchView::new(names, stream.values());
                     let candidates = source_index.candidates_for_call(&shape);
                     let Some(candidates) = candidates else {
                         continue;

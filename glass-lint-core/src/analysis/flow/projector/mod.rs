@@ -36,7 +36,7 @@ use crate::{
         flow::{
             FlowCompletion, FlowCompletionReason,
             effect::FunctionEffects,
-            planning::{BoundFlowPlan, BoundLifecycleRoot},
+            planning::{BoundFlowPlan, BoundLifecycleRoot, FlowMatchView},
             summary::FunctionSummaries,
         },
         model::{
@@ -224,12 +224,13 @@ impl ProjectionPathMachine {
 #[derive(Debug)]
 struct ProjectionInputs<'rules, 'stream> {
     stream: &'stream FactStream<Frozen>,
-    names: &'stream NameTable,
     plan: BoundFlowPlan<'rules>,
     helpers: FunctionSummaries<'stream>,
     /// Call results are indexed once so later assignments can start a flow
     /// without rescanning the fact stream.
     calls_by_result: BTreeMap<ValueId, FactId>,
+    /// Shared value/name view for argument matching across the local projector.
+    matcher: FlowMatchView<'stream>,
     /// Module being projected, used to qualify trace events.
     module_id: ModuleId,
 }
@@ -252,10 +253,10 @@ impl<'rules, 'stream> ProjectionInputs<'rules, 'stream> {
             .collect();
         Self {
             stream,
-            names,
             plan,
             helpers,
             calls_by_result,
+            matcher: FlowMatchView::new(names, stream.values()),
             module_id,
         }
     }

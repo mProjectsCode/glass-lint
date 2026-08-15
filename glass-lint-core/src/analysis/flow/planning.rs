@@ -32,6 +32,7 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
 pub(super) struct FlowMatchView<'a> {
     names: &'a NameTable,
     values: &'a ValueTable,

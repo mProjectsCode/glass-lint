@@ -5,7 +5,7 @@ use smol_str::SmolStr;
 use super::CrossProjectionSession;
 use crate::{
     analysis::{
-        facts::FactId,
+        facts::{FactId, FactStream, Frozen},
         flow::{
             cross::{
                 evidence::{emit, mark_nonmatching, usage_matches_context},
@@ -28,9 +28,12 @@ pub(super) struct UsageProjector<'a, 'session> {
     flow_plan: &'a BoundFlowPlan<'session>,
     state: &'a mut CrossFlowState,
     propagated: &'a mut BTreeSet<FactId>,
+    stream: &'a FactStream<Frozen>,
+    matcher: FlowMatchView<'a>,
 }
 
 impl UsageProjector<'_, '_> {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new<'a, 'session>(
         session: &'a mut CrossProjectionSession<'session>,
         context: &'a CallContext,
@@ -39,7 +42,9 @@ impl UsageProjector<'_, '_> {
         flow_plan: &'a BoundFlowPlan<'session>,
         state: &'a mut CrossFlowState,
         propagated: &'a mut BTreeSet<FactId>,
+        stream: &'a FactStream<Frozen>,
     ) -> UsageProjector<'a, 'session> {
+        let matcher = FlowMatchView::new(session.names, stream.values());
         UsageProjector {
             session,
             context,
@@ -48,6 +53,8 @@ impl UsageProjector<'_, '_> {
             flow_plan,
             state,
             propagated,
+            stream,
+            matcher,
         }
     }
 
@@ -89,13 +96,9 @@ impl UsageProjector<'_, '_> {
         value_is_precise: bool,
     ) {
         let static_value = self
-            .session
-            .project
-            .module_fact_stream(self.context.module())
-            .and_then(|stream| {
-                let value = stream.property_write_value(event)?;
-                stream.values().static_string(value)
-            });
+            .stream
+            .property_write_value(event)
+            .and_then(|value| self.stream.values().static_string(value));
         let matching = self
             .flow_plan
             .matching_property_requirements(
@@ -112,26 +115,18 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_receiver(&mut self, event: FactId) {
-        let Some(stream) = self
-            .session
-            .project
-            .module_fact_stream(self.context.module())
-        else {
-            return;
-        };
-        let cref = stream.call_effect(event);
+        let cref = self.stream.call_effect(event);
         let Some(shape) = cref.shape() else {
             return;
         };
         let call_args = shape.effective_args();
 
         let chain = shape.chain();
-        let matcher = FlowMatchView::new(self.session.names, stream.values());
         let matching = self.flow_plan.matching_member_requirement_indices(
             self.context.state().flow_id(),
             chain,
             call_args,
-            &matcher,
+            &self.matcher,
         );
         self.advance_requirements(event, matching);
     }
@@ -152,14 +147,7 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_argument(&mut self, event: FactId, argument: usize) {
-        let Some(stream) = self
-            .session
-            .project
-            .module_fact_stream(self.context.module())
-        else {
-            return;
-        };
-        let cref = stream.call_effect(event);
+        let cref = self.stream.call_effect(event);
         let Some(shape) = cref.shape() else {
             return;
         };
