@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use crate::analysis::model::{
     StaticProperties,
-    scope::{BindingKey, BindingSlot, FunctionId},
+    scope::{BindingKey, BindingSlot},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -301,12 +301,6 @@ impl ValueTable {
 
     pub fn exhausted(&self) -> bool {
         self.exhausted
-    }
-}
-
-impl glass_lint_datastructures::IdIndex for FunctionId {
-    fn from_raw(raw: u32) -> Self {
-        Self::new(raw)
     }
 }
 

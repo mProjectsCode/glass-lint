@@ -84,10 +84,6 @@ impl FunctionId {
         Self(raw)
     }
 
-    pub(in crate::analysis) const fn raw(self) -> u32 {
-        self.0
-    }
-
     #[cfg(test)]
     pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
         Self::new(raw)
@@ -96,7 +92,13 @@ impl FunctionId {
 
 impl From<FunctionId> for u32 {
     fn from(id: FunctionId) -> Self {
-        id.raw()
+        id.0
+    }
+}
+
+impl glass_lint_datastructures::IdIndex for FunctionId {
+    fn from_raw(raw: u32) -> Self {
+        Self::new(raw)
     }
 }
 

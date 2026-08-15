@@ -174,7 +174,7 @@ impl<T: FactPhase> FactStream<T> {
         &self,
         id: FunctionId,
     ) -> Option<&[ParameterBinding]> {
-        let Ok(index) = usize::try_from(id.raw()) else {
+        let Ok(index) = usize::try_from(u32::from(id)) else {
             return None;
         };
         if index == 0 {
@@ -297,14 +297,14 @@ impl FactStream<Building> {
 
     /// Register parameter bindings for a function identity.
     ///
-    /// `FunctionId::raw()` is a `u32`, and `usize` is at least 32 bits on
+    /// `FunctionId` converts to a `u32`, and `usize` is at least 32 bits on
     /// every supported target, so the conversion is infallible.
     pub(super) fn register_function_parameters(
         &mut self,
         id: FunctionId,
         parameters: Vec<ParameterBinding>,
     ) {
-        let index = id.raw() as usize;
+        let index = u32::from(id) as usize;
         if self.function_parameters.len() <= index {
             self.function_parameters.resize_with(index + 1, Vec::new);
         }

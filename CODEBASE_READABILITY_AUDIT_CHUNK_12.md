@@ -160,7 +160,7 @@ is unchanged.
 
 **Fix Applied:** Deleted `ValueConstruction` and `intern_construction`; `intern_value_with_binding` is now `pub(in crate::analysis)` and the `static_values`, `constant`, `call`, and `expression` helpers build `Value` directly. The `&NameTable` object path became a `pub(in crate::analysis)` `intern_static_object` on `ValueTable` (with an optional binding), preserving fail-closed `UNKNOWN` on unresolved names and over-budget shapes.
 
-#### [ ] READ-004 — `FunctionId` conversion surface duplicated and the `IdIndex` impl stranded in `value.rs`
+#### [x] READ-004 — `FunctionId` conversion surface duplicated and the `IdIndex` impl stranded in `value.rs`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -185,7 +185,7 @@ is a public contract used by `IdIndex` and must remain; do not unify the
 backing widths of `ScopeId`/`ModuleRequestId` with the `u32` IDs in the same
 change — that is a separate storage decision.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the `IdIndex` impl next to `FunctionId` in `model/scope.rs` next to its `From<FunctionId> for u32` impl, deleted `raw()`, and switched the `facts/stream.rs` callers to `u32::from(id)`.
 
 ### Scope model
 

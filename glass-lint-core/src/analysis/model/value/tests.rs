@@ -1,4 +1,5 @@
 use super::*;
+use crate::analysis::model::scope::FunctionId;
 
 #[test]
 fn invalid_value_ids_fail_closed() {
