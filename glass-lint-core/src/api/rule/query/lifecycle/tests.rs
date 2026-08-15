@@ -217,6 +217,18 @@ fn lifecycle_event_property_write_holds_property_and_value() {
 }
 
 #[test]
+fn lifecycle_event_property_write_trims_and_rejects_whitespace_only_names() {
+    let event = LifecycleEvent::property_write(" src ", ValueMatcher::any_value()).unwrap();
+    assert!(
+        matches!(event.kind(), LifecycleEventKind::PropertyWrite { property, .. } if property == "src")
+    );
+    assert!(matches!(
+        LifecycleEvent::property_write("  ", ValueMatcher::any_value()),
+        Err(QueryBuildError::EmptyIdentityName)
+    ));
+}
+
+#[test]
 fn lifecycle_event_member_call_builds_with_args() {
     let event: LifecycleEvent = LifecycleEvent::member_call("addEventListener")
         .unwrap()

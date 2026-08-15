@@ -61,7 +61,7 @@ two `ArgumentOf { index }` consumers (`normalize.rs:454`, `explanation.rs:264`).
 
 **Fix Applied:** `LifecycleSinkKind::ArgumentOf` now stores `ArgumentIndex`; `build_call_sink` converts via `ArgumentIndex::try_from_usize`, deleting the manual bound check. Compiler/normalized/flow layers keep `usize`; `normalize.rs` and `explanation.rs` use `index.get()`.
 
-#### [ ] READ-005 — `LifecycleEvent::property_write` stores an untrimmed property, breaking the chunk's name-normalization convention
+#### [x] READ-005 — `LifecycleEvent::property_write` stores an untrimmed property, breaking the chunk's name-normalization convention
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -87,7 +87,7 @@ re-implementing the empty check inline, mirroring `object_property_value`.
 Guardrail: keep rejecting empty/whitespace-only properties with
 `QueryBuildError::EmptyIdentityName`; the value matcher is unrelated.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `property_write` now routes the property through the existing `checked_name` helper, trimming and canonicalizing before storage; whitespace-only names still fail with `EmptyIdentityName`. Added a focused positive/negative test.
 
 #### [ ] READ-006 — Redundant crate-visible storage plus accessor on `LifecycleEvent` and `LifecycleSink`
 

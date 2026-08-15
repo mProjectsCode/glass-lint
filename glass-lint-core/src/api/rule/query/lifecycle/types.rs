@@ -6,7 +6,7 @@ use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 use crate::api::rule::query::{
     EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
-    checked_chain, limits,
+    checked_chain, checked_name, limits,
     value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 
@@ -63,10 +63,7 @@ impl LifecycleEvent {
         property: impl Into<SmolStr>,
         value: ValueMatcher,
     ) -> Result<Self, QueryBuildError> {
-        let property = property.into();
-        if property.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
+        let property = checked_name(property.into())?;
         Ok(Self {
             kind: LifecycleEventKind::PropertyWrite { property, value },
         })
