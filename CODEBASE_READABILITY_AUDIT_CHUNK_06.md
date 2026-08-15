@@ -26,7 +26,7 @@ as guardrails throughout.
 
 ### [analysis/syntax — constant and names]
 
-#### [ ] READ-001 — Two parallel property-name conversion paths with divergent bounds semantics
+#### [x] READ-001 — Two parallel property-name conversion paths with divergent bounds semantics
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -70,7 +70,7 @@ literal-string computed keys — so re-expressing it through
 variants of one another. Guardrail: the string bound must not be loosened on
 any path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `literal_member_property_name` now delegates to `contextual_member_property_name(prop, &NoLookup)`; the private `static_property_name` and the unused `evaluate` import in names.rs were deleted. `literal_property_name` was kept as its own pure-syntax path and its doc comment now documents the divergence (no `MAX_STRING_BYTES` bound, arbitrary numeric keys, literal-string computed keys only).
 
 #### [ ] READ-002 — Shorthand object-property arm allocates a cloned `Ident`/`Expr` to reach `lookup_ident`
 

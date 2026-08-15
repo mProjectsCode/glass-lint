@@ -12,7 +12,7 @@ use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
-use crate::analysis::syntax::constant::{NoLookup, evaluate};
+use crate::analysis::syntax::constant::{NoLookup, contextual_member_property_name};
 
 /// Find the lexical root identifier of a member/optional-chain expression.
 pub fn member_root_identifier(member: &MemberExpr) -> Option<&Ident> {
@@ -86,6 +86,12 @@ pub fn module_export_name(name: &ModuleExportName) -> SmolStr {
 }
 
 /// Return a statically known object-literal property name.
+///
+/// This is a pure-syntax path distinct from the contextual property-name
+/// conversion: it does not bound string keys with `MAX_STRING_BYTES`, accepts
+/// arbitrary numeric keys (not only non-negative integers), and only resolves
+/// computed keys that are literal strings. It must not be re-expressed through
+/// the contextual evaluator, which would change these accepted shapes.
 pub fn literal_property_name(name: &swc_ecma_ast::PropName) -> Option<SmolStr> {
     match name {
         swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_smolstr()),
@@ -169,11 +175,7 @@ pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
 
 /// Return a statically known member property name, including private names.
 pub fn literal_member_property_name(prop: &MemberProp) -> Option<SmolStr> {
-    match prop {
-        MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
-        MemberProp::PrivateName(name) => Some(format!("#{}", name.name).into()),
-        MemberProp::Computed(computed) => static_property_name(&computed.expr).map(SmolStr::new),
-    }
+    contextual_member_property_name(prop, &NoLookup)
 }
 
 /// Recognize a supported `Function`-like `.constructor` member shape.
@@ -211,8 +213,4 @@ fn is_function_like_expr(expr: &Expr) -> bool {
         Expr::Paren(paren) => is_function_like_expr(&paren.expr),
         _ => false,
     }
-}
-
-fn static_property_name(expr: &Expr) -> Option<SmolStr> {
-    evaluate(expr, &NoLookup).property_key()
 }
