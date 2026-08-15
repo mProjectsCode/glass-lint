@@ -223,7 +223,7 @@ availability without allocating flow state.
 
 **Fix Applied:** `finish()` now returns `completion = FlowCompletion::incomplete(FlowCompletionReason::PhaseDisabled)` when the phase was disabled, so a consumer inspecting only `completion().is_complete()` sees an incomplete (distinct from successful-empty) result. `is_available()` remains the phase-gating flag and the local projector still short-circuits on it without allocating flow state, preserving fail-closed behavior. Added a focused test asserting disabled effects report an incomplete completion with no effect rows.
 
-#### [ ] READ-007 — `value_roots` and `parameter_index` are parallel maps whose consistency is caller-maintained
+#### [x] READ-007 — `value_roots` and `parameter_index` are parallel maps whose consistency is caller-maintained
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -255,7 +255,7 @@ preserve the fail-closed rules — UNKNOWN sources erase non-parameter roots
 (`:223-224`), returning an unrooted local value marks the effect invalid
 (`:258-264`), and an invalid summary must not propagate qualified flow.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The root-following step is now the single private `root_of` helper used by both `parameter_for` and `copy_root` (the public `root_value` delegates to it). `copy_root` preserves a parameter's self-root when an UNKNOWN source would otherwise erase it, while UNKNOWN sources still erase non-parameter roots; `record_return`'s invalid-marking rule is unchanged. Added focused tests covering both the parameter self-root preservation and the non-parameter erase fail-closed rules.
 
 ## Systemic Themes
 

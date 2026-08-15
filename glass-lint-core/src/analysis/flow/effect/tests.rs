@@ -241,6 +241,55 @@ fn effect_call_id_is_newtype() {
     assert_eq!(EffectCallId::new(5), EffectCallId::new(5));
 }
 
+#[test]
+fn copy_of_unknown_preserves_parameter_self_root() {
+    let params = [ParameterBinding::new(
+        0,
+        PathId::EMPTY,
+        ValueId::from_test(1),
+        None,
+        false,
+    )];
+    let mut effect = FunctionEffect::with_parameters(FunctionId::from_test(1), &params);
+    effect.copy_root(ValueId::from_test(1), ValueId::UNKNOWN);
+    assert_eq!(
+        effect.value_root(ValueId::from_test(1)),
+        Some(ValueId::from_test(1)),
+        "a parameter's self-root must survive an UNKNOWN copy"
+    );
+    assert!(
+        effect.parameter_for(ValueId::from_test(1)).is_some(),
+        "a parameter must stay resolvable after an UNKNOWN copy"
+    );
+}
+
+#[test]
+fn copy_of_unknown_erases_non_parameter_root() {
+    let params = [ParameterBinding::new(
+        0,
+        PathId::EMPTY,
+        ValueId::from_test(1),
+        None,
+        false,
+    )];
+    let mut effect = FunctionEffect::with_parameters(FunctionId::from_test(1), &params);
+    effect.copy_root(ValueId::from_test(2), ValueId::from_test(1));
+    assert_eq!(
+        effect.value_root(ValueId::from_test(2)),
+        Some(ValueId::from_test(1))
+    );
+    effect.copy_root(ValueId::from_test(2), ValueId::UNKNOWN);
+    assert_eq!(
+        effect.value_root(ValueId::from_test(2)),
+        None,
+        "an UNKNOWN copy must erase a non-parameter root"
+    );
+    assert!(
+        effect.parameter_for(ValueId::from_test(2)).is_none(),
+        "a non-parameter value must not resolve to a parameter"
+    );
+}
+
 fn collect_effects_with_limit(source: &str, limit: usize) -> (FactStream<Frozen>, FunctionEffects) {
     let stream = facts::build_test_facts(source, "test.js");
     let effects = FunctionEffects::collect(&stream, limit);

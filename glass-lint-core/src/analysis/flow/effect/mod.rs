@@ -132,9 +132,16 @@ impl FunctionEffect {
         self.value_roots.get(&value).copied()
     }
 
-    /// Totalized root lookup: an unknown root is the value itself.
-    pub(in crate::analysis) fn root_value(&self, value: ValueId) -> ValueId {
+    /// Canonical root for `value`, owned by the record paths. An unknown root
+    /// is the value itself.
+    fn root_of(&self, value: ValueId) -> ValueId {
         self.value_root(value).unwrap_or(value)
+    }
+
+    /// Totalized root lookup for cross-phase consumers: an unknown root is the
+    /// value itself.
+    pub(in crate::analysis) fn root_value(&self, value: ValueId) -> ValueId {
+        self.root_of(value)
     }
 
     pub(in crate::analysis) fn call_argument(
@@ -226,15 +233,17 @@ impl FunctionEffect {
             return;
         }
         if source == ValueId::UNKNOWN {
-            self.value_roots.remove(&target);
+            if !self.parameter_index.contains_key(&target) {
+                self.value_roots.remove(&target);
+            }
         } else {
-            let root = self.root_value(source);
+            let root = self.root_of(source);
             self.value_roots.insert(target, root);
         }
     }
 
     fn parameter_for(&self, value: ValueId) -> Option<ParameterRef> {
-        let root = self.root_value(value);
+        let root = self.root_of(value);
         if root == ValueId::UNKNOWN {
             return None;
         }
