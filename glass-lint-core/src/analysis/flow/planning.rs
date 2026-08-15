@@ -240,10 +240,7 @@ impl BoundSink {
     }
 
     pub(super) fn matches_argument(&self, argument: usize) -> bool {
-        match &self.arguments {
-            CompiledObjectSinkArguments::Any => true,
-            CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
-        }
+        self.arguments.matches_argument(argument)
     }
 
     pub(super) fn present_indices(

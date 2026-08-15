@@ -139,7 +139,7 @@ rejection fail-closed on `ImpossibleDimensions`.
 
 ### api/compiler/object_flow — enum representation matched outside its owner
 
-#### [ ] READ-005 — `CompiledObjectSinkArguments` variants are matched by hand in `analysis/flow/planning.rs`
+#### [x] READ-005 — `CompiledObjectSinkArguments` variants are matched by hand in `analysis/flow/planning.rs`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -161,7 +161,9 @@ narrow domain operation (e.g. `matches_argument(usize) -> bool`) and have
 public enum. Guardrail: preserve the distinction between unbounded membership
 (`Indices.contains`) and the count-bounded `present_indices` iteration.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `CompiledObjectSinkArguments::matches_argument` as the owner's
+membership operation; `BoundSink::matches_argument` now delegates to it, so the flow
+engines no longer match the enum by hand.
 
 ### api/compiler/object_flow — `Indices(Vec<usize>)` over-generalizes a single-index value
 

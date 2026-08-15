@@ -248,6 +248,13 @@ pub(crate) enum CompiledObjectSinkArguments {
 }
 
 impl CompiledObjectSinkArguments {
+    pub(crate) fn matches_argument(&self, argument: usize) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Indices(indices) => indices.contains(&argument),
+        }
+    }
+
     pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
         match self {
             Self::Any => PresentIndices::Any(0..argument_count),
