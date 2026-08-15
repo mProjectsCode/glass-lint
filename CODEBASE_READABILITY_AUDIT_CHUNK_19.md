@@ -115,7 +115,7 @@ derived `PartialEq/Eq/Hash/Ord` semantics must remain identical.
 
 ### [api/rule/query/lifecycle.rs]
 
-#### [ ] READ-004 — Duplicated builder scaffolding across the two lifecycle builders
+#### [x] READ-004 — Duplicated builder scaffolding across the two lifecycle builders
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -147,7 +147,7 @@ first error from a `Result<(), E>`" idiom exists exactly once. Keep the
 immediate-vs-deferred setter split: it is the intended public distinction and
 must not be collapsed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `build` now lives on `LifecycleBuilderState`, which destructures the state and takes the first error once; both per-builder `build` bodies delegate to it, and `LifecycleBuilderState::record_operation` delegates to the shared `record_first_error`. The immediate-vs-deferred setter split is unchanged.
 
 #### [ ] READ-008 — Lifecycle sources are exempt from the chunk's canonical-ordering invariant
 

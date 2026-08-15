@@ -127,9 +127,18 @@ impl LifecycleBuilderState {
     }
 
     fn record_operation(&mut self, result: Result<(), QueryBuildError>) {
-        if let Err(error) = result {
-            self.invalid_operation.record(error);
+        record_first_error(&mut self.invalid_operation, result);
+    }
+
+    fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
+        let Self {
+            stages,
+            invalid_operation,
+        } = self;
+        if let Some(error) = invalid_operation.take() {
+            return Err(error);
         }
+        stages.build()
     }
 }
 
@@ -202,14 +211,7 @@ impl LifecycleQueryBuilder {
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        let LifecycleBuilderState {
-            stages,
-            invalid_operation,
-        } = self.state;
-        if let Some(error) = invalid_operation.take() {
-            return Err(error);
-        }
-        stages.build()
+        self.state.build()
     }
 }
 
