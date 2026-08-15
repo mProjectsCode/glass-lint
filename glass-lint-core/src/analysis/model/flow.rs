@@ -88,35 +88,72 @@ impl<K: Ord> EvidenceValues<K> {
     }
 }
 
+/// Bounded lifecycle key domain shared by requirement and sink indices.
+///
+/// Lifecycle declarations cap the key domain at [`BoundedIndex::MAX`], so each
+/// index maps to one bit of the [`IndexedEvidence`] mask. The cap and the mask
+/// arithmetic live here so a change to the domain bound is made in one place.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct BoundedIndex(usize);
+
+impl BoundedIndex {
+    const MAX: usize = u64::BITS as usize;
+
+    fn new(index: usize) -> Option<Self> {
+        (index < Self::MAX).then_some(Self(index))
+    }
+
+    fn get(self) -> usize {
+        self.0
+    }
+
+    fn bit(self) -> u64 {
+        1u64 << self.0
+    }
+
+    /// The full mask for the first `count` indices, or `None` when `count`
+    /// exceeds the bounded key domain.
+    fn mask(count: usize) -> Option<u64> {
+        if count > Self::MAX {
+            return None;
+        }
+        Some(if count == Self::MAX {
+            u64::MAX
+        } else {
+            (1u64 << count).saturating_sub(1)
+        })
+    }
+}
+
 /// Typed index of a lifecycle requirement in one compiled flow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) struct RequirementIndex(usize);
+pub(in crate::analysis) struct RequirementIndex(BoundedIndex);
 
 impl RequirementIndex {
     pub(in crate::analysis) fn new(index: usize) -> Option<Self> {
-        (index < u64::BITS as usize).then_some(Self(index))
+        BoundedIndex::new(index).map(Self)
     }
 }
 
 impl From<RequirementIndex> for usize {
     fn from(index: RequirementIndex) -> Self {
-        index.0
+        index.0.get()
     }
 }
 
 /// Typed index of a lifecycle sink in one compiled flow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) struct SinkIndex(usize);
+pub(in crate::analysis) struct SinkIndex(BoundedIndex);
 
 impl SinkIndex {
     pub(in crate::analysis) fn new(index: usize) -> Option<Self> {
-        (index < u64::BITS as usize).then_some(Self(index))
+        BoundedIndex::new(index).map(Self)
     }
 }
 
 impl From<SinkIndex> for usize {
     fn from(index: SinkIndex) -> Self {
-        index.0
+        index.0.get()
     }
 }
 
@@ -159,10 +196,21 @@ impl FlowReadiness {
     }
 }
 
-trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
+trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {
+    fn bounded(self) -> BoundedIndex;
+}
 
-impl EvidenceIndex for RequirementIndex {}
-impl EvidenceIndex for SinkIndex {}
+impl EvidenceIndex for RequirementIndex {
+    fn bounded(self) -> BoundedIndex {
+        self.0
+    }
+}
+
+impl EvidenceIndex for SinkIndex {
+    fn bounded(self) -> BoundedIndex {
+        self.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub(in crate::analysis) struct LifecycleRollback<E>(EvidenceValues<E>);
@@ -252,7 +300,7 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
     }
 
     #[cfg(test)]
-    pub fn len(&self) -> usize {
+    pub fn key_count(&self) -> usize {
         self.mask.count_ones() as usize
     }
 
@@ -269,31 +317,33 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         self.entries.iter().map(|(index, values)| (*index, values))
     }
 
-    fn ready(&self, count: usize, all: bool) -> bool {
+    fn ready_any(&self, count: usize) -> bool {
         if self
             .entries
             .iter()
-            .any(|(index, _)| (*index).into() >= count)
+            .any(|(index, _)| (*index).bounded().get() >= count)
         {
             return false;
         }
-        if all {
-            if count > u64::BITS as usize {
-                return false;
-            }
-            let required = if count == u64::BITS as usize {
-                u64::MAX
-            } else {
-                (1u64 << count).saturating_sub(1)
-            };
-            self.mask == required
-        } else {
-            self.mask != 0
+        self.mask != 0
+    }
+
+    fn ready_all(&self, count: usize) -> bool {
+        if self
+            .entries
+            .iter()
+            .any(|(index, _)| (*index).bounded().get() >= count)
+        {
+            return false;
         }
+        let Some(required) = BoundedIndex::mask(count) else {
+            return false;
+        };
+        self.mask == required
     }
 
     fn bit(parameter: I) -> u64 {
-        1u64 << parameter.into()
+        parameter.bounded().bit()
     }
 }
 
@@ -357,10 +407,10 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn requirements_ready(&self, readiness: FlowReadiness) -> bool {
-        self.requirements.ready(
-            readiness.requirement_count,
-            readiness.requirement_mode == RequirementReadiness::All,
-        )
+        match readiness.requirement_mode {
+            RequirementReadiness::Any => self.requirements.ready_any(readiness.requirement_count),
+            RequirementReadiness::All => self.requirements.ready_all(readiness.requirement_count),
+        }
     }
 
     pub(in crate::analysis) fn record_sink(&mut self, index: SinkIndex, event: E) -> bool {
@@ -374,7 +424,7 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     pub(in crate::analysis) fn sinks_ready(&self, readiness: FlowReadiness) -> bool {
         match readiness.sink_mode {
             SinkReadiness::Configuration | SinkReadiness::Any => true,
-            SinkReadiness::All => self.sinks.ready(readiness.sink_count, true),
+            SinkReadiness::All => self.sinks.ready_all(readiness.sink_count),
         }
     }
 

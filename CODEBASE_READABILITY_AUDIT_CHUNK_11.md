@@ -161,7 +161,7 @@ stay with the types.
 
 **Fix Applied:** Verified no consumer outside `crate::analysis` references the flow model (only `api/compiler/object_flow.rs` uses `FlowReadiness`/`RequirementReadiness`/`SinkReadiness`). Narrowed `FlowId`, `FlowLimits`, `FlowState`, `FlowStateKey`, `RequirementIndex`, `SinkIndex`, `LifecycleRollback`, and `FunctionTable` (plus every `FlowState` method and the flow re-exports) to a uniform `pub(in crate::analysis)`; removed the now-dead `get()` accessors on both index newtypes and kept the `From<…> for usize` impls with the types.
 
-#### [ ] READ-005 — `RequirementIndex` and `SinkIndex` are identical parallel newtypes and the 64-key cap invariant is re-encoded across the evidence stack
+#### [x] READ-005 — `RequirementIndex` and `SinkIndex` are identical parallel newtypes and the 64-key cap invariant is re-encoded across the evidence stack
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -188,7 +188,7 @@ between requirement and sink indices — they must not be interchangeable, and
 the `EvidenceIndex` trait exists precisely to keep the domains separate; keep
 the `u64::BITS` overflow special case for `count == 64`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a module-private `BoundedIndex` newtype owning the 64-key cap (`MAX`), `new` bound, per-index `bit`, and the `count == 64`/`count > 64` `mask` arithmetic; both index newtypes now wrap it and stay type-distinct, and `IndexedEvidence` routes `bit` and the readiness masks through it. Split the bool-flagged `ready` into named `ready_any`/`ready_all` (with the fail-closed out-of-range check preserved) and renamed the test-only `len` to `key_count`.
 
 #### [ ] READ-006 — `cross/mod.rs` constructs a full `FlowLimits` only to read back its pass-through operation budget
 

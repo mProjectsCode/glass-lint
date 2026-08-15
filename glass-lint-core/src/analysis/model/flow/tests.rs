@@ -70,7 +70,7 @@ fn flow_id_distinguishes_different_rules_and_indices() {
 fn indexed_evidence_default_is_empty() {
     let set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
     assert!(set.is_empty());
-    assert_eq!(set.len(), 0);
+    assert_eq!(set.key_count(), 0);
 }
 
 #[test]
@@ -78,11 +78,11 @@ fn indexed_evidence_insert_and_remove() {
     let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
     set.insert(RequirementIndex::new(0).unwrap(), FactId::from_test(1));
     set.insert(RequirementIndex::new(1).unwrap(), FactId::from_test(2));
-    assert_eq!(set.len(), 2);
+    assert_eq!(set.key_count(), 2);
     assert!(!set.is_empty());
 
     set.remove(RequirementIndex::new(0).unwrap());
-    assert_eq!(set.len(), 1);
+    assert_eq!(set.key_count(), 1);
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn indexed_evidence_insert_duplicate_key_appends_value() {
     assert_eq!(values.len(), 2);
     assert!(values.contains(&FactId::from_test(10)));
     assert!(values.contains(&FactId::from_test(20)));
-    assert_eq!(set.len(), 1);
+    assert_eq!(set.key_count(), 1);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn indexed_evidence_uses_all_64_completion_bits_and_rejects_overflow() {
     let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
     assert!(set.insert(RequirementIndex::new(63).unwrap(), FactId::from_test(63)));
     assert!(RequirementIndex::new(64).is_none());
-    assert_eq!(set.len(), 1);
+    assert_eq!(set.key_count(), 1);
     assert_eq!(
         set.values().copied().collect::<Vec<_>>(),
         [FactId::from_test(63)]
