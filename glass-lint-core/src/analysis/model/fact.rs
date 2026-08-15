@@ -84,9 +84,6 @@ pub enum ControlKind {
     CatchStart,
     FinallyStart,
     TryEnd,
-    Break,
-    Continue,
-    Return,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -406,8 +403,9 @@ pub(in crate::analysis) enum FactPayload {
         kind: ControlKind,
         region: ControlRegionId,
     },
+    Break,
+    Continue,
     Return {
-        region: ControlRegionId,
         value: ValueId,
     },
     Construction {

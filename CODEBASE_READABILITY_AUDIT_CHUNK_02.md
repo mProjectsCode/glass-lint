@@ -140,7 +140,7 @@ filtering and the `original.clone()` fallback.
 
 ### Fact model and visitor
 
-#### [ ] READ-004 — `Return.region` and the region on `Break`/`Continue` control facts are dead sentinel fields always set to region 0
+#### [x] READ-004 — `Return.region` and the region on `Break`/`Continue` control facts are dead sentinel fields always set to region 0
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -172,6 +172,12 @@ variants with no region (only the regioned kinds stay in `Control`). In
 branch/loop/switch/try region semantics exactly as they are; `Return` must
 still carry `value`, and the deterministic fact order of `visit_return_stmt`
 (`stmt.arg` visited before the fact is emitted) must not change.
+**Fix Applied:** Removed `region` from `FactPayload::Return`, split
+`Break`/`Continue` into standalone region-less `FactPayload` variants (and
+dropped them from `ControlKind`), routed the three abrupt facts from the
+driver directly to the now-`pub(super)` `transfer_abrupt(AbruptExit::…)`, and
+updated the effect `Return` match and the matching ignore-arm. Branch/loop/
+switch/try region semantics and `visit_return_stmt` ordering are unchanged.
 
 #### [ ] READ-005 — The visitor repeats identical fact-emission blocks across `visit_*` methods
 

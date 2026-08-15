@@ -428,7 +428,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
                 &mut self.budget,
             ),
             FactPayload::Call(_) => effect.record_call(fact, &mut self.budget),
-            FactPayload::Return { value, .. } => {
+            FactPayload::Return { value } => {
                 effect.record_return(*value, &self.value_provenance, &mut self.budget);
             }
             _ => {}

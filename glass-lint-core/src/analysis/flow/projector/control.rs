@@ -32,9 +32,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
             | ControlKind::CatchStart
             | ControlKind::FinallyStart
             | ControlKind::TryEnd => self.transfer_try(kind, region),
-            ControlKind::Break | ControlKind::Continue | ControlKind::Return => {
-                self.transfer_abrupt(kind);
-            }
         }
     }
 
@@ -268,13 +265,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         }
     }
 
-    fn transfer_abrupt(&mut self, kind: ControlKind) {
-        let abrupt = match kind {
-            ControlKind::Break => AbruptExit::Break,
-            ControlKind::Continue => AbruptExit::Continue,
-            ControlKind::Return => AbruptExit::Return,
-            _ => unreachable!(),
-        };
+    pub(super) fn transfer_abrupt(&mut self, abrupt: AbruptExit) {
         let current = self.paths.frontier.take_paths();
         for environment in &current {
             self.paths.control.record_abrupt_exit(abrupt, environment);

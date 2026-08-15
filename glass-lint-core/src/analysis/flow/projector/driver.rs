@@ -3,14 +3,14 @@ use std::collections::BTreeSet;
 use glass_lint_datastructures::NameTable;
 
 use super::{
-    AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot,
-    FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector, PendingFlowKey, PendingState,
-    ProjectionInputs, ProjectionPathMachine, ProjectionRunState, PropertyWriteUpdate,
-    loops::LoopFixedPoint,
+    AbruptExit, AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowEvidence,
+    FlowSemanticSnapshot, FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector,
+    PendingFlowKey, PendingState, ProjectionInputs, ProjectionPathMachine, ProjectionRunState,
+    PropertyWriteUpdate, loops::LoopFixedPoint,
 };
 use crate::{
     analysis::{
-        facts::{ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary},
+        facts::{FactId, FactPayload, FactStream, Frozen, FunctionBoundary},
         flow::{FlowCompletion, planning::BoundFlowPlan, summary::FunctionSummaries},
         model::{
             flow::{FlowLimits, FlowState},
@@ -92,9 +92,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             FactPayload::Control { kind, region } => {
                 self.transfer_control(*kind, *region, fact.id);
             }
-            FactPayload::Return { region, .. } => {
-                self.transfer_control(ControlKind::Return, *region, fact.id);
-            }
+            FactPayload::Return { .. } => self.transfer_abrupt(AbruptExit::Return),
+            FactPayload::Break => self.transfer_abrupt(AbruptExit::Break),
+            FactPayload::Continue => self.transfer_abrupt(AbruptExit::Continue),
             _ => self.transfer_paths(fact),
         }
     }

@@ -145,13 +145,16 @@ impl OccurrenceIndexes {
                 }
             }
 
-            // Declaration, Assignment, PropertyWrite, Function, Control
-            // facts do not contribute to occurrence indexes.
+            // Declaration, Assignment, PropertyWrite, Function, Control,
+            // Break, Continue, and Return facts do not contribute to
+            // occurrence indexes.
             FactPayload::Declaration { .. }
             | FactPayload::Assignment { .. }
             | FactPayload::PropertyWrite { .. }
             | FactPayload::Function { .. }
             | FactPayload::Control { .. }
+            | FactPayload::Break
+            | FactPayload::Continue
             | FactPayload::Return { .. } => {}
         }
     }

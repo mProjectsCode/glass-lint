@@ -12,11 +12,11 @@ use swc_common::Spanned;
 use swc_ecma_ast::ExportDefaultExpr;
 
 use crate::analysis::facts::{
-    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId, DoWhileStmt,
-    ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
-    Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Str, SwitchStmt,
-    SymbolCallProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator,
-    Visit, VisitWith, WhileStmt, effective_callee_expr, literal_member_property_name,
+    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, DoWhileStmt, ExportDecl, Expr, FactBuilder,
+    FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl,
+    MemberExpr, NewExpr, OptChainBase, OptChainExpr, Str, SwitchStmt, SymbolCallProvenance, Tpl,
+    TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith, WhileStmt,
+    effective_callee_expr, literal_member_property_name,
 };
 
 impl Visit for FactBuilder<'_, '_> {
@@ -361,14 +361,14 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        self.emit_control(stmt.span(), ControlKind::Break, ControlRegionId::new(0));
+        self.emit(stmt.span(), FactPayload::Break);
     }
 
     fn visit_continue_stmt(&mut self, stmt: &swc_ecma_ast::ContinueStmt) {
         if self.resolver.budget.exhausted() {
             return;
         }
-        self.emit_control(stmt.span(), ControlKind::Continue, ControlRegionId::new(0));
+        self.emit(stmt.span(), FactPayload::Continue);
     }
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
@@ -382,13 +382,7 @@ impl Visit for FactBuilder<'_, '_> {
             .map_or(crate::analysis::model::value::ValueId::UNKNOWN, |expr| {
                 self.resolver.resolve_expr_id(expr)
             });
-        self.emit(
-            stmt.span(),
-            FactPayload::Return {
-                region: ControlRegionId::new(0),
-                value,
-            },
-        );
+        self.emit(stmt.span(), FactPayload::Return { value });
     }
 
     fn visit_export_decl(&mut self, export: &ExportDecl) {
