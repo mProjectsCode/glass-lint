@@ -7,8 +7,8 @@ use crate::analysis::{
     model::{scope::FunctionId, value::MAX_VALUES},
     resolution::{
         ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolutionProvenance,
-        ResolvedValue, Resolver, SymbolCallProvenance, SymbolMemberProvenance, ValueConstruction,
-        ValueId, syntax_constant,
+        ResolvedValue, Resolver, SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId,
+        syntax_constant,
     },
     scope::ScopeId,
     syntax::UnknownReason,
@@ -341,7 +341,7 @@ impl Resolver<'_> {
         let final_id = match &call {
             SymbolCallProvenance::Global { name } => self
                 .values
-                .intern_construction(ValueConstruction::Global(name.clone()), None),
+                .intern_value_with_binding(Value::Global(name.clone()), None),
             _ => seed.provisional_id,
         };
         let module_member = seed

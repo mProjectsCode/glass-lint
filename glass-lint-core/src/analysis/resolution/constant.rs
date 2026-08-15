@@ -8,9 +8,7 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::analysis::resolution::{
-    BindingKey, ConstValue, Resolver, Value, ValueConstruction, ValueId,
-};
+use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
 const MAX_CONST_DEPTH: usize = 32;
 
@@ -73,11 +71,11 @@ impl Resolver<'_> {
         value: ConstValue,
         binding: Option<BindingKey>,
     ) -> ValueId {
-        let construction = match value {
-            ConstValue::Unknown => ValueConstruction::Unknown,
-            ConstValue::String(value) => ValueConstruction::StaticString(value),
-            ConstValue::NonNegativeInteger(value) => ValueConstruction::StaticNumber(value),
-            ConstValue::Array(values) => ValueConstruction::StaticArray(
+        let value = match value {
+            ConstValue::Unknown => Value::Unknown,
+            ConstValue::String(value) => Value::StaticString(value),
+            ConstValue::NonNegativeInteger(value) => Value::StaticNumber(value),
+            ConstValue::Array(values) => Value::StaticArray(
                 values
                     .into_iter()
                     .map(|value| self.intern_bounded_const_value(value, None))
@@ -88,16 +86,11 @@ impl Resolver<'_> {
                     .into_iter()
                     .map(|(key, value)| (key, self.intern_bounded_const_value(value, None)))
                     .collect::<Vec<_>>();
-                let arena = &mut self.values;
-                return arena.intern_construction(
-                    ValueConstruction::StaticObject {
-                        values,
-                        names: &self.names,
-                    },
-                    binding,
-                );
+                return self
+                    .values
+                    .intern_static_object(values, &self.names, binding);
             }
         };
-        self.values.intern_construction(construction, binding)
+        self.values.intern_value_with_binding(value, binding)
     }
 }

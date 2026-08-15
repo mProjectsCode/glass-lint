@@ -7,7 +7,7 @@ use crate::analysis::{
     model::value::MAX_VALUES,
     resolution::{
         Callee, ConstValue, Expr, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
-        SymbolCallProvenance, ValueConstruction, ValueId, syntax_constant,
+        SymbolCallProvenance, Value, ValueId, syntax_constant,
     },
     syntax::UnknownReason,
 };
@@ -118,21 +118,21 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn static_string(&mut self, value: String) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::StaticString(value), None);
+            .intern_value_with_binding(Value::StaticString(value), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::StaticNumber(value), None);
+            .intern_value_with_binding(Value::StaticNumber(value), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::StaticArray(values), None);
+            .intern_value_with_binding(Value::StaticArray(values), None);
         self.interned_value(id, false)
     }
 
@@ -142,7 +142,7 @@ impl Resolver<'_> {
     ) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::StaticObjectShape(object), None);
+            .intern_value_with_binding(Value::StaticObject(object), None);
         self.interned_value(id, false)
     }
 
@@ -152,14 +152,14 @@ impl Resolver<'_> {
     ) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::Object(object), None);
+            .intern_value_with_binding(Value::Object(object), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
         let id = self
             .values
-            .intern_construction(ValueConstruction::RootedMember(path), None);
+            .intern_value_with_binding(Value::RootedMember { path }, None);
         self.interned_value(id, false)
     }
 

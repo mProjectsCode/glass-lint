@@ -121,7 +121,7 @@ resolution-record identity and project budgets are unchanged.
 
 ### Value arena
 
-#### [ ] READ-003 — `ValueConstruction` re-declares `Value` and is fanned out through an exhaustive 1:1 match
+#### [x] READ-003 — `ValueConstruction` re-declares `Value` and is fanned out through an exhaustive 1:1 match
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -158,7 +158,7 @@ shape still marks the table `exhausted` and returns `ValueId::UNKNOWN`
 (`value.rs:263-275`), and binding wrapping in `intern_value_with_binding`
 is unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ValueConstruction` and `intern_construction`; `intern_value_with_binding` is now `pub(in crate::analysis)` and the `static_values`, `constant`, `call`, and `expression` helpers build `Value` directly. The `&NameTable` object path became a `pub(in crate::analysis)` `intern_static_object` on `ValueTable` (with an optional binding), preserving fail-closed `UNKNOWN` on unresolved names and over-budget shapes.
 
 #### [ ] READ-004 — `FunctionId` conversion surface duplicated and the `IdIndex` impl stranded in `value.rs`
 

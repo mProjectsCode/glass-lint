@@ -176,7 +176,7 @@ fn intern_static_object_creates_object_with_canonical_names() {
     let val_a = table.intern(Value::StaticString("val_a".into()));
     let val_b = table.intern(Value::StaticNumber(1));
     let pairs = vec![("b".into(), val_b), ("a".into(), val_a)];
-    let obj = table.intern_static_object(pairs, &names);
+    let obj = table.intern_static_object(pairs, &names, None);
     let value = table.get(obj).expect("object should exist");
     let Value::StaticObject(object) = value else {
         panic!("expected StaticObject, got {value:?}");
@@ -192,7 +192,7 @@ fn intern_static_object_exhausts_on_unknown_name() {
     let names = NameTable::default();
     let val = table.intern(Value::StaticNumber(0));
     let pairs = vec![("unknown".into(), val)];
-    let result = table.intern_static_object(pairs, &names);
+    let result = table.intern_static_object(pairs, &names, None);
     assert_eq!(result, ValueId::UNKNOWN);
     assert!(table.exhausted());
 }

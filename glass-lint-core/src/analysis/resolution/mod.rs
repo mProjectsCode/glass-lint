@@ -33,7 +33,7 @@ use crate::analysis::{
     facts::{Building, FactStream, Frozen, stream::FrozenStorage},
     model::{
         scope::BindingKey,
-        value::{Value, ValueConstruction, ValueId, ValueTable},
+        value::{Value, ValueId, ValueTable},
     },
     scope::{BoundArgument, FrozenScopeGraph},
     semantic::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
