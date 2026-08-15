@@ -29,7 +29,7 @@ together, and several small API/duplication issues.
 
 ### Fact emission (visitor / assignments / calls)
 
-#### [ ] READ-001 — Member-read lowering is duplicated in three places
+#### [x] READ-001 — Member-read lowering is duplicated in three places
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -54,7 +54,7 @@ sites exactly as today (`visit_member_expr` and the opt-chain arm visit
 children after the emit; `record_member_assignment` visits `obj`/`prop`
 beforehand and the RHS afterwards), so evidence order is unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `FactBuilder::record_member_read` in a new `reads.rs` module; `visit_member_expr`, the opt-chain `Member` arm, and `record_member_assignment` now all call it with child visitation unchanged.
 
 #### [ ] READ-002 — Import fact order relative to its Call event is inconsistent between `import()` and `require()`
 

@@ -66,18 +66,7 @@ impl FactBuilder<'_, '_> {
         // before emitting the write/kill fact.
         member.obj.visit_with(self);
         member.prop.visit_with(self);
-        let resolved_member = self.resolver.resolve_member(member);
-        let chain = self.resolver.member_expression_chain(member);
-        let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
-        self.emit(
-            member.span(),
-            FactPayload::MemberRead {
-                syntactic_path,
-                rooted_chain: self.rooted_path(resolved_member.rooted_chain.as_ref()),
-                module_member: resolved_member.module_member.clone(),
-                returned_member: self.returned_path(resolved_member.returned_member.as_ref()),
-            },
-        );
+        self.record_member_read(member);
         assignment.right.visit_with(self);
         let receiver = self.resolver.resolve_expr_id(&member.obj);
         let property_name = literal_member_property_name(&member.prop);

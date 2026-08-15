@@ -32,6 +32,7 @@ mod interface;
 mod origin_map;
 mod pattern;
 mod provenance;
+mod reads;
 mod state;
 pub(in crate::analysis) mod stream;
 mod visitor;
