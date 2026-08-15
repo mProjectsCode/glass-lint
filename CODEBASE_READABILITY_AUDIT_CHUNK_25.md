@@ -92,7 +92,7 @@ keeps passing because all of its diagnostics have `path=None`, so
 
 ### report/evidence.rs — evidence invariants and state routing
 
-#### [ ] READ-003 — `EvidenceTraceState` enum is flag-routing indirection that adds no vocabulary
+#### [x] READ-003 — `EvidenceTraceState` enum is flag-routing indirection that adds no vocabulary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -121,7 +121,7 @@ and `fallback` semantics identical, and update every `with_truncation` call
 site in the same change (`lint/report/evidence.rs:95`,
 `project/report/tests.rs:411`, `glass-lint-harness/src/types/protocol.rs:326`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `EvidenceTraceState` and `from_state`; `EvidenceTraces::new` rejects empty, and a new `from_truncated` constructor names the truncated state and tolerates empty input. All four `with_truncation` call sites (`lint/report/evidence.rs`, `project/report/tests.rs`, `glass-lint-harness/src/types/protocol.rs`, and the unit test) select the constructor directly.
 
 ### report/operations.rs — operation-count accumulator surface
 

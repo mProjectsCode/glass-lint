@@ -408,18 +408,14 @@ fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
         first.message().to_owned(),
         first.severity(),
         first.location().clone(),
-        EvidenceTraces::with_truncation(
-            vec![
-                EvidenceTrace::new(vec![EvidenceStep::new(
-                    EvidenceRole::Source,
-                    "source".into(),
-                    first.location().clone(),
-                )])
-                .unwrap(),
-            ],
-            true,
-        )
-        .unwrap(),
+        EvidenceTraces::from_truncated(vec![
+            EvidenceTrace::new(vec![EvidenceStep::new(
+                EvidenceRole::Source,
+                "source".into(),
+                first.location().clone(),
+            )])
+            .unwrap(),
+        ]),
         MatchCertainty::Possible,
     );
 

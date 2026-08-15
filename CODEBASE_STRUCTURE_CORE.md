@@ -939,7 +939,6 @@ deterministic findings.
 - `project::types::report::evidence::EvidenceRole` — Classifies an evidence step's role.
 - `project::types::report::evidence::EvidenceStep` — Stores one ordered evidence step.
 - `project::types::report::evidence::EvidenceTrace` — Stores one finding evidence trace.
-- `project::types::report::evidence::EvidenceTraceState` — Tracks complete or truncated evidence traces.
 - `project::types::report::evidence::EvidenceTraces` — Groups deterministic evidence traces.
 - `project::types::report::file_report` — Defines a report for one source file.
 - `project::types::report::file_report::FileReport` — Stores findings and diagnostics for one file.

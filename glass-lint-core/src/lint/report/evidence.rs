@@ -82,8 +82,11 @@ impl EvidenceRangeEntry<'_> {
                 range.clone(),
             )));
         }
-        let evidence =
-            EvidenceTraces::with_truncation(traces.into_iter().collect(), truncated).ok()?;
+        let evidence = if truncated {
+            EvidenceTraces::from_truncated(traces.into_iter().collect())
+        } else {
+            EvidenceTraces::new(traces.into_iter().collect()).ok()?
+        };
         Some((range, evidence, certainty))
     }
 }

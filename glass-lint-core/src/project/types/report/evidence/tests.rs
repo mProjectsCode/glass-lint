@@ -14,5 +14,5 @@ fn rejects_empty_non_truncated_collection() {
         EvidenceTraces::new(Vec::new()),
         Err(EvidenceConstructionError::EmptyTraces)
     );
-    assert!(EvidenceTraces::with_truncation(Vec::new(), true).is_ok());
+    assert!(EvidenceTraces::from_truncated(Vec::new()).truncated());
 }

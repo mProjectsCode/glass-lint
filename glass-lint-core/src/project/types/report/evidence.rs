@@ -101,38 +101,23 @@ pub struct EvidenceTraces {
     truncated: bool,
 }
 
-enum EvidenceTraceState {
-    Complete(Vec<EvidenceTrace>),
-    Truncated(Vec<EvidenceTrace>),
-}
-
 impl EvidenceTraces {
     pub fn new(traces: Vec<EvidenceTrace>) -> Result<Self, EvidenceConstructionError> {
-        Self::with_truncation(traces, false)
-    }
-
-    pub fn with_truncation(
-        traces: Vec<EvidenceTrace>,
-        truncated: bool,
-    ) -> Result<Self, EvidenceConstructionError> {
-        Self::from_state(if truncated {
-            EvidenceTraceState::Truncated(traces)
-        } else {
-            EvidenceTraceState::Complete(traces)
+        if traces.is_empty() {
+            return Err(EvidenceConstructionError::EmptyTraces);
+        }
+        Ok(Self {
+            traces,
+            truncated: false,
         })
     }
 
-    fn from_state(state: EvidenceTraceState) -> Result<Self, EvidenceConstructionError> {
-        let (traces, truncated) = match state {
-            EvidenceTraceState::Complete(traces) => {
-                if traces.is_empty() {
-                    return Err(EvidenceConstructionError::EmptyTraces);
-                }
-                (traces, false)
-            }
-            EvidenceTraceState::Truncated(traces) => (traces, true),
-        };
-        Ok(Self { traces, truncated })
+    /// A truncated evidence collection that may be empty.
+    pub fn from_truncated(traces: Vec<EvidenceTrace>) -> Self {
+        Self {
+            traces,
+            truncated: true,
+        }
     }
 
     pub fn traces(&self) -> &[EvidenceTrace] {
@@ -167,22 +152,19 @@ impl EvidenceTraces {
         let mut traces = left;
         traces.sort();
         traces.dedup();
-        Self::from_state(if left_truncated || right_truncated {
-            EvidenceTraceState::Truncated(traces)
+        if left_truncated || right_truncated {
+            Self::from_truncated(traces)
         } else {
-            EvidenceTraceState::Complete(traces)
-        })
-        .expect("merging valid evidence traces cannot create an invalid state")
+            Self::new(traces).expect("merging valid evidence traces cannot create an invalid state")
+        }
     }
 
     /// Create an EvidenceTraces with a single fallback Occurrence step at the
     /// given location. Used when an external path must produce a valid trace
     /// without explicit step data.
     pub fn fallback(location: SourceLocation) -> Self {
-        Self::from_state(EvidenceTraceState::Complete(vec![
-            EvidenceTrace::occurrence(location),
-        ]))
-        .expect("fallback evidence always contains one step")
+        Self::new(vec![EvidenceTrace::occurrence(location)])
+            .expect("fallback evidence always contains one step")
     }
 }
 
