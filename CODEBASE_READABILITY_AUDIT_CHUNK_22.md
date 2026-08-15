@@ -76,7 +76,7 @@ the default visitor; the existing object-spread tests
 
 **Fix Applied:** Deleted the `visit_object_lit` override; object-literal traversal now uses the default `swc_ecma_visit` visitor while `visit_prop_or_spread` keeps recording `ObjectRestSpread`.
 
-#### [ ] READ-007 — `in_parameter_pattern` save/set/restore sequence is duplicated across the two function visitors
+#### [x] READ-007 — `in_parameter_pattern` save/set/restore sequence is duplicated across the two function visitors
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -99,7 +99,7 @@ params — set false — visit body — restore", so nested functions inside def
 parameter values keep the correct context while destructuring assignments in
 the body are not misdetected as default parameters.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `FeatureDetector::visit_under_parameter_pattern` and call it from both `visit_arrow_expr` and `visit_function`, preserving the "set true — params — set false — body — restore" ordering.
 
 ### [environment]
 

@@ -34,6 +34,19 @@ impl FeatureDetector {
             features: self.features.into_iter().collect(),
         }
     }
+
+    fn visit_under_parameter_pattern(
+        &mut self,
+        visit_params: impl FnOnce(&mut Self),
+        visit_body: impl FnOnce(&mut Self),
+    ) {
+        let was_in_parameter_pattern = self.in_parameter_pattern;
+        self.in_parameter_pattern = true;
+        visit_params(self);
+        self.in_parameter_pattern = false;
+        visit_body(self);
+        self.in_parameter_pattern = was_in_parameter_pattern;
+    }
 }
 
 impl Visit for FeatureDetector {
@@ -44,12 +57,10 @@ impl Visit for FeatureDetector {
         }
         arrow.type_params.visit_with(self);
         arrow.return_type.visit_with(self);
-        let was_in_parameter_pattern = self.in_parameter_pattern;
-        self.in_parameter_pattern = true;
-        arrow.params.visit_with(self);
-        self.in_parameter_pattern = false;
-        arrow.body.visit_with(self);
-        self.in_parameter_pattern = was_in_parameter_pattern;
+        self.visit_under_parameter_pattern(
+            |detector| arrow.params.visit_with(detector),
+            |detector| arrow.body.visit_with(detector),
+        );
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
@@ -106,12 +117,10 @@ impl Visit for FeatureDetector {
         function.decorators.visit_with(self);
         function.type_params.visit_with(self);
         function.return_type.visit_with(self);
-        let was_in_parameter_pattern = self.in_parameter_pattern;
-        self.in_parameter_pattern = true;
-        function.params.visit_with(self);
-        self.in_parameter_pattern = false;
-        function.body.visit_with(self);
-        self.in_parameter_pattern = was_in_parameter_pattern;
+        self.visit_under_parameter_pattern(
+            |detector| function.params.visit_with(detector),
+            |detector| function.body.visit_with(detector),
+        );
     }
 
     fn visit_for_of_stmt(&mut self, statement: &swc_ecma_ast::ForOfStmt) {
