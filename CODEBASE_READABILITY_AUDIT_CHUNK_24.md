@@ -100,7 +100,7 @@ id-based and internal (`pub(crate)`, `project/mod.rs:26`).
 
 **Fix Applied:** Extracted the five shared payload variants into `ResolvedTargetKind` beside `ResolverOutcome` in `resolution.rs`; both `ResolverOutcome` (`Internal { path }` + `Target`) and `LinkedModuleTarget` (`Internal { id }` + `Target`) embed it, with `From` conversions; reduced `resolve_record` to the `Internal` remap and updated every consumer in core, `glass-lint-project` (`resolver.rs`, `resolver/tests.rs`), and `glass-lint-harness` (`types/protocol.rs`).
 
-#### [ ] READ-003 — `SourceFile` exposes two JS-default constructor paths with no vocabulary difference
+#### [x] READ-003 — `SourceFile` exposes two JS-default constructor paths with no vocabulary difference
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -123,7 +123,7 @@ decide explicitly whether `new` stays as the documented JS-default convenience
 Guardrail: keep `from_relative_with_language`, which is the only validated-path
 constructor with a production caller.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Folded into READ-001: `from_relative` was deleted there, and per the resolved Open Question `SourceFile::new` stays as the documented JS-default convenience for doctests and tests; `from_relative_with_language` remains the validated-path constructor.
 
 ### Project session (`project/session/mod.rs`, `project/tables.rs`)
 
