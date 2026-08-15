@@ -7,7 +7,7 @@
 use smol_str::ToSmolStr;
 
 use crate::analysis::{
-    model::value::MAX_VALUES,
+    model::{module::NAMESPACE_EXPORT, value::MAX_VALUES},
     module_request::{
         ModuleRequestContext, ModuleRequestKind, ModuleRequestPolicy, recognize_module_call,
     },
@@ -60,7 +60,7 @@ impl Resolver<'_> {
         {
             let import_call = SymbolCallProvenance::ModuleExport {
                 module: request.module().into(),
-                export: "*".into(),
+                export: NAMESPACE_EXPORT.into(),
             };
             let id = self.intern_call_value(&import_call, None, None);
             let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {

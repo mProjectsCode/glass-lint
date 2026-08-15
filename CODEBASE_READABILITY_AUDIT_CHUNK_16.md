@@ -170,7 +170,7 @@ overlay-consult order (`resolve_global`/`resolve_module_key`,
 
 **Fix Applied:** Deleted `EventIndexCapabilities`, `AnyIndex`, `LiteralIndex`, `ModuleIndex`, and `RootedIndex` and moved all `resolve_*` methods onto `EventIndexView` (via `resolve`/`resolve_any`/`resolve_global`/`resolve_module_export`/`resolve_package_export`/`resolve_module_namespace`/`resolve_package_namespace`/`resolve_rooted`/`resolve_literal`/`resolve_package_specifier`/`resolve_module_key`/`resolve_package`) with small per-variant accessors (`members`, `member`, `global`, `module`, `rooted`). The per-event index restriction, overlay-consult order, and nine-way identity dispatch are unchanged.
 
-#### [ ] READ-005 — The `"*"` namespace-export sentinel is duplicated as a raw literal while `NAMESPACE_EXPORT` already exists
+#### [x] READ-005 — The `"*"` namespace-export sentinel is duplicated as a raw literal while `NAMESPACE_EXPORT` already exists
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -199,7 +199,7 @@ export name (real exports may not be `"*"`), the wildcard lookup semantics in
 `identity_for` (`matching/mod.rs:212-227`) must not change, and `DEFAULT_EXPORT`
 and the other model constants stay where they are.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Consolidated the marker on `crate::analysis::model::module::NAMESPACE_EXPORT`: `ModuleExportKey::wildcard` builds its key from it, `resolution/call.rs` uses it for the dynamic-import export, and `project/identities.rs` passes it to `target_to_export_resolution`. The `project/linker/export.rs` site already used the constant and was unchanged.
 
 #### [ ] READ-006 — Three private-network scanners each hand-roll a variant of the same token-boundary check, and the IPv4 parser match has a dead IPv6 arm
 

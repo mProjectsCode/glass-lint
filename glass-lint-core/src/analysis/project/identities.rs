@@ -12,7 +12,7 @@ use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
     flow::effect::CallShape,
     matching::{ModuleExportKey, ModuleIdentityContributions, ModuleIdentityMap},
-    model::module::{ImportedBinding, ModuleRequestId, ModuleRequestRole},
+    model::module::{ImportedBinding, ModuleRequestId, ModuleRequestRole, NAMESPACE_EXPORT},
     project::{
         model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
     },
@@ -232,6 +232,10 @@ impl ProjectSemanticModel {
             return ExportResolution::Unknown;
         };
         let key = QualifiedRequestId::new(module, request_index);
-        target_to_export_resolution(self.resolution_for(&key), request.specifier(), "*")
+        target_to_export_resolution(
+            self.resolution_for(&key),
+            request.specifier(),
+            NAMESPACE_EXPORT,
+        )
     }
 }

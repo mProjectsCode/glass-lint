@@ -438,7 +438,7 @@ impl ModuleExportKey {
     }
 
     pub(in crate::analysis) fn wildcard(module: impl Into<SmolStr>) -> Self {
-        Self::new(module, "*")
+        Self::new(module, crate::analysis::model::module::NAMESPACE_EXPORT)
     }
 }
 
