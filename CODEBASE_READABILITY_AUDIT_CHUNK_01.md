@@ -128,7 +128,7 @@ unchanged.
 
 ### Capabilities
 
-#### [ ] READ-004 — `DerivedPhaseCapabilities` has three always-covariant fields that are never set independently
+#### [x] READ-004 — `DerivedPhaseCapabilities` has three always-covariant fields that are never set independently
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -151,7 +151,7 @@ the all-or-nothing disable semantics asserted in `semantic/tests.rs`.
 Guardrail: if a genuinely independent per-phase disable is added later, reintroduce
 granularity then; do not silently enable one phase after another was disabled.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `DerivedPhaseCapabilities` now stores one `DerivedPhaseAvailability`; the three accessors (`export_origins`, `fact_index`, `effects`) read the same value, and the all-or-nothing disable semantics stay asserted in `semantic/tests.rs`.
 
 ### Wrapper lowering
 

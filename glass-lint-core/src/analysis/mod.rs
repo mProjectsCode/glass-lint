@@ -49,39 +49,35 @@ impl DerivedPhaseAvailability {
     }
 }
 
+/// Derived-phase availability is all-or-nothing: incomplete analysis disables
+/// every derived phase together. Reintroduce per-phase granularity only if a
+/// genuinely independent per-phase disable is added later.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::analysis) struct DerivedPhaseCapabilities {
-    export_origins: DerivedPhaseAvailability,
-    fact_index: DerivedPhaseAvailability,
-    effects: DerivedPhaseAvailability,
+    availability: DerivedPhaseAvailability,
 }
 
 impl DerivedPhaseCapabilities {
     pub(in crate::analysis) const fn enabled() -> Self {
         Self {
-            export_origins: DerivedPhaseAvailability::Enabled,
-            fact_index: DerivedPhaseAvailability::Enabled,
-            effects: DerivedPhaseAvailability::Enabled,
+            availability: DerivedPhaseAvailability::Enabled,
         }
     }
 
     pub(in crate::analysis) fn disable_derived_phases(&mut self) {
-        let disabled = DerivedPhaseAvailability::DisabledByIncompleteAnalysis;
-        self.export_origins = disabled;
-        self.fact_index = disabled;
-        self.effects = disabled;
+        self.availability = DerivedPhaseAvailability::DisabledByIncompleteAnalysis;
     }
 
     pub(in crate::analysis) const fn export_origins(self) -> DerivedPhaseAvailability {
-        self.export_origins
+        self.availability
     }
 
     pub(in crate::analysis) const fn fact_index(self) -> DerivedPhaseAvailability {
-        self.fact_index
+        self.availability
     }
 
     pub(in crate::analysis) const fn effects(self) -> DerivedPhaseAvailability {
-        self.effects
+        self.availability
     }
 }
 
