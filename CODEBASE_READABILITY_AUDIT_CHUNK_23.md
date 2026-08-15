@@ -158,7 +158,7 @@ remain distinct, and the input-order guarantee of `take_ready` must not change.
 
 ### Report evidence assembly
 
-#### [ ] READ-005 — `EvidenceRangeEntry` and `FindingGroup` are identical-shape parallel structs
+#### [x] READ-005 — `EvidenceRangeEntry` and `FindingGroup` are identical-shape parallel structs
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -185,7 +185,7 @@ corrupt later groups. Guardrails: the retained-range selection performed by
 (`FindingGroup::add_entry`, `evidence.rs:49-52`) must keep their exact ordering
 and containment semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed `FindingGroup` into `EvidenceRangeEntry` (the single `{ range, occurrences }` struct); `new`, `add_entry`, and `into_evidence` now live on `EvidenceRangeEntry`, and `into_groups` became `into_entries`. Occurrences stay copied in `add_entry` so overlapping retained ranges are not corrupted.
 
 #### [ ] READ-006 — Inline fallback occurrence step duplicates `EvidenceTraces::fallback`
 

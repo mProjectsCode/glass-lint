@@ -31,13 +31,7 @@ struct EvidenceRangeEntry<'a> {
     occurrences: Vec<ResolvedEvidenceOccurrence<'a>>,
 }
 
-#[derive(Debug)]
-struct FindingGroup<'a> {
-    range: SourceRange,
-    occurrences: Vec<ResolvedEvidenceOccurrence<'a>>,
-}
-
-impl<'a> FindingGroup<'a> {
+impl EvidenceRangeEntry<'_> {
     fn new(range: SourceRange) -> Self {
         Self {
             range,
@@ -45,7 +39,7 @@ impl<'a> FindingGroup<'a> {
         }
     }
 
-    fn add_entry(&mut self, entry: &EvidenceRangeEntry<'a>) {
+    fn add_entry(&mut self, entry: &Self) {
         if self.range.contains(&entry.range) {
             self.occurrences.extend(entry.occurrences.iter().copied());
         }
@@ -157,11 +151,11 @@ impl<'a> FindingRenderer<'a> {
         if evidence_items.is_empty() {
             return Vec::new();
         }
-        let groups = FindingRangeBuilder::new(evidence_items, lines).into_groups();
-        groups
+        let entries = FindingRangeBuilder::new(evidence_items, lines).into_entries();
+        entries
             .into_iter()
-            .filter_map(|group| {
-                let (range, evidence, certainty) = group.into_evidence(self, path)?;
+            .filter_map(|entry| {
+                let (range, evidence, certainty) = entry.into_evidence(self, path)?;
                 Finding::new(
                     rule_id.clone(),
                     capability.label().to_string(),
@@ -294,7 +288,7 @@ impl<'a> FindingRangeBuilder<'a> {
         }
     }
 
-    fn into_groups(self) -> Vec<FindingGroup<'a>> {
+    fn into_entries(self) -> Vec<EvidenceRangeEntry<'a>> {
         let Self {
             entries,
             retained_indices,
@@ -308,7 +302,7 @@ impl<'a> FindingRangeBuilder<'a> {
             {
                 entry_cursor += 1;
             }
-            let mut group = FindingGroup::new(retained);
+            let mut group = EvidenceRangeEntry::new(retained);
             let mut scan = entry_cursor;
             while scan < entries.len() && entries[scan].range.start() <= group.range.end() {
                 group.add_entry(&entries[scan]);
