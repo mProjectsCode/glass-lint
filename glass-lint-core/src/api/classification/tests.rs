@@ -90,7 +90,7 @@ mod test_evidence_capacity {
             .is_none()
         );
         assert!(
-            ClassificationEvidence::with_total_count(
+            ClassificationEvidence::from_parts(
                 MatchKind::Call,
                 "fetch".into(),
                 0,

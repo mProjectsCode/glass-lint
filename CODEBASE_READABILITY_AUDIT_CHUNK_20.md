@@ -27,7 +27,7 @@ fail-open shapes (`with_total_count`, `ModuleEvidence::into_evidence`).
 
 ### [Classification: evidence construction]
 
-#### [ ] READ-001 — `ClassificationEvidence` exposes two constructors where one private `from_parts` plus a redundant forwarding wrapper
+#### [x] READ-001 — `ClassificationEvidence` exposes two constructors where one private `from_parts` plus a redundant forwarding wrapper
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -50,7 +50,7 @@ would do. A reader must check all four to learn that the only invariant is
 unchanged. Guardrail: do not merge `from_occurrence` (infallible) with the fallible
 constructors; its non-`Option` shape is the deliberate single-occurrence guarantee.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the redundant `with_total_count` forwarding wrapper and promoted `from_parts` to `pub(crate)` as the single fallible total-count constructor; updated the two `analysis/matching/evidence.rs` call sites and the capacity-guard unit test to call `from_parts` directly. Guard and `u32::MAX` saturation unchanged; `from_occurrence` keeps its infallible single-occurrence shape.
 
 ### [Classification: evidence accumulation boundary]
 

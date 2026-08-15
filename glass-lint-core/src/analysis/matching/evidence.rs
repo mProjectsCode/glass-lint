@@ -103,7 +103,7 @@ impl EvidenceAccumulator {
                 accum.occurrences.dedup_by(|a, b| {
                     a.span() == b.span() && a.fact() == b.fact() && a.trace() == b.trace()
                 });
-                ClassificationEvidence::with_total_count(
+                ClassificationEvidence::from_parts(
                     key.0,
                     key.1,
                     accum.total_count,
@@ -133,7 +133,7 @@ impl EvidencePresenter {
                 .copied()
                 .take(self.limit)
                 .collect();
-            *group = ClassificationEvidence::with_total_count(
+            *group = ClassificationEvidence::from_parts(
                 group.kind(),
                 group.symbol().to_owned(),
                 group.count() as usize,

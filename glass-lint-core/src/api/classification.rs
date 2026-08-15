@@ -123,7 +123,7 @@ impl ClassificationEvidenceOccurrence {
 }
 
 impl ClassificationEvidence {
-    fn from_parts(
+    pub(crate) fn from_parts(
         kind: MatchKind,
         symbol: String,
         total_count: usize,
@@ -171,17 +171,6 @@ impl ClassificationEvidence {
     ) -> Self {
         Self::from_parts(kind, symbol, 1, false, certainty, vec![occurrence])
             .expect("one retained occurrence must fit its total count")
-    }
-
-    pub(crate) fn with_total_count(
-        kind: MatchKind,
-        symbol: String,
-        total_count: usize,
-        truncated: bool,
-        certainty: MatchCertainty,
-        occurrences: Vec<ClassificationEvidenceOccurrence>,
-    ) -> Option<Self> {
-        Self::from_parts(kind, symbol, total_count, truncated, certainty, occurrences)
     }
 
     pub fn count(&self) -> u32 {
