@@ -383,6 +383,10 @@ pub enum LintConfigError {
     /// A selector is malformed or did not select any assembled rule.
     InvalidSelector(String),
     /// A catalog contains the same fully-qualified rule more than once.
+    ///
+    /// Catalog composition runs during linter construction, so its failure is
+    /// re-hosted here to keep one error type for the whole construction
+    /// surface.
     DuplicateRule(RuleId),
     /// A catalog rule failed validation or matcher/query compilation.
     InvalidRule(RuleId, RuleCompilationError),

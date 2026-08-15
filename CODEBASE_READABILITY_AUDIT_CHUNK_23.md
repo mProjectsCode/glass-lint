@@ -86,7 +86,7 @@ real lifecycle transition.
 
 **Fix Applied:** Removed `ProjectReportAssembler` from the `lint/mod.rs` re-export (now only `ProjectAnalysis`/`ProjectAnalysisTimings` are re-exported) and made `mod report` reachable (`pub mod report`) so the type is only reachable behind the report module boundary; `ProjectSession::finish` now imports `crate::lint::report::ProjectReportAssembler`. The literal `pub(crate)` form is not usable here because the workspace clippy gate (`redundant_pub_crate`, nursery, `-D warnings`) rejects it for every item in the private `lint` module; the crate-root re-export continues to omit the type.
 
-#### [ ] READ-003 — `LintConfigError` mixes catalog and selection error domains; two of the `Linter::new` mapping arms are unreachable and misleading
+#### [x] READ-003 — `LintConfigError` mixes catalog and selection error domains; two of the `Linter::new` mapping arms are unreachable and misleading
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -121,7 +121,7 @@ match `LintConfigError::UnknownRule` (`lint/linter/tests.rs:97`); those display
 and match behavior must be preserved, and provider-boundary validation must stay
 out of core rule policy.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the `InvalidRule` and `InvalidRuleId` mapping arms in `Linter::new`, leaving only the `DuplicateRule` case (the two impossible `ProviderCatalogError` variants are handled with an explicit `unreachable!`), and documented on `LintConfigError::DuplicateRule` why catalog-composition failure is re-hosted into `LintConfigError`.
 
 ### Batch execution
 

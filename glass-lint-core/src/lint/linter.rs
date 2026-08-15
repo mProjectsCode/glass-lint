@@ -152,11 +152,8 @@ impl Linter {
                 selection,
             } => {
                 let catalog = RuleCatalog::combine(catalogs).map_err(|error| match error {
-                    ProviderCatalogError::InvalidRule(id, diagnostic) => {
-                        LintConfigError::InvalidRule(id, diagnostic)
-                    }
                     ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
-                    ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
+                    _ => unreachable!("combining validated catalogs can only fail on duplicates"),
                 })?;
                 let enabled = selection.resolve(&catalog)?;
                 (catalog, enabled)
