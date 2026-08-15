@@ -114,7 +114,6 @@ impl<'a, 'session> ContextProjection<'a, 'session> {
         propagation::CallPropagation::new(
             self.session,
             self.effect,
-            self.context.module(),
             self.context,
             &mut self.propagated,
             None,

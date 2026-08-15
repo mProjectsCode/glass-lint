@@ -17,7 +17,6 @@ use crate::{
         trace::QualifiedEvent,
     },
     api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
-    project::ModuleId,
 };
 
 pub(super) struct UsageProjector<'a, 'session> {
@@ -60,7 +59,6 @@ impl UsageProjector<'_, '_> {
             CallPropagation::new(
                 self.session,
                 self.effect,
-                self.context.module(),
                 self.context,
                 self.propagated,
                 Some(event),
@@ -230,7 +228,6 @@ impl UsageProjector<'_, '_> {
 pub(super) struct CallPropagation<'a, 'session> {
     session: &'a mut CrossProjectionSession<'session>,
     effect: &'a FunctionEffect,
-    module: ModuleId,
     context: &'a CallContext,
     propagated: &'a mut BTreeSet<FactId>,
     through: Option<FactId>,
@@ -241,7 +238,6 @@ impl CallPropagation<'_, '_> {
     pub(super) fn new<'a, 'session>(
         session: &'a mut CrossProjectionSession<'session>,
         effect: &'a FunctionEffect,
-        module: ModuleId,
         context: &'a CallContext,
         propagated: &'a mut BTreeSet<FactId>,
         through: Option<FactId>,
@@ -250,7 +246,6 @@ impl CallPropagation<'_, '_> {
         CallPropagation {
             session,
             effect,
-            module,
             context,
             propagated,
             through,
@@ -268,7 +263,7 @@ impl CallPropagation<'_, '_> {
             let Some(target) = self
                 .session
                 .call_graph
-                .get(QualifiedEvent::new(self.module, call.event()))
+                .get(QualifiedEvent::new(self.context.module(), call.event()))
             else {
                 continue;
             };
@@ -280,7 +275,7 @@ impl CallPropagation<'_, '_> {
                         target.function(),
                         argument.index(),
                         self.state,
-                        self.context.is_crossed() || target.module() != self.module,
+                        self.context.is_crossed() || target.module() != self.context.module(),
                     );
                 }
             }

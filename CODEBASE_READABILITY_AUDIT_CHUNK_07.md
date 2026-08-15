@@ -212,7 +212,7 @@ value local flow charges against so a cross/local budget split cannot diverge.
 
 **Fix Applied:** `collect` now uses `project.flow_limit()` directly for `source_budget` and `step_budget` (with a comment noting cross is bounded by the same operations budget as local flow); deleted the `FlowLimits` import and the `from_flow_operations(...).operation_limit()` round-trip.
 
-#### [ ] READ-008 — `CallPropagation.module` always equals `context.module()`
+#### [x] READ-008 — `CallPropagation.module` always equals `context.module()`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -232,7 +232,7 @@ Guardrails: propagation must always stay within the context's module — the
 callee `ModuleId` for the `crossed` flag still comes from the call target, not
 from `module`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the `module` parameter and field from `CallPropagation`; both read sites now use `self.context.module()`, and both call sites (`UsageProjector::project`, `ContextProjection::propagate_calls`) updated. The `crossed` flag still compares the call target's module.
 
 #### [ ] READ-009 — `ModuleEvidence::trace_heads` is a `pub(super)` counter field mutated and read across module boundaries
 
