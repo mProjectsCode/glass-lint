@@ -107,9 +107,7 @@ impl ProjectLinker {
             if unknown {
                 status.record(
                     crate::analysis::semantic::status::StatusScope::File(path),
-                    crate::analysis::semantic::status::IncompleteReason::UnsupportedModuleInterface {
-                        kind: crate::analysis::semantic::status::ModuleInterfaceKind::CommonJsExports,
-                    },
+                    crate::analysis::semantic::status::IncompleteReason::UnsupportedModuleInterface,
                 );
             }
         }

@@ -474,7 +474,6 @@ deterministic findings.
 - `semantic::status::AnalysisStatus` — Aggregates analysis completeness information.
 - `semantic::status::IncompleteReason` — Explains why analysis is incomplete.
 - `semantic::status::LocalAnalysisStatus` — Owns the completeness status of one reusable local semantic artifact.
-- `semantic::status::ModuleInterfaceKind` — Classifies a module interface outcome.
 - `semantic::status::ResolutionKind` — Classifies a resolution outcome.
 - `semantic::status::StatusEntry` — Records one scoped analysis status.
 - `semantic::status::StatusScope` — Identifies the artifact scope of a status.

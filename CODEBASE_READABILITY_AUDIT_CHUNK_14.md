@@ -110,7 +110,7 @@ complete) and the `materialize_file` path-rewrite behavior unchanged.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — Single-variant `ModuleInterfaceKind` used as a constant payload
+#### [x] READ-003 — Single-variant `ModuleInterfaceKind` used as a constant payload
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -133,7 +133,11 @@ code and message identical (`status.rs:271-274`); the variant is part of the sha
 `IncompleteReason` vocabulary used by the linker and report phases, so update every
 `match`/constructor in the same change and preserve fail-closed semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the single-variant `ModuleInterfaceKind` enum and made
+`IncompleteReason::UnsupportedModuleInterface` a unit variant. Updated its only
+constructor (`analysis/project/linker/mod.rs`) and the `diagnostic()` arm, and
+removed the stale `ModuleInterfaceKind` entry from `CODEBASE_STRUCTURE_CORE.md`.
+The diagnostic code (`unsupported_commonjs_exports`) and message are unchanged.
 
 #### [ ] READ-004 — Completion-assessment helpers misnamed and reading `Resolver.budget` across module boundary
 

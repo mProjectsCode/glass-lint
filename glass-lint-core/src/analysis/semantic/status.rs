@@ -15,11 +15,6 @@ pub enum AnalysisComponent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum ModuleInterfaceKind {
-    CommonJsExports,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ResolutionKind {
     Unsupported,
     OutsideProject,
@@ -64,9 +59,7 @@ pub enum IncompleteReason {
         limit: usize,
         attempted: usize,
     },
-    UnsupportedModuleInterface {
-        kind: ModuleInterfaceKind,
-    },
+    UnsupportedModuleInterface,
     UnsupportedResolution {
         request: String,
         kind: ResolutionKind,
@@ -258,9 +251,7 @@ impl IncompleteReason {
                 DiagnosticKind::NameBudgetExhausted,
                 format!("semantic name table exhausted; limit={limit}, attempted={attempted}"),
             ),
-            Self::UnsupportedModuleInterface {
-                kind: ModuleInterfaceKind::CommonJsExports,
-            } => (
+            Self::UnsupportedModuleInterface => (
                 DiagnosticKind::UnsupportedCommonjsExports,
                 "CommonJS export shape is dynamic or ambiguous".into(),
             ),
