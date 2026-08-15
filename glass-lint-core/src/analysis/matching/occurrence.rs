@@ -27,12 +27,7 @@ pub(in crate::analysis) enum OccurrenceSelection<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
     Borrowed(BorrowedOccurrenceIter<'a>),
     BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
-    Scanned(ScannedOccurrences),
-}
-
-pub(in crate::analysis) struct ScannedOccurrences {
-    values: Vec<Occurrence>,
-    next: usize,
+    Scanned(std::vec::IntoIter<Occurrence>),
 }
 
 impl<'a> OccurrenceSelection<'a> {
@@ -41,10 +36,7 @@ impl<'a> OccurrenceSelection<'a> {
     }
 
     pub(super) fn scanned(occurrences: Vec<Occurrence>) -> Self {
-        Self::Scanned(ScannedOccurrences {
-            values: occurrences,
-            next: 0,
-        })
+        Self::Scanned(occurrences.into_iter())
     }
 
     /// Convert candidates to the common evidence order while retaining
@@ -54,7 +46,7 @@ impl<'a> OccurrenceSelection<'a> {
             Self::Indexed(iter) => OrderedOccurrences::Indexed(iter),
             Self::Borrowed(iter) => OrderedOccurrences::Borrowed(iter),
             Self::BorrowedPackage(iter) => OrderedOccurrences::sorted(iter),
-            Self::Scanned(scanned) => OrderedOccurrences::sorted(scanned.values),
+            Self::Scanned(iter) => OrderedOccurrences::sorted(iter),
         }
     }
 }
@@ -93,11 +85,7 @@ impl Iterator for OccurrenceSelection<'_> {
             Self::Indexed(iter) => iter.next(),
             Self::Borrowed(iter) => iter.next(),
             Self::BorrowedPackage(iter) => iter.next(),
-            Self::Scanned(scanned) => {
-                let value = scanned.values.get(scanned.next).copied();
-                scanned.next = scanned.next.saturating_add(1);
-                value
-            }
+            Self::Scanned(iter) => iter.next(),
         }
     }
 }

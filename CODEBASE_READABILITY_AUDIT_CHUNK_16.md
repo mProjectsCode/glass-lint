@@ -72,7 +72,7 @@ exercises only the lazy Indexed path and is indifferent to it).
 
 **Fix Applied:** Added `Occurrence::sort_key()` as the single canonical ordering owner and used it in `OccurrenceIndex::normalize` (both `sort_unstable_by_key` and `dedup_by_key`), `OrderedOccurrences::sorted`, and `MergeItem::cmp` (which keeps only the bucket tie-break); `MergeItem` no longer stores redundant `event`/`start`/`end` copies and `occurrence.rs` dropped its unused `FactId` import. The evidence-boundary sort in `normalize_evidence` is unchanged.
 
-#### [ ] READ-002 — `ScannedOccurrences` reimplements `std::vec::IntoIter` by hand
+#### [x] READ-002 — `ScannedOccurrences` reimplements `std::vec::IntoIter` by hand
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -100,7 +100,7 @@ recorded by `OccurrenceIndex::matching` (`storage.rs:62-73`), and the
 `matching`-built selections must remain sorted at the evidence boundary exactly
 as today.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the `ScannedOccurrences` struct and its hand-rolled `next`; the `Scanned` variant now carries `std::vec::IntoIter<Occurrence>`, `scanned` wraps the `Vec` with `.into_iter()`, and `into_ordered`/`Iterator::next` route through the std iterator. Sorting and duplicate retention are unchanged.
 
 #### [ ] READ-003 — `BorrowedPackageOccurrenceIter` encodes its two-phase traversal with a flag plus two nullable fields
 
