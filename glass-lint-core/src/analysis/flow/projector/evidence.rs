@@ -259,9 +259,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Returns `None` if the trace arena is exhausted.
     fn build_flow_trace(&mut self, state: &FlowState, sink_fact: FactId) -> Option<TraceNodeId> {
         let requirements = state
-            .requirement_entries()
-            .filter_map(|(_index, values)| values.into_iter().next())
-            .map(|fact| QualifiedEvent::new(self.inputs.module_id, fact));
+            .first_requirement_events()
+            .map(|(_index, fact)| QualifiedEvent::new(self.inputs.module_id, *fact));
         let prior_sinks = state
             .prior_sinks(sink_fact)
             .into_iter()

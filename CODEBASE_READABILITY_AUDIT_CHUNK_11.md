@@ -99,7 +99,7 @@ overlay.
 
 ### Model flow types — lifecycle evidence and limits
 
-#### [ ] READ-003 — `LifecycleEvidence::{requirement_entries,sink_entries}` materialize a `Vec<E>` per index that one consumer immediately discards
+#### [x] READ-003 — `LifecycleEvidence::{requirement_entries,sink_entries}` materialize a `Vec<E>` per index that one consumer immediately discards
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -124,7 +124,7 @@ trace consumer, keeping the full-valued `*_entries` view only for the snapshot
 consumer. Guardrails: preserve deterministic declaration order in both
 consumers and leave `prior_sink_events`' sorted+dedup contract untouched.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a borrowing `first_requirement_events` accessor (`impl Iterator<Item = (RequirementIndex, &E)>`) on `LifecycleEvidence` and `FlowState`; `build_flow_trace` now reads the first event of each index without materializing a per-index `Vec`. The full-valued `requirement_entries`/`sink_entries` views remain only for the loop fixed-point snapshot, and `prior_sink_events`' sorted+dedup contract is unchanged.
 
 #### [ ] READ-004 — `FlowState` and sibling flow types mix three visibility tiers (`pub`, `pub(crate)`, `pub(in crate::analysis)`) even though only `FlowReadiness` is consumed outside `crate::analysis`
 

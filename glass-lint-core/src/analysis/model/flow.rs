@@ -399,6 +399,18 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
             .map(|(index, values)| (index, values.iter().cloned().collect()))
     }
 
+    /// First event recorded for each requirement index, in declaration order.
+    ///
+    /// The trace consumer only needs the first event of each index, so this
+    /// borrows instead of materializing a `Vec` per index.
+    pub(in crate::analysis) fn first_requirement_events(
+        &self,
+    ) -> impl Iterator<Item = (RequirementIndex, &E)> {
+        self.requirements
+            .iter_by_key()
+            .filter_map(|(index, values)| values.iter().next().map(|event| (index, event)))
+    }
+
     pub(in crate::analysis) fn requirement_events(&self) -> impl Iterator<Item = &E> {
         self.requirements.values()
     }

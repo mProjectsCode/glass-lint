@@ -113,6 +113,12 @@ impl FlowState {
         self.evidence.requirement_entries()
     }
 
+    pub(in crate::analysis) fn first_requirement_events(
+        &self,
+    ) -> impl Iterator<Item = (RequirementIndex, &FactId)> {
+        self.evidence.first_requirement_events()
+    }
+
     pub(crate) fn sink_entries(&self) -> impl Iterator<Item = (SinkIndex, Vec<FactId>)> {
         self.evidence.sink_entries()
     }
