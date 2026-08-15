@@ -7,9 +7,7 @@
 use glass_lint_datastructures::SymbolPath;
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
-use crate::analysis::scope::{
-    BindingProvenance, FrozenScopeGraph, frozen_assignments::BindingResolutionStatus,
-};
+use crate::analysis::scope::{FrozenScopeGraph, frozen_assignments::BindingResolutionStatus};
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.
@@ -24,30 +22,8 @@ impl RootedExprContext for FrozenScopeGraph {
             return None;
         }
         let resolution = self.binding_resolution_at(ident.sym.as_ref(), ident.span);
-        let mut rooted = None;
-        resolution.for_each_witness(|provenance| {
-            let path = match provenance {
-                BindingProvenance::ValueAlias { target }
-                | BindingProvenance::BoundCallable { target, .. } => target,
-                BindingProvenance::ReturnedObject { source } => source,
-                BindingProvenance::BoundModuleCallable { .. }
-                | BindingProvenance::Local
-                | BindingProvenance::ModuleExport { .. }
-                | BindingProvenance::DefaultImport { .. }
-                | BindingProvenance::ModuleNamespace { .. }
-                | BindingProvenance::ConstructedInstance { .. }
-                | BindingProvenance::StaticString(_)
-                | BindingProvenance::StaticNumber(_)
-                | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_) => return,
-            };
-            if let Some(path) = self.symbol_path(path) {
-                rooted = Some(path);
-            }
-        });
-        if rooted.is_some() {
-            return rooted;
+        if let Some(rooted) = self.rooted_witness_path(resolution) {
+            return Some(rooted);
         }
         if resolution.status() == BindingResolutionStatus::Absent
             && self.is_global(ident.sym.as_ref())

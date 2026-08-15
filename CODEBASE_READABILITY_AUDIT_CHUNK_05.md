@@ -168,7 +168,7 @@ resolution semantics unchanged.
 
 **Fix Applied:** Renamed the inherent `FrozenScopeGraph::rooted_member_chain` resolver to `resolve_rooted_member_chain` (chain.rs) and made the trait impl a thin explicit delegator; updated the object.rs caller. The trait keeps both implementors with unchanged member-root semantics.
 
-#### [ ] READ-005 — Three parallel `BindingProvenance` → rooted-path extractions disagree on witness selection and rootedness
+#### [x] READ-005 — Three parallel `BindingProvenance` → rooted-path extractions disagree on witness selection and rootedness
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -203,7 +203,7 @@ which is not a witness path, and preserve the write-occurrence behavior of
 `rooted_write_member_chain` (chain.rs:54-65), which intentionally bypasses
 the read resolver.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `FrozenScopeGraph::rooted_witness_path` (first rooted-available witness over the complete witnesses, with the `rooted_path_available` gate) in chain.rs. `resolve_provenance_alternatives` derives from it and keeps suffix appending; `rooted_ident_chain` derives from it (dropping the last-wins overwrite and the unrooted un-gated targets) and keeps the global-absent fallback. `callable_member_chain_from_resolution` intentionally keeps its preferred-witness-only, fail-closed rule: unifying it with first-rooted-available would let a joined binding with an incompatible non-rooted alternative claim a rooted identity, which the flow projector's value identity would accept as a witness (guarded by `incompatible_branch_facts_do_not_form_a_flow_witness`). `rooted_write_member_chain` is unchanged.
 
 #### [ ] READ-006 — Parallel expression-shape normalizers with divergent `Seq` coverage
 

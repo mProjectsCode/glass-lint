@@ -212,6 +212,13 @@ impl FrozenScopeGraph {
         Some(object.append_chain(&self.contextual_member_property_name(member)?))
     }
 
+    /// Resolve the seed's rooted identity from the preferred witness only.
+    ///
+    /// Unlike [`rooted_witness_path`], this deliberately fails closed for a
+    /// joined binding whose preferred witness is not rooted-available:
+    /// skipping to a later rooted alternative would let an ambiguous binding
+    /// claim a rooted identity, which the flow projector's value identity
+    /// would then accept as a witness.
     fn callable_member_chain_from_resolution(
         &self,
         resolution: BindingResolution<'_>,

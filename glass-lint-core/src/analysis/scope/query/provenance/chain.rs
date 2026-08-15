@@ -138,9 +138,26 @@ impl FrozenScopeGraph {
         resolution: BindingResolution<'_>,
         suffix: &SymbolPath,
     ) -> Option<SymbolPath> {
-        let mut resolved = None;
+        self.rooted_witness_path(resolution)
+            .map(|path| path.append_path(suffix))
+    }
+
+    /// Resolve the first rooted-available witness of a binding resolution.
+    ///
+    /// Iterates the retained complete witnesses in order and keeps the first
+    /// whose target is a global or `this` path, matching the
+    /// `preferred_witness` order. Shared by the member-chain and callable
+    /// provenance paths so sibling queries cannot disagree on a binding.
+    pub(in crate::analysis) fn rooted_witness_path(
+        &self,
+        resolution: BindingResolution<'_>,
+    ) -> Option<SymbolPath> {
+        let mut rooted = None;
         resolution.for_each_witness(|provenance| {
-            let target = match provenance {
+            if rooted.is_some() {
+                return;
+            }
+            let path = match provenance {
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. } => target,
                 BindingProvenance::ReturnedObject { source } => source,
@@ -156,14 +173,13 @@ impl FrozenScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_) => return,
             };
-            if resolved.is_none()
-                && self.rooted_path_available(target)
-                && let Some(path) = self.symbol_path(target)
+            if self.rooted_path_available(path)
+                && let Some(path) = self.symbol_path(path)
             {
-                resolved = Some(path.append_path(suffix));
+                rooted = Some(path);
             }
         });
-        resolved
+        rooted
     }
 
     fn resolve_global_fallback(
