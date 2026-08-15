@@ -29,7 +29,7 @@ No source, test, config, or documentation files were modified.
 
 ### API surface and ownership
 
-#### [ ] READ-001 — Parallel input containers with overlapping fields, consumed at one call site and immediately rebuilt
+#### [x] READ-001 — Parallel input containers with overlapping fields, consumed at one call site and immediately rebuilt
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -60,7 +60,10 @@ Guardrail: keep frozen inputs (`ProjectionInputs`) separate from per-run mutable
 state (`ProjectionRunState`, `FlowEvidence`); do not collapse those ownership
 domains.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ObjectFlowProjectorInput`; `collect_into` now constructs
+`ProjectionInputs` directly via `ProjectionInputs::new` and passes it to
+`ObjectFlowProjector::new` alongside the run-state inputs (`evidence`, `limits`,
+`completion`, `trace_arena`), keeping frozen inputs separate from per-run mutable state.
 
 #### [ ] READ-006 — `FlowEvidence` re-receives run-fixed bounds on every call; per-key cap is an unnamed literal
 

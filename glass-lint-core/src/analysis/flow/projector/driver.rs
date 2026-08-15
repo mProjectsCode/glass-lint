@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use glass_lint_datastructures::NameTable;
-
 use super::{
     AbruptExit, AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowEvidence,
     FlowSemanticSnapshot, FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector,
@@ -10,8 +8,8 @@ use super::{
 };
 use crate::{
     analysis::{
-        facts::{FactId, FactPayload, FactStream, Frozen, FunctionBoundary},
-        flow::{FlowCompletion, planning::BoundFlowPlan, summary::FunctionSummaries},
+        facts::{FactId, FactPayload, FunctionBoundary},
+        flow::FlowCompletion,
         model::{
             flow::{FlowLimits, FlowState},
             value::{FlowObjectId, ValueId},
@@ -19,7 +17,6 @@ use crate::{
         trace::TraceArena,
     },
     api::classification::RuleEvidenceTable,
-    project::ModuleId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,33 +40,16 @@ enum PathRestoration {
     Exhausted,
 }
 
-pub(in crate::analysis::flow::projector) struct ObjectFlowProjectorInput<'rules, 'stream, 'arena> {
-    pub(super) stream: &'stream FactStream<Frozen>,
-    pub(super) names: &'stream NameTable,
-    pub(super) plan: BoundFlowPlan<'rules>,
-    pub(super) helpers: FunctionSummaries<'stream>,
-    pub(super) evidence: &'stream mut RuleEvidenceTable,
-    pub(super) limits: FlowLimits,
-    pub(super) completion: FlowCompletion,
-    pub(super) module_id: ModuleId,
-    pub(super) trace_arena: &'arena mut TraceArena,
-}
-
 impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
-    pub(super) fn new(input: ObjectFlowProjectorInput<'rules, 'stream, 'arena>) -> Self {
-        let ObjectFlowProjectorInput {
-            stream,
-            names,
-            plan,
-            helpers,
-            evidence,
-            limits,
-            completion,
-            module_id,
-            trace_arena,
-        } = input;
+    pub(super) fn new(
+        inputs: ProjectionInputs<'rules, 'stream>,
+        evidence: &'stream mut RuleEvidenceTable,
+        limits: FlowLimits,
+        completion: FlowCompletion,
+        trace_arena: &'arena mut TraceArena,
+    ) -> Self {
         Self {
-            inputs: ProjectionInputs::new(stream, names, plan, helpers, module_id),
+            inputs,
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             run: ProjectionRunState::new(limits, completion),

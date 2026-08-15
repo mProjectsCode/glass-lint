@@ -19,9 +19,7 @@ mod transfer;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(in crate::analysis::flow::projector) use driver::{
-    EmissionMode, ObjectFlowProjectorInput, PathAdmission,
-};
+pub(in crate::analysis::flow::projector) use driver::{EmissionMode, PathAdmission};
 use glass_lint_datastructures::{Budget, NameTable};
 use state::{
     AbruptExit, ControlFrame, ControlStack, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot,
@@ -130,17 +128,8 @@ pub(in crate::analysis) fn collect_into(
     let mut summary_budget = Budget::new(limits.emission_limit());
     let helpers = FunctionSummaries::collect(stream, effects, &plan, &mut summary_budget);
     let completion = helpers.completion();
-    let mut projector = ObjectFlowProjector::new(ObjectFlowProjectorInput {
-        stream,
-        names,
-        plan,
-        helpers,
-        evidence,
-        limits,
-        completion,
-        module_id,
-        trace_arena,
-    });
+    let inputs = ProjectionInputs::new(stream, names, plan, helpers, module_id);
+    let mut projector = ObjectFlowProjector::new(inputs, evidence, limits, completion, trace_arena);
     for fact in stream.facts() {
         projector.transfer(fact);
     }
