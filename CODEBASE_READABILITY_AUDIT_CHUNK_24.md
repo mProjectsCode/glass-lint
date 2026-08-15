@@ -34,7 +34,7 @@ No source, test, or configuration files were changed.
 
 ### Project input types (`project/types/input.rs`, `project/types/input/resolution.rs`)
 
-#### [ ] READ-001 — Dead and test-only accessors on public project input types
+#### [x] READ-001 — Dead and test-only accessors on public project input types
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -65,7 +65,7 @@ tests clone via `range().clone()` (callers at `artifacts/tests.rs:121` and
 `source()` accessors; retain `SourceFile::new` only as the documented JS-default
 convenience for tests and doctests (see READ-003).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `SourceFile::from_relative`, `SourceFile::into_path`, `SourceFile::into_source`, and `ResolutionRequest::range_owned`; deleted `ResolutionRequestKey::range_owned` and switched the two test callers to `range().clone()`.
 
 #### [ ] READ-002 — `ResolverOutcome` and `LinkedModuleTarget` are parallel enums joined by a mechanical passthrough
 
