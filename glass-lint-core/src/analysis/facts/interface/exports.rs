@@ -1,8 +1,8 @@
-use smol_str::ToSmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::{
-    DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportSpecifier, Expr,
-    NamedExport,
+    DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportNamedSpecifier,
+    ExportSpecifier, Expr, NamedExport,
 };
 
 use crate::analysis::{
@@ -11,6 +11,17 @@ use crate::analysis::{
 };
 
 impl ModuleInterfaceBuilder {
+    /// The `(original, exported)` name pair of a named export specifier, with
+    /// the exported name falling back to the original when no alias is given.
+    fn original_exported_pair(specifier: &ExportNamedSpecifier) -> (SmolStr, SmolStr) {
+        let original = module_export_name(&specifier.orig);
+        let exported = specifier
+            .exported
+            .as_ref()
+            .map_or_else(|| original.clone(), module_export_name);
+        (original, exported)
+    }
+
     pub(in crate::analysis::facts) fn record_export_decl(
         &mut self,
         declaration: &swc_ecma_ast::Decl,
@@ -76,11 +87,7 @@ impl ModuleInterfaceBuilder {
             if let ExportSpecifier::Named(named) = specifier
                 && !named.is_type_only
             {
-                let original = module_export_name(&named.orig);
-                let exported = named
-                    .exported
-                    .as_ref()
-                    .map_or_else(|| original.clone(), module_export_name);
+                let (original, exported) = Self::original_exported_pair(named);
                 if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
                     && let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone()))
                 {
@@ -112,11 +119,7 @@ impl ModuleInterfaceBuilder {
         for specifier in specifiers {
             match specifier {
                 ExportSpecifier::Named(named) => {
-                    let original = module_export_name(&named.orig);
-                    let exported = named
-                        .exported
-                        .as_ref()
-                        .map_or_else(|| original.clone(), module_export_name);
+                    let (original, exported) = Self::original_exported_pair(named);
                     self.add_export(
                         exported,
                         ModuleExport::ReExport {

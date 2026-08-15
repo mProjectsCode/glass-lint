@@ -104,7 +104,7 @@ static `collect_pattern_locals` helper was deleted. `add_local` stays
 idempotent and `visit_var_declarator` still records every declarator, so the
 later re-insertion is a no-op and destructured exports keep their names.
 
-#### [ ] READ-003 — Module-export-name `(original, exported)` normalization is repeated in two export functions
+#### [x] READ-003 — Module-export-name `(original, exported)` normalization is repeated in two export functions
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -133,6 +133,10 @@ and use it in both functions. Guardrail: keep the type-only filtering and the
 `original.clone()` reuse of the original name as-is; do not fold
 `record_local_named_exports` and `record_reexports` together — their
 `ModuleExport` variants differ.
+**Fix Applied:** Extracted the private `original_exported_pair` helper on
+`ModuleInterfaceBuilder` in `interface/exports.rs` and used it in both
+`record_local_named_exports` and `record_reexports`, preserving the type-only
+filtering and the `original.clone()` fallback.
 
 ### Fact model and visitor
 
