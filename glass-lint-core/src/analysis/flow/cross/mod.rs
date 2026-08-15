@@ -19,17 +19,12 @@ use hashbrown::HashMap;
 use crate::{
     analysis::{
         ProjectSemanticModel,
-        facts::FactId,
         flow::{
             FlowCompletion, FlowCompletionReason,
             cross::{
-                evidence::ModuleEvidence,
-                graph::QualifiedCallGraph,
-                sources::FlowSources,
-                state::{CallContext, CrossFlowState},
-                worklist::ContextWorklist,
+                evidence::ModuleEvidence, graph::QualifiedCallGraph, sources::FlowSources,
+                state::CallContext, worklist::ContextWorklist,
             },
-            effect::FunctionEffect,
             planning::{BoundFlowPlan, BoundLifecycleRoot},
         },
         model::flow::FlowId,
@@ -59,68 +54,6 @@ struct CrossProjectionSession<'a> {
     worklist: &'a mut ContextWorklist,
     names: &'a glass_lint_datastructures::NameTable,
     arena: &'a mut TraceArena,
-}
-
-/// Inputs for one bounded worklist context projection.
-struct ContextProjection<'a, 'session> {
-    session: &'a mut CrossProjectionSession<'session>,
-    context: &'a CallContext,
-    effect: &'a FunctionEffect,
-    flow: &'a CompiledObjectFlow,
-    flow_plan: &'a BoundFlowPlan<'session>,
-    state: CrossFlowState,
-    propagated: BTreeSet<FactId>,
-}
-
-impl<'a, 'session> ContextProjection<'a, 'session> {
-    fn new(
-        session: &'a mut CrossProjectionSession<'session>,
-        context: &'a CallContext,
-        effect: &'a FunctionEffect,
-        flow: &'a CompiledObjectFlow,
-        flow_plan: &'a BoundFlowPlan<'session>,
-        state: &CrossFlowState,
-    ) -> Self {
-        Self {
-            session,
-            context,
-            effect,
-            flow,
-            flow_plan,
-            state: state.clone(),
-            propagated: BTreeSet::new(),
-        }
-    }
-
-    fn project(mut self) {
-        self.project_usage();
-        self.propagate_calls();
-    }
-
-    fn project_usage(&mut self) {
-        propagation::UsageProjector::new(
-            self.session,
-            self.context,
-            self.effect,
-            self.flow,
-            self.flow_plan,
-            &mut self.state,
-            &mut self.propagated,
-        )
-        .project();
-    }
-
-    fn propagate_calls(&mut self) {
-        propagation::CallPropagation::new(
-            self.session,
-            self.effect,
-            self.context,
-            &mut self.propagated,
-            None,
-            &self.state,
-        )
-        .propagate();
-    }
 }
 
 struct CrossWorklist<'a, 'arena> {
@@ -185,15 +118,27 @@ impl CrossWorklist<'_, '_> {
             names,
             arena: self.arena,
         };
-        ContextProjection::new(
+        let mut state = context.state().clone();
+        let mut propagated = BTreeSet::new();
+        propagation::UsageProjector::new(
             &mut session,
             context,
             effect,
             flow,
             flow_plan,
-            context.state(),
+            &mut state,
+            &mut propagated,
         )
         .project();
+        propagation::CallPropagation::new(
+            &mut session,
+            effect,
+            context,
+            &mut propagated,
+            None,
+            &state,
+        )
+        .propagate();
     }
 
     fn finish(

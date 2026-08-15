@@ -283,7 +283,7 @@ already enforces.
 
 **Fix Applied:** Extracted `advance_requirements(event, Vec<RequirementIndex>)` as the shared advance/emit/commit phase; `apply_property` and `apply_receiver` now supply only their matching step. The `emit_requirements` `CompletionMode::Configuration` + `is_crossed` gating and the per-usage call-propagation ordering are unchanged.
 
-#### [ ] READ-011 — `ContextProjection` is a one-call-site borrow-packaging struct
+#### [x] READ-011 — `ContextProjection` is a one-call-site borrow-packaging struct
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -308,7 +308,7 @@ the per-context `state.clone()` and its in-place write-back, and the
 `through = None` propagation (versus the per-usage `Some(event)` variant in
 `UsageProjector`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ContextProjection`; `project_context` now inlines the two-phase sequence directly — clone `state`, run `UsageProjector` (per-usage propagation with `Some(event)`), then `CallPropagation` with `through = None` on the committed state. Ordering, per-context clone/write-back, and `None` propagation are preserved.
 
 ## Systemic Themes
 
