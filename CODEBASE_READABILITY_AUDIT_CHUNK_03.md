@@ -230,7 +230,7 @@ must keep its `DEFAULT_ALTERNATIVE_LIMIT`, `reachable = true`, and
 
 ### Declaration classification
 
-#### [ ] READ-007 — `DeclarationClassification::Binding` uses `String` while sibling variants use `SmolStr`
+#### [x] READ-007 — `DeclarationClassification::Binding` uses `String` while sibling variants use `SmolStr`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -252,7 +252,7 @@ does) and drop the `.to_owned()`. Guardrails: `update_binding`'s
 must keep producing `None` for the name via `declaration_name`
 (pattern-ident-only).
 
-**Fix Applied:** None so far.
+**Fix Applied:** `DeclarationClassification::Binding` now carries `name: SmolStr` like `Require`; `binding()` uses `to_smolstr()` instead of `to_owned()`. `update_binding`'s `impl Into<SmolStr>` contract and `declaration_name` (pattern-ident-only) are unchanged.
 
 ## Systemic Themes
 

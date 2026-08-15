@@ -1,5 +1,5 @@
 use glass_lint_datastructures::NamePath;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{Callee, Expr, Pat};
 
 use crate::analysis::{
@@ -9,7 +9,7 @@ use crate::analysis::{
 
 pub enum DeclarationClassification {
     Binding {
-        name: String,
+        name: SmolStr,
         provenance: BindingProvenance,
     },
     Require {
@@ -227,7 +227,7 @@ fn binding(name: Option<&str>, provenance: BindingProvenance) -> Option<Declarat
         || None,
         |name| {
             Some(DeclarationClassification::Binding {
-                name: name.to_owned(),
+                name: name.to_smolstr(),
                 provenance,
             })
         },
