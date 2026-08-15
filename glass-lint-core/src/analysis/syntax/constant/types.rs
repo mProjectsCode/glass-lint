@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, ToSmolStr};
 
-pub(super) const MAX_DEPTH: usize = 32;
+pub(in crate::analysis) const MAX_DEPTH: usize = 32;
 pub(super) const MAX_NODES: usize = 4_096;
 pub(super) const MAX_LOOKUPS: usize = 512;
 pub(super) const MAX_STRING_BYTES: usize = 16 * 1024;

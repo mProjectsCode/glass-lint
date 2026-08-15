@@ -8,9 +8,10 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
-
-const MAX_CONST_DEPTH: usize = 32;
+use crate::analysis::{
+    resolution::{BindingKey, ConstValue, Resolver, Value, ValueId},
+    syntax::constant::MAX_DEPTH,
+};
 
 impl Resolver<'_> {
     /// Read a bounded constant value from the abstract value arena.
@@ -24,7 +25,7 @@ impl Resolver<'_> {
     }
 
     fn const_value_depth(&self, id: ValueId, depth: usize) -> ConstValue {
-        if depth >= MAX_CONST_DEPTH {
+        if depth >= MAX_DEPTH {
             return ConstValue::Unknown;
         }
         let values = &self.values;

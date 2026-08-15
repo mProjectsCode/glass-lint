@@ -184,7 +184,7 @@ Object/Bin arm of `resolve_expr`, and `resolve_binary` now all call it. `EvalNod
 alongside the other `syntax::constant` evaluator types to name the helper parameter. Evaluate and
 admission semantics are unchanged.
 
-#### [ ] READ-005 — `MAX_CONST_DEPTH` duplicates the shared constant-tree depth limit
+#### [x] READ-005 — `MAX_CONST_DEPTH` duplicates the shared constant-tree depth limit
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -203,6 +203,11 @@ and leaves the arena-materialization guard stale.
 `MAX_OBJECT_KEYS`) and reference it from `const_value_depth` in
 resolution/constant.rs, making read and write depth limits one constant. Guardrail: keep the value
 at 32; do not alter admission or recursion semantics.
+
+**Fix Applied:** `MAX_DEPTH` is re-exported from `syntax::constant` (its visibility widened to
+`pub(in crate::analysis)` in `types.rs`), and `Resolver::const_value_depth` now references it
+directly; the local `MAX_CONST_DEPTH` literal in `resolution/constant.rs` was deleted. The value
+remains 32.
 
 #### [ ] READ-006 — Inconsistent `static_string*` naming family on `Resolver`
 
