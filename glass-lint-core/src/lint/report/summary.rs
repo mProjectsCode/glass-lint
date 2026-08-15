@@ -9,10 +9,9 @@ pub(super) fn assemble_project_report(
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
     files: Vec<FileReport>,
-    mut diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
     outcome: &ProjectionOutcome,
 ) -> AnalysisReport {
-    diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
     let (aggregate, evidence_steps, rendered_traces) =
         AnalysisReport::aggregate_and_evidence(&files, &diagnostics);
 
@@ -42,4 +41,5 @@ pub(super) fn assemble_project_report(
         },
         aggregate,
     )
+    .finalize()
 }

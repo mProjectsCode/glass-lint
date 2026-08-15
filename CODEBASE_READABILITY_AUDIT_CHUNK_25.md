@@ -58,7 +58,7 @@ unchanged (stable schema), keep `summary()` an O(1) accessor, and keep
 
 **Fix Applied:** Removed `evidence_steps`/`rendered_traces` from `FinalizedReportAggregate`; `from_parts` now returns them alongside the summary from one scan via `AnalysisReport::aggregate_and_evidence`, and `assemble_project_report` records them once into `AnalysisOperationCounts` (the serialized owner).
 
-#### [ ] READ-002 — Two canonical diagnostic orderings, one per construction path
+#### [x] READ-002 — Two canonical diagnostic orderings, one per construction path
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -88,7 +88,7 @@ keep the aggregate computation after the final sort; `public_report_transformati
 keeps passing because all of its diagnostics have `path=None`, so
 `(path, code, message)` reduces to the expected code order.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `assemble_project_report` now routes its report through `AnalysisReport::finalize` and the code-only sort at summary.rs:15 was dropped; `finalize` is the single sorting owner for direct assembly, `into_partial`, `with_project_diagnostics`, and `combine`.
 
 ### report/evidence.rs — evidence invariants and state routing
 
