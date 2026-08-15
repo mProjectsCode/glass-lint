@@ -110,7 +110,7 @@ still failing closed on `ConstraintsRequireCallEvent`.
 
 ### api/compiler/physical — parallel `ObjectSlot` newtype with duplicated conversion
 
-#### [ ] READ-004 — physical `ObjectSlot` duplicates `normalized::ObjectSlot`; the fallible conversion is inlined twice
+#### [x] READ-004 — physical `ObjectSlot` duplicates `normalized::ObjectSlot`; the fallible conversion is inlined twice
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -132,7 +132,10 @@ for ObjectSlot` (or `TryFrom<u32>`) and call it from both constructors, folding
 `ObjectSlot::new` into it. Guardrail: keep the two IR layers distinct and keep the
 fail-closed `ImpossibleDimensions` rejection; do not loosen the sentinel check.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Folded `ObjectSlot::new` into one canonical
+`TryFrom<NormalizedObjectSlot> for ObjectSlot`; both `returned_subject` and
+`instance_subject` now call it, keeping the IR layers distinct and the sentinel
+rejection fail-closed on `ImpossibleDimensions`.
 
 ### api/compiler/object_flow — enum representation matched outside its owner
 

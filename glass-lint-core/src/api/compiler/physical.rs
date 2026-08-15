@@ -72,10 +72,13 @@ pub(crate) enum PhysicalRoot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct ObjectSlot(u32);
 
-impl ObjectSlot {
-    fn new(slot: u32) -> Result<Self, PhysicalPlanValidationError> {
-        (slot != u32::MAX)
-            .then_some(Self(slot))
+impl TryFrom<NormalizedObjectSlot> for ObjectSlot {
+    type Error = PhysicalPlanValidationError;
+
+    fn try_from(slot: NormalizedObjectSlot) -> Result<Self, Self::Error> {
+        let value = slot.get();
+        (value != u32::MAX)
+            .then_some(Self(value))
             .ok_or(PhysicalPlanValidationError::ImpossibleDimensions)
     }
 }
@@ -122,7 +125,7 @@ impl PhysicalRoot {
     ) -> Result<Self, PhysicalPlanValidationError> {
         Ok(Self::ReturnedSubject {
             producer,
-            object_slot: ObjectSlot::new(object_slot.get())?,
+            object_slot: ObjectSlot::try_from(object_slot)?,
             member,
             event,
             evidence,
@@ -137,7 +140,7 @@ impl PhysicalRoot {
     ) -> Result<Self, PhysicalPlanValidationError> {
         Ok(Self::InstanceSubject {
             constructor,
-            object_slot: ObjectSlot::new(object_slot.get())?,
+            object_slot: ObjectSlot::try_from(object_slot)?,
             member,
             evidence,
         })
