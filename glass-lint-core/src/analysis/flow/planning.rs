@@ -26,7 +26,7 @@ use crate::{
         compiler::{
             CompiledObjectFlow,
             normalized::CanonicalArgumentConstraints,
-            object_flow::{CompiledObjectSink, CompiledObjectSinkArguments, CompiledObjectSource},
+            object_flow::{CompiledObjectSink, CompiledObjectSinkArguments},
         },
         rule::{ArgumentIndex, ArgumentMatcher, query::lifecycle::LifecycleCallTarget},
     },
@@ -147,19 +147,21 @@ impl PropertyRequirementMatch {
     }
 }
 
-/// Build a deterministic source index from compiled lifecycle declarations.
-/// Callers supply only the value retained for each source; target binding and
+/// Build a deterministic `BoundSource` index from compiled lifecycle
+/// declarations. Target binding, `BoundSource` construction, and
 /// normalization stay owned by this planning boundary.
-pub(super) fn build_source_index<'rules, T: Ord>(
+pub(super) fn build_bound_source_index<'rules>(
     flows: impl IntoIterator<Item = (FlowId, &'rules CompiledObjectFlow)>,
     names: &NameTable,
-    mut value: impl FnMut(FlowId, &CompiledObjectSource) -> T,
-) -> BoundTargetIndex<T> {
+) -> BoundTargetIndex<BoundSource> {
     let mut index = BoundTargetIndex::default();
     for (flow_id, flow) in flows {
         for source in flow.sources() {
             if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(source.target(), names) {
-                index.insert(target, value(flow_id, source));
+                index.insert(
+                    target,
+                    BoundSource::new(flow_id, source.argument_constraints().clone()),
+                );
             }
         }
     }
@@ -290,10 +292,9 @@ impl<'rules> BoundFlowPlan<'rules> {
             req_members.insert(id, Self::build_requirement_members(flow, names));
         }
 
-        let sources = build_source_index(
+        let sources = build_bound_source_index(
             roots.iter().map(|root| (root.flow_id(), root.flow())),
             names,
-            |id, source| BoundSource::new(id, source.argument_constraints().clone()),
         );
         sinks.normalize();
 

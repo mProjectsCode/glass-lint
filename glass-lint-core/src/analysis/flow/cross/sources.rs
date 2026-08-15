@@ -13,7 +13,7 @@ use crate::{
                 MAX_PENDING, QualifiedCallGraph,
                 worklist::{BoundedFifo, FifoAdmission},
             },
-            planning::{BoundSource, FlowMatchView, build_source_index},
+            planning::{FlowMatchView, build_bound_source_index},
         },
         model::{flow::FlowId, scope::FunctionId, value::ValueId},
         trace::QualifiedEvent,
@@ -213,11 +213,8 @@ impl FlowSources {
             // Build a per-module source index so that candidate discovery
             // looks up flows by chain instead of scanning every flow for
             // every call.
-            let source_index = build_source_index(
-                flows.iter().map(|(id, flow)| (*id, *flow)),
-                names,
-                |id, source| BoundSource::new(id, source.argument_constraints().clone()),
-            );
+            let source_index =
+                build_bound_source_index(flows.iter().map(|(id, flow)| (*id, *flow)), names);
             for effect in module.local().effects().iter_effects() {
                 if effect.is_invalid() {
                     continue;
