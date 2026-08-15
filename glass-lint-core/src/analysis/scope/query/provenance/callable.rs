@@ -7,7 +7,7 @@ use crate::analysis::{
         provenance_to_const_value,
         query::{
             BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, MemberExpr,
-            Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
+            ScopeKind, Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
         },
     },
     syntax::{expression_name, member_root_identifier},
@@ -166,8 +166,7 @@ impl FrozenScopeGraph {
                 binding: None,
             };
         };
-        let dynamic_lookup = self
-            .scope_or_ancestor_has_kind(use_scope, crate::analysis::scope::ScopeKind::Dynamic)
+        let dynamic_lookup = self.scope_or_ancestor_has_kind(use_scope, ScopeKind::Dynamic)
             || self.has_prior_eval(use_scope, ident.span);
         let Some(name) = self.name_id(ident.sym.as_ref()) else {
             return ResolvedIdentBinding {
@@ -176,7 +175,7 @@ impl FrozenScopeGraph {
                 binding: None,
             };
         };
-        let Some((binding_scope, declaration)) = self.nearest_binding_from_scope(name, use_scope)
+        let Some((binding_scope, resolution)) = self.resolve_binding(name, use_scope, ident.span)
         else {
             return ResolvedIdentBinding {
                 dynamic_lookup,
@@ -184,10 +183,6 @@ impl FrozenScopeGraph {
                 binding: None,
             };
         };
-        let parameter = self.parameter_alias_for_scope(binding_scope, name);
-        let resolution = self
-            .assignment_at(binding_scope, name, ident.span)
-            .resolve(parameter, declaration);
         let binding = self.binding_id_at(binding_scope, name).map(|binding| {
             BindingKey::lexical(
                 self.function_scope_at(binding_scope),

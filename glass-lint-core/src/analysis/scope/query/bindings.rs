@@ -1,5 +1,7 @@
 //! Lexical binding, scope, assignment-version, and shadowing queries.
 
+use glass_lint_datastructures::NameId;
+
 use crate::analysis::scope::{
     frozen_assignments::{BindingResolution, BindingResolutionStatus},
     query::{
@@ -60,15 +62,34 @@ impl FrozenScopeGraph {
         name: &str,
         span: Span,
     ) -> BindingResolution<'_> {
-        let Some((scope, declaration)) = self.binding_with_scope_at(name, span) else {
+        let Some(name) = self.name_id(name) else {
             return BindingResolution::absent();
         };
-        let Some(name_id) = self.name_id(name) else {
+        let Some(use_scope) = self.scope_at(span) else {
             return BindingResolution::absent();
         };
-        let parameter = self.parameter_alias_for_scope(scope, name_id);
-        self.assignment_at(scope, name_id, span)
-            .resolve(parameter, declaration)
+        self.resolve_binding(name, use_scope, span)
+            .map_or_else(BindingResolution::absent, |(_, resolution)| resolution)
+    }
+
+    /// Resolve one binding from an already-located use scope, returning the
+    /// binding's owning scope together with its resolution.
+    ///
+    /// Shared by [`Self::binding_resolution_at`] and the provenance-seed
+    /// path so the scope walk, parameter lookup, and assignment resolution
+    /// cannot diverge between them.
+    pub(super) fn resolve_binding(
+        &self,
+        name: NameId,
+        use_scope: ScopeId,
+        span: Span,
+    ) -> Option<(ScopeId, BindingResolution<'_>)> {
+        let (scope, declaration) = self.nearest_binding_from_scope(name, use_scope)?;
+        let parameter = self.parameter_alias_for_scope(scope, name);
+        let resolution = self
+            .assignment_at(scope, name, span)
+            .resolve(parameter, declaration);
+        Some((scope, resolution))
     }
 
     /// Resolve an expression to a stable lexical identity.  Semantic clients

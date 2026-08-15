@@ -90,7 +90,7 @@ matching certainty and must not change.
 
 **Fix Applied:** Unified on the NameId convention: `ScopeGraph::preferred_binding_witness_at` now resolves the string once at the facade and works through the shared `ScopeReadView`; the collection-phase `assignment_at`, `parameter_alias_for`, `binding_with_scope_at`, and `scope_at` wrappers were deleted (dead after the unification). On the frozen phase, the `&str`-accepting `binding_version_at` was deleted; `lexical_identifier_key` now resolves the `NameId` once and calls the NameId-based `binding_version`. Uninterned names still yield `None`/absent exactly as before.
 
-#### [ ] READ-003 — `ident_binding_seed` reimplements the `binding_resolution_at` resolution pipeline and the dynamic-lookup predicate
+#### [x] READ-003 — `ident_binding_seed` reimplements the `binding_resolution_at` resolution pipeline and the dynamic-lookup predicate
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -118,7 +118,7 @@ seed's `dynamic_lookup: true` when `scope_at` yields nothing and the
 identical `BindingResolutionStatus` results; do not add extra
 scope/assignment searches to the hot seed path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `FrozenScopeGraph::resolve_binding(name: NameId, use_scope, span) -> Option<(ScopeId, BindingResolution)>` as the shared core; `binding_resolution_at` and `ident_binding_seed` both derive from it, with the seed keeping its single-resolution guarantee and its `dynamic_lookup: true` when `scope_at` yields nothing. `ident_binding_seed` now derives its `BindingKey` from the returned scope via index lookups only.
 
 #### [ ] READ-008 — `unshadowed_global_at` and `unshadowed_unbound_at` are the same predicate differing by one conjunct
 
