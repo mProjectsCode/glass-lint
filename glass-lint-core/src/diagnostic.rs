@@ -23,15 +23,7 @@ pub enum Severity {
 
 impl std::fmt::Display for Severity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Info => "info",
-                Self::Warning => "warning",
-                Self::Error => "error",
-            }
-        )
+        f.write_str(self.as_str())
     }
 }
 

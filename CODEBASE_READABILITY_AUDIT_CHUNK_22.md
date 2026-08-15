@@ -29,7 +29,7 @@ No source files were modified; only this audit file was created.
 
 ### [diagnostic / Severity]
 
-#### [ ] READ-004 — `Severity::Display` and `Severity::as_str` duplicate the same variant-to-string mapping
+#### [x] READ-004 — `Severity::Display` and `Severity::as_str` duplicate the same variant-to-string mapping
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -50,7 +50,7 @@ of truth for the public spelling), keeping `as_str` as the `const fn` public
 surface. Guardrail: the exact strings `"info"`, `"warning"`, `"error"` are
 part of the serialized report schema and must not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `Severity::Display` now delegates to `Self::as_str()`, making `as_str` the single source of the public spelling while keeping the serialized `"info"`/`"warning"`/`"error"` strings unchanged.
 
 ### [ecma_version / detector]
 
