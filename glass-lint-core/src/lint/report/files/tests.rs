@@ -5,7 +5,7 @@ use crate::project::types::{AnalysisDiagnostic, DiagnosticCode, DiagnosticKind};
 fn replacing_findings_preserves_file_diagnostics() {
     let path = ProjectRelativePath::new("main.js").unwrap();
     let diagnostic = Diagnostic::project(AnalysisDiagnostic::new(
-        DiagnosticKind::FactsBudgetExhausted.into(),
+        DiagnosticKind::FactCapacityExhausted.into(),
         "facts exhausted".into(),
         None,
     ));

@@ -150,7 +150,7 @@ fn combine_reports_preserves_partial_without_parse_diagnostic() {
             ProjectRelativePath::new("b.js").unwrap(),
             Vec::new(),
             vec![Diagnostic::project(AnalysisDiagnostic::new(
-                crate::project::types::DiagnosticKind::FactsBudgetExhausted.into(),
+                crate::project::types::DiagnosticKind::FactCapacityExhausted.into(),
                 "facts exhausted".into(),
                 None,
             ))],
@@ -164,7 +164,7 @@ fn combine_reports_preserves_partial_without_parse_diagnostic() {
     assert_eq!(combined.completion(), ReportCompletion::Partial);
     assert_eq!(
         combined.files()[1].diagnostics()[0].code(),
-        "semantic_budget_exhausted"
+        "semantic_fact_capacity_exhausted"
     );
     assert!(
         combined

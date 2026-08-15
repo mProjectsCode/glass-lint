@@ -10,7 +10,6 @@ fn diagnostic_kind_table_contains_only_canonical_codes() {
         DiagnosticKind::InvalidParserSpan,
         DiagnosticKind::MissingImportedExport,
         DiagnosticKind::OutsideProjectTarget,
-        DiagnosticKind::FactsBudgetExhausted,
         DiagnosticKind::NameBudgetExhausted,
         DiagnosticKind::PathCapacityExhausted,
         DiagnosticKind::RuleSelectionInvalid,

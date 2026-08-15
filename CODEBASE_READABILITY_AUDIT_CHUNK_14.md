@@ -26,7 +26,7 @@ was created.
 
 ### analysis/semantic status and completion
 
-#### [ ] READ-001 — Two overlapping "facts budget exhausted" variants, one unreachable
+#### [x] READ-001 — Two overlapping "facts budget exhausted" variants, one unreachable
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -70,7 +70,7 @@ Update every assertion and any harness fixtures in the same change, and preserve
 fail-closed behavior — an exhausted budget must still yield an incomplete
 `AnalysisStatus`, never a successful-empty result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Chunk 01 (commit 87f4d896) already deleted the dead `BudgetExhausted { Facts }` branch from `check_facts_budget` and removed the `Facts` arm from `AnalysisComponent::budget_diagnostic`, leaving `SemanticBudgetExhausted` as the sole local budget variant. This chunk finished option B's guardrail: removed the now-unproducible `DiagnosticKind::FactsBudgetExhausted` (`semantic_budget_exhausted`) from the report schema (`code.rs`) and updated its test assertions in `project/report/tests.rs`, `lint/report/files/tests.rs`, and `code/tests.rs` to use `FactCapacityExhausted` instead. Fail-closed behavior is preserved: `FactCapacityExhausted` still reports an incomplete status for an exhausted fact stream.
 
 #### [ ] READ-002 — `LocalAnalysisStatus` newtype leaks the general `AnalysisStatus` surface via `Deref`
 
