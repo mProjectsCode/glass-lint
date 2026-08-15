@@ -34,7 +34,7 @@ evidence.
 
 ### Occurrence storage, ordering, and merging (`analysis/matching/occurrence`)
 
-#### [ ] READ-001 — The `(event, span.start, span.end)` ordering key is rebuilt at three sites and then discarded by a different evidence sort
+#### [x] READ-001 — The `(event, span.start, span.end)` ordering key is rebuilt at three sites and then discarded by a different evidence sort
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -70,7 +70,7 @@ production, because the occurrence unit test
 order directly (the `evidence_for` integration test at `matching/tests.rs:49`
 exercises only the lazy Indexed path and is indifferent to it).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `Occurrence::sort_key()` as the single canonical ordering owner and used it in `OccurrenceIndex::normalize` (both `sort_unstable_by_key` and `dedup_by_key`), `OrderedOccurrences::sorted`, and `MergeItem::cmp` (which keeps only the bucket tie-break); `MergeItem` no longer stores redundant `event`/`start`/`end` copies and `occurrence.rs` dropped its unused `FactId` import. The evidence-boundary sort in `normalize_evidence` is unchanged.
 
 #### [ ] READ-002 — `ScannedOccurrences` reimplements `std::vec::IntoIter` by hand
 

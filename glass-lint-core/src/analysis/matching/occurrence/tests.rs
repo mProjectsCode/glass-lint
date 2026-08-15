@@ -1,6 +1,7 @@
 use glass_lint_datastructures::ByteRange;
 
 use super::*;
+use crate::analysis::facts::FactId;
 
 fn span(start: u32, end: u32) -> ByteRange {
     ByteRange::new(start, end).unwrap()

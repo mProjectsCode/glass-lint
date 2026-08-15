@@ -12,8 +12,6 @@ use std::{
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
 
-use crate::analysis::facts::FactId;
-
 mod storage;
 
 pub(in crate::analysis) use storage::{Occurrence, OccurrenceIndex};
@@ -70,13 +68,7 @@ pub(super) enum OrderedOccurrences<'a> {
 impl OrderedOccurrences<'_> {
     fn sorted(occurrences: impl IntoIterator<Item = Occurrence>) -> Self {
         let mut occurrences = occurrences.into_iter().collect::<Vec<_>>();
-        occurrences.sort_unstable_by_key(|occurrence| {
-            (
-                occurrence.event(),
-                occurrence.span().start(),
-                occurrence.span().end(),
-            )
-        });
+        occurrences.sort_unstable_by_key(Occurrence::sort_key);
         Self::Sorted(occurrences.into_iter())
     }
 }
@@ -139,21 +131,13 @@ enum MergeState {
 /// (event, start, end, bucket) for deterministic tie-breaking.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct MergeItem {
-    event: FactId,
-    start: u32,
-    end: u32,
     bucket: usize,
     occurrence: Occurrence,
 }
 
 impl Ord for MergeItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.event, self.start, self.end, self.bucket).cmp(&(
-            other.event,
-            other.start,
-            other.end,
-            other.bucket,
-        ))
+        (self.occurrence.sort_key(), self.bucket).cmp(&(other.occurrence.sort_key(), other.bucket))
     }
 }
 
@@ -213,13 +197,7 @@ fn push_candidate(
 ) {
     let Some(slice) = slice else { return };
     if let Some(&occurrence) = slice.get(position) {
-        heap.push(Reverse(MergeItem {
-            event: occurrence.event(),
-            start: occurrence.span().start(),
-            end: occurrence.span().end(),
-            bucket,
-            occurrence,
-        }));
+        heap.push(Reverse(MergeItem { bucket, occurrence }));
     }
 }
 

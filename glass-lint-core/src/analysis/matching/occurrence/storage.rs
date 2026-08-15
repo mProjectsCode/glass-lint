@@ -29,6 +29,12 @@ impl Occurrence {
     pub(in crate::analysis::matching) fn span(&self) -> ByteRange {
         self.span
     }
+
+    /// Canonical deterministic ordering key, owned by [`Occurrence`] so
+    /// sorting, deduplication, and merging can never diverge.
+    pub(in crate::analysis::matching) fn sort_key(&self) -> (FactId, u32, u32) {
+        (self.event, self.span.start(), self.span.end())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -87,20 +93,8 @@ impl<K: Ord> OccurrenceIndex<K> {
 
     pub(in crate::analysis::matching) fn normalize(&mut self) {
         for occurrences in self.0.values_mut() {
-            occurrences.sort_unstable_by_key(|occurrence| {
-                (
-                    occurrence.event,
-                    occurrence.span.start(),
-                    occurrence.span.end(),
-                )
-            });
-            occurrences.dedup_by_key(|occurrence| {
-                (
-                    occurrence.event,
-                    occurrence.span.start(),
-                    occurrence.span.end(),
-                )
-            });
+            occurrences.sort_unstable_by_key(Occurrence::sort_key);
+            occurrences.dedup_by_key(|occurrence| occurrence.sort_key());
         }
     }
 }
