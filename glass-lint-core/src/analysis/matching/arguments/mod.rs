@@ -347,13 +347,9 @@ fn compute_constrained_inner(
     } = context;
     let stream = artifact.stream;
     let indexes = artifact.indexes;
-    let MatcherProjectOverlay {
-        identities,
-        result_identities,
-    } = project;
     let names = stream.names();
     let values = stream.values();
-    let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
+    let evaluator = MatcherEvaluator::new(names, values, project);
 
     let mut evaluation = ConstrainedEvaluation::prepare(roots, names);
     evaluation.evaluate_indexed_roots(

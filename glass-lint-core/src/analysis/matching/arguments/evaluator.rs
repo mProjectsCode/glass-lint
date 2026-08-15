@@ -7,7 +7,7 @@ use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo, FactPayload, SemanticFact},
         matching::{
-            ModuleExportKey, ModuleIdentityMap,
+            MatcherProjectOverlay, ModuleExportKey, ModuleIdentityMap,
             arguments::identity::{call_identity_matches, member_identity_matches},
         },
         model::value::{Value, ValueId, ValueTable},
@@ -105,17 +105,16 @@ struct EffectiveIdentityResolver<'a> {
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
 }
 
-impl<'a> EffectiveIdentityResolver<'a> {
-    fn new(
-        identities: Option<&'a ModuleIdentityMap>,
-        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-    ) -> Self {
+impl<'a> From<MatcherProjectOverlay<'a>> for EffectiveIdentityResolver<'a> {
+    fn from(overlay: MatcherProjectOverlay<'a>) -> Self {
         Self {
-            identities,
-            result_identities,
+            identities: overlay.identities,
+            result_identities: overlay.result_identities,
         }
     }
+}
 
+impl EffectiveIdentityResolver<'_> {
     fn module_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
         let (module, export) = provenance.module_export_parts()?;
         self.identities?.get(&ModuleExportKey::new(module, export))
@@ -159,13 +158,12 @@ impl<'a> MatcherEvaluator<'a> {
     pub(super) fn new(
         names: &'a NameTable,
         values: &'a ValueTable,
-        identities: Option<&'a ModuleIdentityMap>,
-        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+        project: MatcherProjectOverlay<'a>,
     ) -> Self {
         Self {
             names,
             values,
-            identity: EffectiveIdentityResolver::new(identities, result_identities),
+            identity: EffectiveIdentityResolver::from(project),
         }
     }
 

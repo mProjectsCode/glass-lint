@@ -92,8 +92,7 @@ fn argument_overlay_applies_static_string_from_identity_map() {
         MatcherEvaluator::new(
             &glass_lint_datastructures::NameTable::default(),
             &crate::analysis::model::value::ValueTable::default(),
-            Some(&identities),
-            None
+            MatcherProjectOverlay::new(Some(&identities), None),
         )
         .argument_with_overlay(&argument)
         .static_string,

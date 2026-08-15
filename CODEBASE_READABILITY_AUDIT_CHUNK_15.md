@@ -29,7 +29,7 @@ the test facade and leftover markers.
 
 ### Matching / argument evaluation boundary (`analysis/matching/arguments`)
 
-#### [ ] READ-001 — `EffectiveIdentityResolver` is a parallel type to `MatcherProjectOverlay`; the identity pair is destructured and rebuilt at each layer
+#### [x] READ-001 — `EffectiveIdentityResolver` is a parallel type to `MatcherProjectOverlay`; the identity pair is destructured and rebuilt at each layer
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -63,7 +63,7 @@ ownership domain; the resolver's documented precedence
 remains the production-facing type constructed by `projection.rs:170` and the
 argument tests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EffectiveIdentityResolver` now implements `From<MatcherProjectOverlay>` and `MatcherEvaluator::new` accepts a `MatcherProjectOverlay`, destructuring it once via the `From` impl; the redundant destructure in `compute_constrained_inner` was deleted and the `MatcherEvaluator::new` test in `tests/extended.rs` updated to pass an overlay.
 
 #### [ ] READ-002 — `MatcherEvaluationContext` is an immediately-consumed grouping struct
 
