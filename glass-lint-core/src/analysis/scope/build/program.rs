@@ -4,8 +4,8 @@ use swc_common::Span;
 use crate::analysis::scope::{FrozenScopeGraph, ScopeId};
 
 pub(in crate::analysis) struct ScopedProgram {
-    pub(crate) graph: FrozenScopeGraph,
-    pub(crate) issues: Vec<ScopeCollectionIssue>,
+    pub(in crate::analysis) graph: FrozenScopeGraph,
+    pub(in crate::analysis) issues: Vec<ScopeCollectionIssue>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

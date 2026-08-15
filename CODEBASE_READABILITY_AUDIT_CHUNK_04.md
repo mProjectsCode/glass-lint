@@ -311,7 +311,7 @@ call when the rooted path is a root, exactly as the current predicate encodes.
 
 **Fix Applied:** Deleted the deep `Pat` clone in `record_destructuring_assignment`: `collect_assignment_aliases` now accepts `&AssignTargetPat`, and the borrow is threaded through the projection entry via a new `BorrowedPattern<'a>` (`Decl(&Pat)` / `Assign(&AssignTargetPat)`) wrapper, with `project_destructuring` dispatching `AssignTargetPat::Object` into the shared `project_object` core and `Array`/`Invalid` into `Unsupported`. Rewrote both `.then(...).flatten()` sites as explicit `if` expressions: `current_scope` returns `None` once issues exist (no empty-stack fallback), and the `ReturnedObject` candidate skips the call exactly when the rooted path is a root.
 
-#### [ ] READ-009 — Field visibility wider than the owning type; redundant hand-written `Debug`
+#### [x] READ-009 — Field visibility wider than the owning type; redundant hand-written `Debug`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -336,7 +336,7 @@ freeze.rs:54, and read at build/tests.rs:248-249 — all within `crate::analysis
 so the narrowed visibility keeps every call site working, and keep the field
 names (`graph`, `issues`) stable for the destructure.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Narrowed `ScopedProgram::graph` / `ScopedProgram::issues` from `pub(crate)` to `pub(in crate::analysis)`, matching the struct's own visibility; the destructures in scope/mod.rs and resolution/mod.rs, the construction in freeze.rs, and the reads in build/tests.rs and semantic/mod.rs are all inside `crate::analysis` and keep working. Replaced the hand-written `Debug` on `DeclarationClassification` with `#[derive(Debug)]`; every member (`SmolStr`, `BindingProvenance`, `NamePath`) already derives `Debug` and the derive emits the same shape the manual impl did.
 
 ### Panic review
 

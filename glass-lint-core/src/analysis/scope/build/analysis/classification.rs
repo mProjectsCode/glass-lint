@@ -8,6 +8,7 @@ use crate::analysis::{
     syntax::literal_member_property_name,
 };
 
+#[derive(Debug)]
 pub enum DeclarationClassification {
     Binding {
         name: SmolStr,
@@ -20,27 +21,6 @@ pub enum DeclarationClassification {
         target: NamePath,
     },
     None,
-}
-
-impl std::fmt::Debug for DeclarationClassification {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Binding { name, provenance } => formatter
-                .debug_struct("Binding")
-                .field("name", name)
-                .field("provenance", provenance)
-                .finish(),
-            Self::Require { module } => formatter
-                .debug_struct("Require")
-                .field("module", module)
-                .finish(),
-            Self::ValueAlias { target } => formatter
-                .debug_struct("ValueAlias")
-                .field("target", target)
-                .finish(),
-            Self::None => formatter.write_str("None"),
-        }
-    }
 }
 
 pub fn classify_declaration(
