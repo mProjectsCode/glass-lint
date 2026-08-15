@@ -221,7 +221,7 @@ must stay a silent no-op while `Exhausted` must set `name_exhausted`.
 
 ### Visitor completion hooks
 
-#### [ ] READ-007 — `after_function` and `after_arrow` duplicate the pending-name and inline-parameter install sequence
+#### [x] READ-007 — `after_function` and `after_arrow` duplicate the pending-name and inline-parameter install sequence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -249,7 +249,7 @@ separate `after_*` trait hooks (the traversal dispatches on the AST node kind)
 and keep the `after_function`/`after_arrow` planner-side loops intact if they
 are not merged, since the planner has no inline parameters.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `install_function_binding` (owns the `function_scopes` insert) and `install_inline_parameters` (owns the inline-parameter `record_assignment` loop); both `after_*` hooks now differ only in the `Vec<CompactPat>` construction (`function_parameters` vs `arrow_parameters`). The two separate trait hooks stay (the traversal dispatches on the AST node kind), and the planner-side `after_function`/`after_arrow` loops are untouched since the planner has no inline parameters.
 
 ### Encapsulation and data-shape issues
 

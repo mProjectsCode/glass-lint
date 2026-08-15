@@ -4,6 +4,8 @@
 //! use-position facts that survive lexical shadowing, reassignment, and
 //! unsupported dynamic forms.
 
+use hashbrown::HashMap;
+use smol_str::SmolStr;
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, CallExpr, Callee, Expr, FnDecl, ObjectPatProp, Pat,
     SimpleAssignTarget, VarDecl, VarDeclKind,
@@ -11,11 +13,11 @@ use swc_ecma_ast::{
 
 use crate::analysis::{
     scope::{
-        ScopeCollector,
+        BindingProvenance, ScopeCollector,
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind, ScopedName,
         build::{
-            ControlFlowFrame, PropertyAliasAssignment, RootedPropertyMutation,
+            CompactPat, ControlFlowFrame, PropertyAliasAssignment, RootedPropertyMutation,
             ScopeCollectionIssue, ScopedDynamicEval,
             analysis::{
                 DeclarationClassification, assignment_provenance, classify_declaration,
@@ -431,30 +433,45 @@ impl ScopePass for ScopeCollector<'_> {
             .remove(&function.span.lo)
         {
             let parameters = Self::function_parameters(function);
-            self.functions.function_scopes.insert(
-                ScopedName::new(pending.declaration_scope, pending.name),
-                super::FunctionBinding { scope, parameters },
-            );
+            self.install_function_binding(scope, &pending, parameters);
         }
         if let Some(bindings) = self.functions.inline_parameters.remove(&function.span.lo) {
-            for (name, provenance) in bindings {
-                self.record_assignment(function.span, scope, name.as_str(), provenance);
-            }
+            self.install_inline_parameters(function.span, scope, bindings);
         }
     }
 
     fn after_arrow(&mut self, arrow: &ArrowExpr, scope: ScopeId) {
         if let Some(pending) = self.functions.pending_function_names.remove(&arrow.span.lo) {
             let parameters = Self::arrow_parameters(arrow);
-            self.functions.function_scopes.insert(
-                ScopedName::new(pending.declaration_scope, pending.name),
-                super::FunctionBinding { scope, parameters },
-            );
+            self.install_function_binding(scope, &pending, parameters);
         }
         if let Some(bindings) = self.functions.inline_parameters.remove(&arrow.span.lo) {
-            for (name, provenance) in bindings {
-                self.record_assignment(arrow.span, scope, name.as_str(), provenance);
-            }
+            self.install_inline_parameters(arrow.span, scope, bindings);
+        }
+    }
+}
+
+impl ScopeCollector<'_> {
+    fn install_function_binding(
+        &mut self,
+        scope: ScopeId,
+        pending: &super::PendingFunctionName,
+        parameters: Vec<CompactPat>,
+    ) {
+        self.functions.function_scopes.insert(
+            ScopedName::new(pending.declaration_scope, pending.name),
+            super::FunctionBinding { scope, parameters },
+        );
+    }
+
+    fn install_inline_parameters(
+        &mut self,
+        span: swc_common::Span,
+        scope: ScopeId,
+        bindings: HashMap<SmolStr, BindingProvenance>,
+    ) {
+        for (name, provenance) in bindings {
+            self.record_assignment(span, scope, name.as_str(), provenance);
         }
     }
 }
