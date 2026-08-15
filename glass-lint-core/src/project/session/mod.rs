@@ -71,40 +71,27 @@ impl<'a> SessionState<'a> {
         }
     }
 
-    #[cfg(test)]
     fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
-        if self.fingerprint_normalization.is_none()
-            && self.fingerprint_engine_version == env!("CARGO_PKG_VERSION")
+        #[cfg(test)]
         {
-            return ArtifactCacheKey::new(
-                source,
-                self.analyzer.environment(),
-                self.analyzer.limits(),
-            );
-        }
-        self.fingerprint_normalization.map_or_else(
-            || {
-                ArtifactCacheKey::for_engine_version(
-                    source,
-                    self.analyzer.environment(),
-                    self.analyzer.limits(),
-                    self.fingerprint_engine_version,
-                )
-            },
-            |normalization| {
-                ArtifactCacheKey::for_test_inputs(
+            if let Some(normalization) = self.fingerprint_normalization {
+                return ArtifactCacheKey::for_test_inputs(
                     source,
                     self.analyzer.environment(),
                     self.analyzer.limits(),
                     normalization,
                     self.fingerprint_engine_version,
-                )
-            },
-        )
-    }
-
-    #[cfg(not(test))]
-    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
+                );
+            }
+            if self.fingerprint_engine_version != env!("CARGO_PKG_VERSION") {
+                return ArtifactCacheKey::for_engine_version(
+                    source,
+                    self.analyzer.environment(),
+                    self.analyzer.limits(),
+                    self.fingerprint_engine_version,
+                );
+            }
+        }
         ArtifactCacheKey::new(source, self.analyzer.environment(), self.analyzer.limits())
     }
 }

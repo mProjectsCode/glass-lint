@@ -210,7 +210,7 @@ keep rejecting malformed paths.
 
 **Fix Applied:** `analyze_source_at_path*` and the `#[cfg(test)]` observer helpers now return `ProjectPhaseError`; the missing-source lookup reports `UnknownImporter(path)` instead of `InvalidPath`, while `InvalidPath` still rejects malformed paths in `project/input.rs`. Public `analyze_source`/`analyze_sources` signatures are unchanged (`From<ProjectPhaseError>` crosses the `ProjectError` boundary).
 
-#### [ ] READ-007 — `SessionState` carries `cfg(test)` fingerprint knobs and a duplicated fingerprint construction
+#### [x] READ-007 — `SessionState` carries `cfg(test)` fingerprint knobs and a duplicated fingerprint construction
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -239,7 +239,7 @@ test fast path. Keep the existing `cfg(test)` fields and setters
 `ArtifactCacheKey` semantics, the parse-once invariant, or the
 cache-hit/miss behavior observed by tests (`tests/cache_and_session.rs:316, 322`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the two `artifact_fingerprint` bodies into one function for all builds: the `cfg(test)` overrides (`for_test_inputs`, `for_engine_version`) are early returns in a `cfg(test)` block and `ArtifactCacheKey::new` is the single fall-through for production and the test fast path. The `cfg(test)` fields and setters remain the injection point.
 
 ### Project report combination (`project/report/mod.rs`)
 
