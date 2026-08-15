@@ -15,7 +15,7 @@ use crate::analysis::facts::{
     ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, DoWhileStmt, ExportDecl, Expr, FactBuilder,
     FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl,
     MemberExpr, NewExpr, OptChainBase, OptChainExpr, Str, SwitchStmt, SymbolCallProvenance, Tpl,
-    TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith, WhileStmt,
+    TryStmt, UnaryExpr, UnaryOp, UpdateExpr, VarDeclarator, Visit, VisitWith, WhileStmt,
     effective_callee_expr, literal_member_property_name,
 };
 
@@ -77,19 +77,7 @@ impl Visit for FactBuilder<'_, '_> {
             return;
         }
         update.arg.visit_with(self);
-        let target = self.resolver.resolve_expr_id(&update.arg);
-        let receiver = match &*update.arg {
-            Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
-            _ => None,
-        };
-        self.emit(
-            update.span(),
-            FactPayload::Assignment {
-                target,
-                source: ValueId::UNKNOWN,
-                receiver,
-            },
-        );
+        self.emit_member_assignment(update.span(), &update.arg);
     }
 
     fn visit_unary_expr(&mut self, unary: &UnaryExpr) {
@@ -98,19 +86,7 @@ impl Visit for FactBuilder<'_, '_> {
         }
         unary.arg.visit_with(self);
         if unary.op == UnaryOp::Delete {
-            let target = self.resolver.resolve_expr_id(&unary.arg);
-            let receiver = match &*unary.arg {
-                Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
-                _ => None,
-            };
-            self.emit(
-                unary.span(),
-                FactPayload::Assignment {
-                    target,
-                    source: ValueId::UNKNOWN,
-                    receiver,
-                },
-            );
+            self.emit_member_assignment(unary.span(), &unary.arg);
         }
     }
 

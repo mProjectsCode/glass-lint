@@ -4,14 +4,34 @@
 //! can then kill stale identities at the write position instead of allowing a
 //! value proven before reassignment to leak into later uses.
 
+use swc_common::Span;
 use swc_ecma_ast::AssignOp;
 
 use crate::analysis::facts::{
-    AssignExpr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, TargetProvenance, ValueId,
-    VisitWith, literal_member_property_name,
+    AssignExpr, Expr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, TargetProvenance,
+    ValueId, VisitWith, literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
+    /// Emit the write/kill assignment for update and delete expressions, whose
+    /// source value cannot be modeled. A member argument also invalidates the
+    /// receiver object; other targets are killed by value identity.
+    pub(super) fn emit_member_assignment(&mut self, span: Span, arg: &Expr) {
+        let target = self.resolver.resolve_expr_id(arg);
+        let receiver = match arg {
+            Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
+            _ => None,
+        };
+        self.emit(
+            span,
+            FactPayload::Assignment {
+                target,
+                source: ValueId::UNKNOWN,
+                receiver,
+            },
+        );
+    }
+
     /// Emit the write semantics for identifier, member, and destructuring
     /// assignments, including the module-interface consequences of CommonJS
     /// export writes.

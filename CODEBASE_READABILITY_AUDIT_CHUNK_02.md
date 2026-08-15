@@ -179,7 +179,7 @@ driver directly to the now-`pub(super)` `transfer_abrupt(AbruptExit::…)`, and
 updated the effect `Return` match and the matching ignore-arm. Branch/loop/
 switch/try region semantics and `visit_return_stmt` ordering are unchanged.
 
-#### [ ] READ-005 — The visitor repeats identical fact-emission blocks across `visit_*` methods
+#### [x] READ-005 — The visitor repeats identical fact-emission blocks across `visit_*` methods
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -208,6 +208,11 @@ children are visited after the parent fact in both `MemberRead` sites, and
 `update.arg`/`unary.arg` are visited before the assignment fact — so the
 deterministic evidence order asserted by `tests/build.rs` and
 `stream_tests.rs` is unchanged.
+**Fix Applied:** The `MemberRead` duplication was already removed by chunk 01
+(via `FactBuilder::record_member_read` in `reads.rs`). This change extracts
+`FactBuilder::emit_member_assignment` in `assignments.rs` and uses it from
+both `visit_update_expr` and the `UnaryOp::Delete` arm of `visit_unary_expr`,
+leaving the arg visitation (and thus evidence order) at each call site.
 
 ### Class provenance representation
 
