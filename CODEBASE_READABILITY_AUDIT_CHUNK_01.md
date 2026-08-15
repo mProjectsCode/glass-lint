@@ -249,7 +249,7 @@ for reporting.
 
 ### Interface / exports
 
-#### [ ] READ-008 — `record_pattern_locals` returns a `BTreeSet` its only caller discards, and exported var patterns are recollected
+#### [x] READ-008 — `record_pattern_locals` returns a `BTreeSet` its only caller discards, and exported var patterns are recollected
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -280,7 +280,7 @@ re-collects the same set for the interface's local table. Guardrails:
 `function_id_for_expr`/`static_string_value` lookups must keep running for
 exported declarations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `record_pattern_locals` now returns `()` (both the builder and its `FactBuilder` passthrough); the export pass's Var arm keeps its independent `collect_pattern_locals` with a comment documenting the visit-order dependency that causes the later re-collection.
 
 ### Callee/origin surface
 
