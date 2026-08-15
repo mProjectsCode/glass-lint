@@ -81,7 +81,7 @@ impl Resolver<'_> {
         template: &swc_ecma_ast::Tpl,
     ) -> ResolvedValue {
         let id = self.intern_const_value(syntax_constant::evaluate(template, self), None);
-        Self::archive_local(id)
+        ResolvedValue::local(id)
     }
 
     fn ident_key(ident: &Ident) -> ResolutionKey {
@@ -271,7 +271,7 @@ impl Resolver<'_> {
             }
             Expr::Object(_) | Expr::Bin(_) => {
                 let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
-                Self::archive_local(id)
+                ResolvedValue::local(id)
             }
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::Await(await_expr) => self.resolve_expr(&await_expr.arg),
@@ -290,7 +290,7 @@ impl Resolver<'_> {
     ) -> ResolvedValue {
         let value = syntax_constant::evaluate(binary, self);
         let id = self.intern_const_value(value, None);
-        Self::archive_local(id)
+        ResolvedValue::local(id)
     }
 
     fn resolve_seed<F>(

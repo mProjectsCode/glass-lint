@@ -85,7 +85,7 @@ impl Resolver<'_> {
         let id = self
             .values
             .intern_value_with_binding(Value::Callable(target), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     /// Intern callable/module/global value identity with optional binding

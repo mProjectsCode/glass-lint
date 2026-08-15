@@ -122,7 +122,7 @@ reuses `Resolver::member_key`; all callers (`facts/reads.rs`, `facts/calls/calle
 `scope/query/provenance/{object,chain}.rs`) were updated. Added unit tests for the shared walker and
 `expression_name` terminal mapping in `syntax/names.rs`.
 
-#### [ ] READ-003 — Dead `is_unknown` flag on `interned_value` and a trivial `archive_local` forwarder
+#### [x] READ-003 — Dead `is_unknown` flag on `interned_value` and a trivial `archive_local` forwarder
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -145,6 +145,15 @@ all callers pass `false`), keeping the fail-closed `BudgetExhausted` reason when
 value_arena_exhausted()`. Replace the three `archive_local` calls with `ResolvedValue::local(id)` or
 fold them into a single clearly named constructor, and keep `archive_unknown_with_reason` for
 cycle/unsupported reasons so uncertainty states stay distinct.
+
+**Fix Applied:** `Resolver::interned_value` lost its `is_unknown` parameter and all seven call
+sites (`static_string`, `static_number`, `static_array`, `static_object_shape`,
+`intern_object_id`, `rooted_member`, and the `.bind()` path in `resolve_call_expression`) now pass
+only the id; the fail-closed `BudgetExhausted` reason when `id == UNKNOWN && value_arena_exhausted()`
+is unchanged. The `archive_local` forwarder was deleted and the three call sites
+(`resolve_template`, the Object/Bin arm of `resolve_expr`, and `resolve_binary`) use
+`ResolvedValue::local(id)` directly; `archive_unknown_with_reason` remains for cycle/unsupported
+reasons.
 
 #### [ ] READ-004 — Repeated evaluate + intern + archive sequence across three resolve entry points
 

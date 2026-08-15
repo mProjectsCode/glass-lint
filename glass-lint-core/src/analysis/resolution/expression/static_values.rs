@@ -90,16 +90,8 @@ impl Resolver<'_> {
         value
     }
 
-    pub(in crate::analysis::resolution) fn archive_local(id: ValueId) -> ResolvedValue {
-        ResolvedValue::local(id)
-    }
-
-    pub(in crate::analysis::resolution) fn interned_value(
-        &self,
-        id: ValueId,
-        is_unknown: bool,
-    ) -> ResolvedValue {
-        if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
+    pub(in crate::analysis::resolution) fn interned_value(&self, id: ValueId) -> ResolvedValue {
+        if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
             return Self::archive_unknown_with_reason(UnknownReason::BudgetExhausted {
                 limit: MAX_VALUES,
             });
@@ -111,21 +103,21 @@ impl Resolver<'_> {
         let id = self
             .values
             .intern_value_with_binding(Value::StaticString(value), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
         let id = self
             .values
             .intern_value_with_binding(Value::StaticNumber(value), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
         let id = self
             .values
             .intern_value_with_binding(Value::StaticArray(values), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     pub(in crate::analysis) fn static_object_shape(
@@ -135,7 +127,7 @@ impl Resolver<'_> {
         let id = self
             .values
             .intern_value_with_binding(Value::StaticObject(object), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     fn intern_object_id(
@@ -145,14 +137,14 @@ impl Resolver<'_> {
         let id = self
             .values
             .intern_value_with_binding(Value::Object(object), None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
         let id = self
             .values
             .intern_value_with_binding(Value::RootedMember { path }, None);
-        self.interned_value(id, false)
+        self.interned_value(id)
     }
 
     pub(in crate::analysis) fn fresh_object_value(&mut self) -> ResolvedValue {
