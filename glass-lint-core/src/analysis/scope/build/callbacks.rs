@@ -11,7 +11,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, MemberExpr, Pat};
 use crate::analysis::{
     scope::{
         BindingProvenance, ScopeId, ScopedName,
-        build::{CompactPat, ScopeCollector, compact_pat},
+        build::{CompactPat, ScopeCollector, compact_pat, traversal::ScopePass},
     },
     syntax::literal_member_property_name,
 };

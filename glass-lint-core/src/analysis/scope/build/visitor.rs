@@ -15,7 +15,8 @@ use crate::analysis::{
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind, ScopedName,
         build::{
-            PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval,
+            ControlFlowFrame, PropertyAliasAssignment, RootedPropertyMutation,
+            ScopeCollectionIssue, ScopedDynamicEval,
             analysis::{
                 DeclarationClassification, assignment_provenance, classify_declaration,
                 expression_is_mutable_static_object,
@@ -31,89 +32,326 @@ use crate::analysis::{
 
 impl ScopePass for ScopeCollector<'_> {
     fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {
-        self.push_scope(span, kind)
+        let Some(parent) = self.current_scope() else {
+            self.artifacts
+                .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
+            return ScopeEntry::Rejected;
+        };
+        if let Some(scope_id) = self
+            .lexical
+            .scope_shapes
+            .take_child(Some(parent), span.lo, kind)
+        {
+            self.lexical.stack.push(scope_id);
+            #[cfg(test)]
+            {
+                self.scope_lookups += 1;
+            }
+            ScopeEntry::Entered(scope_id)
+        } else {
+            self.artifacts
+                .record_issue(ScopeCollectionIssue::ShapeMismatch);
+            ScopeEntry::Rejected
+        }
     }
 
     fn pop_scope(&mut self, entry: ScopeEntry) {
         if matches!(entry, ScopeEntry::Entered(_)) {
-            self.pop_scope();
+            if self.lexical.stack.len() <= 1 {
+                self.artifacts
+                    .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
+                return;
+            }
+            let _ = self.lexical.stack.pop();
         }
     }
 
     fn current_scope(&self) -> Option<ScopeId> {
-        self.current_scope()
+        (!self.artifacts.has_issues())
+            .then(|| self.lexical.stack.last().copied())
+            .flatten()
     }
 
     fn is_budget_exhausted(&self) -> bool {
         self.budget.exhausted()
     }
 
-    fn enter_function(&mut self) {
-        self.enter_function();
-    }
-
-    fn exit_function(&mut self) {
-        self.exit_function();
-    }
-
     fn enter_if(&mut self) {
-        self.enter_if();
+        let incoming = self.checkpoint();
+        self.assignment
+            .path
+            .control_flow
+            .push(ControlFlowFrame::If {
+                incoming,
+                consequent: None,
+            });
+        self.assignment.path.assignment_writes.clear();
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_add(1);
     }
 
     fn enter_else(&mut self) {
-        self.enter_else();
+        let checkpoint = self.checkpoint();
+        let incoming = {
+            let Some(ControlFlowFrame::If {
+                incoming,
+                consequent,
+            }) = self.assignment.path.control_flow.last_mut()
+            else {
+                return;
+            };
+            *consequent = Some(checkpoint);
+            incoming.clone()
+        };
+        self.restore(&incoming);
+        self.assignment.path.assignment_writes.clear();
     }
 
     fn exit_if(&mut self, span: swc_common::Span, has_else: bool) {
-        self.exit_if(span, has_else);
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::If {
+            incoming,
+            consequent,
+        }) = self.assignment.path.control_flow.pop()
+        else {
+            return;
+        };
+        let consequent = consequent.unwrap_or_else(|| self.checkpoint());
+        let paths = if has_else {
+            vec![consequent, self.checkpoint()]
+        } else {
+            vec![incoming.clone(), consequent]
+        };
+        self.join_paths(span, &incoming, &paths);
     }
 
     fn enter_loop(&mut self, guaranteed: bool) {
-        self.enter_loop(guaranteed);
+        let incoming = self.checkpoint();
+        self.assignment
+            .path
+            .control_flow
+            .push(ControlFlowFrame::Loop {
+                incoming,
+                guaranteed,
+                breaks: Vec::new(),
+                continues: Vec::new(),
+            });
+        self.assignment.path.assignment_writes.clear();
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_add(1);
     }
 
     fn exit_loop(&mut self, span: swc_common::Span) {
-        self.exit_loop(span);
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::Loop {
+            incoming,
+            guaranteed,
+            breaks,
+            continues,
+        }) = self.assignment.path.control_flow.pop()
+        else {
+            return;
+        };
+        let body = self.checkpoint();
+        let mut paths = Vec::with_capacity(breaks.len() + 2);
+        if !guaranteed {
+            paths.push(incoming.clone());
+        }
+        paths.push(body);
+        paths.extend(breaks);
+        paths.extend(continues);
+        self.join_paths(span, &incoming, &paths);
     }
 
     fn enter_switch(&mut self) {
-        self.enter_switch();
+        let incoming = self.checkpoint();
+        self.assignment
+            .path
+            .control_flow
+            .push(ControlFlowFrame::Switch {
+                incoming,
+                cases: Vec::new(),
+                breaks: Vec::new(),
+            });
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_add(1);
     }
 
     fn enter_switch_case(&mut self) {
-        self.enter_switch_case();
+        let incoming = {
+            let Some(ControlFlowFrame::Switch { incoming, .. }) =
+                self.assignment.path.control_flow.last()
+            else {
+                return;
+            };
+            incoming.clone()
+        };
+        self.restore(&incoming);
+        self.assignment.path.assignment_writes.clear();
     }
 
     fn exit_switch_case(&mut self) {
-        self.exit_switch_case();
+        let case = self.checkpoint();
+        if let Some(ControlFlowFrame::Switch { cases, .. }) =
+            self.assignment.path.control_flow.last_mut()
+        {
+            cases.push(case);
+        }
     }
 
     fn exit_switch(&mut self, span: swc_common::Span) {
-        self.exit_switch(span);
+        self.assignment.path.conditional_depth =
+            self.assignment.path.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::Switch {
+            incoming,
+            cases,
+            breaks,
+        }) = self.assignment.path.control_flow.pop()
+        else {
+            return;
+        };
+        let mut paths = Vec::with_capacity(cases.len() + breaks.len() + 1);
+        paths.push(incoming.clone());
+        paths.extend(cases);
+        paths.extend(breaks);
+        self.join_paths(span, &incoming, &paths);
     }
 
     fn enter_try(&mut self, has_handler: bool, has_finally: bool) {
-        self.enter_try(has_handler, has_finally);
+        let incoming = self.checkpoint();
+        self.assignment
+            .path
+            .control_flow
+            .push(ControlFlowFrame::Try {
+                incoming,
+                body: None,
+                conditional: has_handler || has_finally,
+            });
+        self.assignment.path.assignment_writes.clear();
+        if has_handler || has_finally {
+            self.assignment.path.conditional_depth =
+                self.assignment.path.conditional_depth.saturating_add(1);
+        }
     }
 
     fn enter_catch(&mut self) {
-        self.enter_catch();
+        let checkpoint = self.checkpoint();
+        let incoming = {
+            let Some(ControlFlowFrame::Try { incoming, body, .. }) =
+                self.assignment.path.control_flow.last_mut()
+            else {
+                return;
+            };
+            *body = Some(checkpoint);
+            incoming.clone()
+        };
+        self.restore(&incoming);
+        self.assignment.path.assignment_writes.clear();
     }
 
     fn exit_try(&mut self, span: swc_common::Span, has_handler: bool, has_finally: bool) {
-        self.exit_try(span, has_handler, has_finally);
+        let Some(ControlFlowFrame::Try {
+            incoming,
+            body,
+            conditional,
+        }) = self.assignment.path.control_flow.pop()
+        else {
+            return;
+        };
+        if conditional {
+            self.assignment.path.conditional_depth =
+                self.assignment.path.conditional_depth.saturating_sub(1);
+        }
+        let body = body.unwrap_or_else(|| self.checkpoint());
+        let mut paths = Vec::new();
+        if has_handler {
+            paths.push(body);
+            paths.push(self.checkpoint());
+        } else if has_finally {
+            paths.push(incoming.clone());
+            paths.push(body);
+        } else {
+            paths.push(body);
+        }
+        self.join_paths(span, &incoming, &paths);
     }
 
     fn mark_unreachable(&mut self) {
-        self.mark_unreachable();
+        self.assignment.path.reachable = false;
     }
 
     fn break_exit(&mut self) {
-        self.break_exit();
+        if self.assignment.path.reachable {
+            let checkpoint = self.checkpoint();
+            if let Some(frame) = self
+                .assignment
+                .path
+                .control_flow
+                .iter_mut()
+                .rev()
+                .find(|frame| {
+                    matches!(
+                        frame,
+                        ControlFlowFrame::Loop { .. } | ControlFlowFrame::Switch { .. }
+                    )
+                })
+            {
+                match frame {
+                    ControlFlowFrame::Loop { breaks, .. }
+                    | ControlFlowFrame::Switch { breaks, .. } => breaks.push(checkpoint),
+                    _ => unreachable!("breakable frame was checked above"),
+                }
+            }
+        }
+        self.assignment.path.reachable = false;
     }
 
     fn continue_exit(&mut self) {
-        self.continue_exit();
+        if self.assignment.path.reachable {
+            let checkpoint = self.checkpoint();
+            if let Some(ControlFlowFrame::Loop { continues, .. }) = self
+                .assignment
+                .path
+                .control_flow
+                .iter_mut()
+                .rev()
+                .find(|frame| matches!(frame, ControlFlowFrame::Loop { .. }))
+            {
+                continues.push(checkpoint);
+            }
+        }
+        self.assignment.path.reachable = false;
+    }
+
+    fn enter_function(&mut self) {
+        let checkpoint = self.checkpoint();
+        let control_depth = self.assignment.path.control_flow.len();
+        self.assignment
+            .path
+            .function_checkpoints
+            .push(super::FunctionCheckpoint {
+                checkpoint,
+                conditional_depth: self.assignment.path.conditional_depth,
+                control_depth,
+            });
+        self.assignment.path.reachable = true;
+        self.assignment.path.assignment_writes.clear();
+    }
+
+    fn exit_function(&mut self) {
+        let Some(super::FunctionCheckpoint {
+            checkpoint,
+            conditional_depth,
+            control_depth,
+        }) = self.assignment.path.function_checkpoints.pop()
+        else {
+            return;
+        };
+        self.assignment.path.control_flow.truncate(control_depth);
+        self.assignment.path.conditional_depth = conditional_depth;
+        self.restore(&checkpoint);
     }
 
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {

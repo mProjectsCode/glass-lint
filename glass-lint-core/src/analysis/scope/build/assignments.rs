@@ -13,8 +13,6 @@ use crate::analysis::{
     syntax::member_root_identifier,
 };
 
-mod control_flow;
-
 type JoinedPathAssignments = Vec<(ScopeId, glass_lint_datastructures::NameId, ProvenanceJoin)>;
 
 impl super::PathCollectionState {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::analysis::scope::build::traversal::ScopePass;
 
 #[test]
 fn predeclare_and_collect_phases_produce_identical_scopes() {
@@ -154,17 +155,17 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
                     .scope_shapes
                     .remaining(Some(program), span.lo, ScopeKind::Block);
             assert_eq!(remaining_first, 3);
-            collector.push_scope(span, ScopeKind::Block);
+            let entry = collector.push_scope(span, ScopeKind::Block);
             let first = collector.current_scope();
-            collector.pop_scope();
+            collector.pop_scope(entry);
             assert!(!collector.artifacts.has_issues());
-            collector.push_scope(span, ScopeKind::Block);
+            let entry = collector.push_scope(span, ScopeKind::Block);
             let second = collector.current_scope();
-            collector.pop_scope();
+            collector.pop_scope(entry);
             assert!(!collector.artifacts.has_issues());
-            collector.push_scope(span, ScopeKind::Block);
+            let entry = collector.push_scope(span, ScopeKind::Block);
             let third = collector.current_scope();
-            collector.pop_scope();
+            collector.pop_scope(entry);
             assert!(!collector.artifacts.has_issues());
             assert_ne!(first, second);
             assert_ne!(second, third);

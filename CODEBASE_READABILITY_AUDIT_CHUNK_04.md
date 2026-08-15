@@ -38,7 +38,7 @@ invariant panics on paths that already model failure with `Result`.
 
 ### Assignment and control-flow state
 
-#### [ ] READ-001 — `ScopePass for ScopeCollector` is a forwarding shim duplicating the inherent control-flow methods
+#### [x] READ-001 — `ScopePass for ScopeCollector` is a forwarding shim duplicating the inherent control-flow methods
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -79,7 +79,7 @@ the fail-closed `current_scope()` returning `None` after an issue; do not
 apply this consolidation to `ScopePlanner`, whose trait methods are genuine
 adapters over differently-typed inherent methods (plan.rs:148-167).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Consolidated the inherent control-flow bodies and the scope-stack bodies into the single `impl ScopePass for ScopeCollector` in visitor.rs and deleted the forwarding block. The inherent `pop_scope()` body was folded into the trait method behind the existing `ScopeEntry::Entered` guard; `is_budget_exhausted` stayed direct. Deleted `assignments/control_flow.rs` (and its `mod` declaration) since Rust forbids a second trait impl. Updated direct inherent calls in `tests.rs` / `tests_extended.rs` to go through the trait, and added the `ScopePass` import where `self.current_scope()` is called (collector.rs, callbacks.rs). `ScopeEntry::Rejected` semantics, `ScopeStackUnderflow` / `ShapeMismatch` recording, and fail-closed `current_scope()` returning `None` after an issue are preserved; `ScopePlanner` is untouched.
 
 #### [ ] READ-002 — Declaration registration and `var` binding-scope selection are duplicated across planner and collector
 

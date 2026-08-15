@@ -3,7 +3,10 @@ use swc_ecma_ast::VarDeclKind;
 use swc_ecma_visit::VisitWith;
 
 use super::*;
-use crate::analysis::scope::{ScopeKind, ScopeTraversal};
+use crate::analysis::scope::{
+    ScopeKind, ScopeTraversal,
+    build::traversal::{ScopeEntry, ScopePass},
+};
 
 fn with_collector<R>(
     source: &str,
@@ -98,7 +101,8 @@ fn popping_the_program_scope_invalidates_collection_instead_of_falling_back() {
         .expect("source should parse");
     with_planned_scopes(parsed.program.span(), &[], |collector| {
         assert!(collector.current_scope().is_some());
-        collector.pop_scope();
+        let program = collector.current_scope().expect("program scope");
+        collector.pop_scope(ScopeEntry::Entered(program));
 
         assert!(collector.artifacts.has_issues());
         assert!(collector.current_scope().is_none());
@@ -170,9 +174,9 @@ fn reuses_same_span_same_kind_siblings_by_order() {
         let predeclared = collector.lexical.scope_shapes.shapes_len();
         assert_eq!(predeclared, 2);
 
-        collector.push_scope(span, ScopeKind::Block);
+        let entry = collector.push_scope(span, ScopeKind::Block);
         let first = collector.current_scope();
-        collector.pop_scope();
+        collector.pop_scope(entry);
         collector.push_scope(span, ScopeKind::Block);
         let second = collector.current_scope();
 
@@ -217,8 +221,8 @@ fn divergence_on_extra_scope_fails_closed() {
     with_planned_scopes(span, &[ScopeKind::Block], |collector| {
         assert_eq!(collector.lexical.scope_shapes.shapes_len(), 1);
         let before = collector.current_scope();
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let entry = collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope(entry);
         assert!(!collector.artifacts.has_issues());
         assert_eq!(collector.current_scope(), before);
         collector.push_scope(span, ScopeKind::Block);
@@ -234,15 +238,11 @@ fn frozen_scope_queries_fail_closed_after_shape_mismatch() {
         crate::parse_test_source("value;", "frozen-divergence.js").expect("source should parse");
     let span = parsed.program.span();
     with_planned_scopes_consuming(span, &[ScopeKind::Block], |mut collector| {
-        assert!(matches!(
-            collector.push_scope(span, ScopeKind::Block),
-            traversal::ScopeEntry::Entered(_)
-        ));
-        collector.pop_scope();
-        assert!(matches!(
-            collector.push_scope(span, ScopeKind::Block),
-            traversal::ScopeEntry::Rejected
-        ));
+        let entered = collector.push_scope(span, ScopeKind::Block);
+        assert!(matches!(entered, ScopeEntry::Entered(_)));
+        collector.pop_scope(entered);
+        let rejected = collector.push_scope(span, ScopeKind::Block);
+        assert!(matches!(rejected, ScopeEntry::Rejected));
 
         let scoped = collector.freeze(&crate::Environment::default());
         assert!(scoped.issues.contains(&ScopeCollectionIssue::ShapeMismatch));
@@ -257,8 +257,8 @@ fn divergence_on_missing_scope_fails_closed() {
     let span = parsed.program.span();
     with_planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block], |collector| {
         assert_eq!(collector.lexical.scope_shapes.shapes_len(), 2);
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let entry = collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope(entry);
         assert!(!collector.artifacts.has_issues());
         assert_eq!(
             collector.lexical.scope_shapes.remaining(

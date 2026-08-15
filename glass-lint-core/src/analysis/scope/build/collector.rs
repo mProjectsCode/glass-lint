@@ -5,14 +5,13 @@ use swc_ecma_ast::{ArrowExpr, Expr, Function, Pat, VarDeclKind};
 use crate::analysis::{
     SemanticBudget,
     scope::{
-        BindingProvenance, ScopeId, ScopeKind, ScopedName,
+        BindingProvenance, ScopeId, ScopedName,
         build::{
             ScopeCollectionArtifacts, ScopeCollector,
             bindings::{for_each_pat_binding, var_binding_scope},
             compact_pat::{CompactPat, compact_pat},
             plan::ScopePlan,
-            program::ScopeCollectionIssue,
-            traversal::ScopeEntry,
+            traversal::ScopePass,
         },
         query::rooted::RootedExprContext,
     },
@@ -45,12 +44,6 @@ impl ScopeCollector<'_> {
             #[cfg(test)]
             scope_lookups: 0,
         }
-    }
-
-    pub(super) fn current_scope(&self) -> Option<ScopeId> {
-        (!self.artifacts.has_issues())
-            .then(|| self.lexical.stack.last().copied())
-            .flatten()
     }
 
     pub(super) fn binding_scope(&self, kind: VarDeclKind) -> Option<ScopeId> {
@@ -167,39 +160,6 @@ impl ScopeCollector<'_> {
         for_each_pat_binding(pat, |binding| {
             self.update_binding(scope, binding, BindingProvenance::Local);
         });
-    }
-
-    pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {
-        let Some(parent) = self.current_scope() else {
-            self.artifacts
-                .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
-            return ScopeEntry::Rejected;
-        };
-        if let Some(scope_id) = self
-            .lexical
-            .scope_shapes
-            .take_child(Some(parent), span.lo, kind)
-        {
-            self.lexical.stack.push(scope_id);
-            #[cfg(test)]
-            {
-                self.scope_lookups += 1;
-            }
-            ScopeEntry::Entered(scope_id)
-        } else {
-            self.artifacts
-                .record_issue(ScopeCollectionIssue::ShapeMismatch);
-            ScopeEntry::Rejected
-        }
-    }
-
-    pub(super) fn pop_scope(&mut self) {
-        if self.lexical.stack.len() <= 1 {
-            self.artifacts
-                .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
-            return;
-        }
-        let _ = self.lexical.stack.pop();
     }
 
     pub(super) fn function_parameters(function: &Function) -> Vec<CompactPat> {
