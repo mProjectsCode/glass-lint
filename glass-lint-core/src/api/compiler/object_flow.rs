@@ -126,14 +126,14 @@ impl CompiledObjectFlow {
                 NormalizedLifecycleCondition::AnyOf(events) => (
                     events
                         .iter()
-                        .map(CompiledObjectRequirement::from_matcher)
+                        .map(CompiledObjectRequirement::from_normalized_lifecycle_event)
                         .collect(),
                     RequirementMode::AnyRequired,
                 ),
                 NormalizedLifecycleCondition::AllOf(events) => (
                     events
                         .iter()
-                        .map(CompiledObjectRequirement::from_matcher)
+                        .map(CompiledObjectRequirement::from_normalized_lifecycle_event)
                         .collect(),
                     RequirementMode::AllRequired,
                 ),
@@ -146,11 +146,17 @@ impl CompiledObjectFlow {
                     (Vec::new(), CompletionMode::Configuration)
                 }
                 NormalizedLifecycleCompletion::AnySink(sinks) => (
-                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    sinks
+                        .iter()
+                        .map(CompiledObjectSink::from_normalized_lifecycle_sink)
+                        .collect(),
                     CompletionMode::AnySink,
                 ),
                 NormalizedLifecycleCompletion::AllSinks(sinks) => (
-                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    sinks
+                        .iter()
+                        .map(CompiledObjectSink::from_normalized_lifecycle_sink)
+                        .collect(),
                     CompletionMode::AllSinks,
                 ),
             },
@@ -213,7 +219,7 @@ pub(crate) enum CompiledObjectRequirement {
 }
 
 impl CompiledObjectRequirement {
-    fn from_matcher(event: &NormalizedLifecycleEvent) -> Self {
+    fn from_normalized_lifecycle_event(event: &NormalizedLifecycleEvent) -> Self {
         match event {
             NormalizedLifecycleEvent::PropertyWrite { property, value } => Self::PropertyWrite {
                 property: property.clone(),
@@ -305,7 +311,7 @@ pub(crate) struct CompiledObjectSink {
 }
 
 impl CompiledObjectSink {
-    fn from_matcher(sink: &NormalizedLifecycleSink) -> Self {
+    fn from_normalized_lifecycle_sink(sink: &NormalizedLifecycleSink) -> Self {
         match sink {
             NormalizedLifecycleSink::ArgumentOf { target, index } => Self {
                 target: target.clone(),

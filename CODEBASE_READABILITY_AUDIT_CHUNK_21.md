@@ -249,7 +249,7 @@ and the production path keeps the single `from_planned_roots` boundary.
 
 ### api/compiler/object_flow — inconsistent conversion names
 
-#### [ ] READ-009 — `from_matcher` names on requirements/sinks, `from_normalized_event` on sources
+#### [x] READ-009 — `from_matcher` names on requirements/sinks, `from_normalized_event` on sources
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -269,7 +269,9 @@ type. The mismatch obscures that all three consume `NormalizedLifecycle*` values
 `from_normalized_lifecycle_sink`) to match `from_normalized_event`. Guardrail: none
 beyond keeping the one-to-one normalized-IR mapping.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed `CompiledObjectRequirement::from_matcher` to
+`from_normalized_lifecycle_event` and `CompiledObjectSink::from_matcher` to
+`from_normalized_lifecycle_sink`, matching `CompiledObjectSource::from_normalized_event`.
 
 ## Systemic Themes
 
