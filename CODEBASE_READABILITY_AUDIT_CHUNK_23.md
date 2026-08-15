@@ -25,7 +25,7 @@ construction, a duplicated fallback evidence step).
 
 ### Linter construction and configuration surface
 
-#### [ ] READ-001 — Dead public selection surface: `LinterConfig::selection()`, the retained `PreparedRuleSelection::selection`, and `RuleSelection::validate`
+#### [x] READ-001 — Dead public selection surface: `LinterConfig::selection()`, the retained `PreparedRuleSelection::selection`, and `RuleSelection::validate`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -52,7 +52,7 @@ the CLI already clones `PreparedRuleSelection` into its own `PreparedConfig`
 (`glass-lint-cli/src/config.rs:286-293`), so nothing depends on the field; keep
 `prepare()`/`resolve()` since `Linter::new` and CLI validation both use them.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `LinterConfig::selection()`, dropped the `PreparedRuleSelection::selection` field and its `selection()` accessor (leaving `into_parts()` as the sole way out), and removed `RuleSelection::validate()`; `prepare()`/`resolve()`/`baseline()`/`overrides()` retained.
 
 #### [ ] READ-002 — `ProjectReportAssembler` is declared `pub` but never exported from the crate
 

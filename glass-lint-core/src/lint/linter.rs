@@ -86,13 +86,6 @@ impl LinterConfig {
         self.project_limits = limits;
         self
     }
-
-    pub fn selection(&self) -> &RuleSelection {
-        match &self.rules {
-            LinterRuleInputs::Unprepared { selection, .. } => selection,
-            LinterRuleInputs::Prepared(selection) => selection.selection(),
-        }
-    }
 }
 
 /// Immutable configuration shared across cloned linters.

@@ -266,14 +266,9 @@ struct SelectionEvaluation {
 pub struct PreparedRuleSelection {
     catalog: RuleCatalog,
     enabled: Vec<RuleIndex>,
-    selection: RuleSelection,
 }
 
 impl PreparedRuleSelection {
-    pub(crate) fn selection(&self) -> &RuleSelection {
-        &self.selection
-    }
-
     pub(crate) fn into_parts(self) -> (RuleCatalog, Vec<RuleIndex>) {
         (self.catalog, self.enabled)
     }
@@ -308,17 +303,13 @@ impl RuleSelection {
     }
 
     /// Validate every override against an assembled catalog.
-    pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        self.validated_evaluation(catalog).map(|_| ())
-    }
-
+    ///
     /// Resolve and validate this selection against an assembled catalog.
     pub fn prepare(&self, catalog: &RuleCatalog) -> Result<PreparedRuleSelection, LintConfigError> {
         let evaluation = self.validated_evaluation(catalog)?;
         Ok(PreparedRuleSelection {
             catalog: catalog.clone(),
             enabled: evaluation.enabled,
-            selection: self.clone(),
         })
     }
 
