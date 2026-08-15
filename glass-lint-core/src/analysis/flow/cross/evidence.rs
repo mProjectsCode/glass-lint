@@ -11,7 +11,7 @@ use crate::{
             effect::{EffectUse, FunctionEffect},
         },
         model::flow::FlowId,
-        trace::{QualifiedEvent, TraceArena, TraceNodeId, intern_lifecycle_trace},
+        trace::{QualifiedEvent, TraceArena, TraceNodeId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
@@ -183,8 +183,7 @@ fn assemble_trace(
     let source = state.source().copied()?;
     let requirements = state.requirement_events().copied();
     let prior_sinks = state.prior_sinks(module, event).into_iter();
-    intern_lifecycle_trace(
-        arena,
+    arena.intern_lifecycle_trace(
         source,
         requirements,
         prior_sinks,

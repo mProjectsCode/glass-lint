@@ -103,7 +103,7 @@ impl TraceArena {
             self.exhausted = true;
             return None;
         }
-        let Some(id) = TraceNodeId::from_node_count(self.arena, self.nodes.len()) else {
+        let Some(id) = self.node_id(self.nodes.len()) else {
             self.exhausted = true;
             return None;
         };
@@ -126,6 +126,39 @@ impl TraceArena {
             tail = Some(self.intern(tail, event, role)?);
         }
         tail
+    }
+
+    /// Build the node id for a node count within this arena.
+    fn node_id(&self, count: usize) -> Option<TraceNodeId> {
+        u32::try_from(count).ok().map(|node| TraceNodeId {
+            arena: self.arena,
+            node,
+        })
+    }
+
+    /// Intern the common lifecycle evidence shape while leaving prior-sink role
+    /// policy with the caller that owns the local or cross-module semantics.
+    pub(crate) fn intern_lifecycle_trace(
+        &mut self,
+        source: QualifiedEvent,
+        requirements: impl IntoIterator<Item = QualifiedEvent>,
+        prior_sinks: impl IntoIterator<Item = QualifiedEvent>,
+        terminal: QualifiedEvent,
+        prior_sink_role: EvidenceRole,
+    ) -> Option<TraceNodeId> {
+        let steps = std::iter::once((source, EvidenceRole::Source))
+            .chain(
+                requirements
+                    .into_iter()
+                    .map(|event| (event, EvidenceRole::Requirement)),
+            )
+            .chain(
+                prior_sinks
+                    .into_iter()
+                    .map(|event| (event, prior_sink_role)),
+            )
+            .chain(std::iter::once((terminal, EvidenceRole::Sink)));
+        self.intern_chain(steps)
     }
 
     /// Reconstruct a complete trace, returning `None` for a foreign or
@@ -157,36 +190,7 @@ impl TraceArena {
     }
 }
 
-/// Intern the common lifecycle evidence shape while leaving prior-sink role
-/// policy with the caller that owns the local or cross-module semantics.
-pub(super) fn intern_lifecycle_trace(
-    arena: &mut TraceArena,
-    source: QualifiedEvent,
-    requirements: impl IntoIterator<Item = QualifiedEvent>,
-    prior_sinks: impl IntoIterator<Item = QualifiedEvent>,
-    terminal: QualifiedEvent,
-    prior_sink_role: EvidenceRole,
-) -> Option<TraceNodeId> {
-    let steps = std::iter::once((source, EvidenceRole::Source))
-        .chain(
-            requirements
-                .into_iter()
-                .map(|event| (event, EvidenceRole::Requirement)),
-        )
-        .chain(
-            prior_sinks
-                .into_iter()
-                .map(|event| (event, prior_sink_role)),
-        )
-        .chain(std::iter::once((terminal, EvidenceRole::Sink)));
-    arena.intern_chain(steps)
-}
-
 impl TraceNodeId {
-    fn from_node_count(arena: u64, count: usize) -> Option<Self> {
-        u32::try_from(count).ok().map(|node| Self { arena, node })
-    }
-
     fn index(self) -> usize {
         self.node as usize
     }

@@ -21,7 +21,7 @@ use crate::{
             flow::{FlowId, FlowStateKey},
             scope::FunctionId,
         },
-        trace::{QualifiedEvent, TraceNodeId, intern_lifecycle_trace},
+        trace::{QualifiedEvent, TraceNodeId},
     },
     api::{
         classification::ClassificationEvidenceOccurrence, compiler::object_flow::CompletionMode,
@@ -268,8 +268,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             .prior_sinks(sink_fact)
             .into_iter()
             .map(|fact| QualifiedEvent::new(self.inputs.module_id, fact));
-        intern_lifecycle_trace(
-            self.trace_arena,
+        self.trace_arena.intern_lifecycle_trace(
             QualifiedEvent::new(self.inputs.module_id, state.source_event()),
             requirements,
             prior_sinks,

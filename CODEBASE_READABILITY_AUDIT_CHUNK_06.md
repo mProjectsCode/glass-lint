@@ -210,7 +210,7 @@ change the positive-limit contract of `TraceArena`.
 
 **Fix Applied:** `match_project` no longer constructs a zero-limit arena on rule-selection failure. The success branch wraps the arena in `Some` and the failure branch yields `None`; `set_trace_arena` is called only when an arena exists, so "no traces" is expressed by the session's own `Option<TraceArena>` rather than a sentinel. `reconstruct_trace`/`trace_node_count` return values are unchanged for the missing-arena case.
 
-#### [ ] READ-007 — Trace arena API-shape nits: redundant constructor argument and a coordination free function
+#### [x] READ-007 — Trace arena API-shape nits: redundant constructor argument and a coordination free function
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -240,7 +240,7 @@ parameter from `TraceNodeId::from_node_count` (its only caller). Move
 (`parent.arena != self.arena`) and fail-closed exhaustion behavior exactly as
 tested in `analysis/trace/tests.rs`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `TraceArena::node_id(&self, count)` now builds node ids from the arena's own id, and the arena parameter was dropped from `TraceNodeId::from_node_count`, which was deleted (its only caller was trace.rs:106). `intern_lifecycle_trace` moved onto `TraceArena` as an inherent method calling `self.intern_chain(steps)`; both callers (`flow/cross/evidence.rs`, `flow/projector/evidence.rs`) were updated. Foreign-handle rejection and fail-closed exhaustion tests still pass unchanged.
 
 ## Systemic Themes
 
