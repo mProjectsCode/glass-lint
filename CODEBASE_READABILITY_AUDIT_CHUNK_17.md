@@ -56,7 +56,7 @@ borrow shape intact, and do not touch the flow projector's
 
 **Fix Applied:** Deleted `ProjectionInputs` and passed the six fields directly to `project_facts`; no collision remains with the flow projector's type.
 
-#### [ ] READ-002 — Redundant re-read of the export memo table inside `ExportResolver::lookup_export_body`
+#### [x] READ-002 — Redundant re-read of the export memo table inside `ExportResolver::lookup_export_body`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -79,7 +79,7 @@ future path ever memoizes into `exports` during lookup, re-introduce the check
 with a comment; keep the early `DEFAULT_EXPORT`, unknown-interface, and cache
 handling as-is.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the dead post-walk `self.exports.resolve` re-check in `lookup_export_body`; the pre-walk check in `lookup_export_inner` alone covers the memo.
 
 ### Export resolution (`analysis/project/resolver.rs`, `linker/export.rs`, `identities.rs`)
 

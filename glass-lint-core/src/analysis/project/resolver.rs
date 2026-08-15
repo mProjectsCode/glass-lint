@@ -186,9 +186,6 @@ impl<'a> ExportResolver<'a> {
         }
         let (candidate, saw_unknown) = self.walk_star_exports(id, context);
 
-        if let Some(resolved) = self.exports.resolve(id) {
-            return Some(resolved.clone());
-        }
         let result = if saw_unknown { None } else { candidate };
         self.cache.insert(id.clone(), result.clone());
         result
