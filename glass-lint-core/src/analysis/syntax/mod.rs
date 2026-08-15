@@ -19,7 +19,7 @@ mod provenance;
 
 pub use names::*;
 pub(in crate::analysis) use provenance::{
-    BudgetComponent, SymbolCallProvenance, SymbolMemberProvenance, UnknownReason,
+    SymbolCallProvenance, SymbolMemberProvenance, UnknownReason,
 };
 
 /// Inclusive span containment: `inner` lies within `outer`.

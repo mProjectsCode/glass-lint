@@ -11,7 +11,7 @@ use crate::analysis::{
         ValueId, syntax_constant,
     },
     scope::ScopeId,
-    syntax::{BudgetComponent, UnknownReason},
+    syntax::UnknownReason,
 };
 
 struct ResolutionSeed {
@@ -330,11 +330,7 @@ impl Resolver<'_> {
             && !matches!(seed.provenance.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()
         {
-            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
-                limit: MAX_VALUES,
-                observed: None,
-            })
+            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted { limit: MAX_VALUES })
         } else {
             self.call_provenance_at(
                 seed.provisional_id,

@@ -9,7 +9,7 @@ use crate::analysis::{
         Callee, ConstValue, Expr, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
         SymbolCallProvenance, ValueConstruction, ValueId, syntax_constant,
     },
-    syntax::{BudgetComponent, UnknownReason},
+    syntax::UnknownReason,
 };
 
 impl Resolver<'_> {
@@ -109,9 +109,7 @@ impl Resolver<'_> {
     ) -> ResolvedValue {
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
             return Self::archive_unknown_with_reason(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
                 limit: MAX_VALUES,
-                observed: None,
             });
         }
         ResolvedValue::local(id)

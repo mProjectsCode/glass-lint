@@ -8,7 +8,7 @@ use crate::analysis::{
     model::value::{MAX_VALUES, StaticObject, Value},
     scope::ScopeGraph,
     semantic::SpanNormalizer,
-    syntax::{BudgetComponent, UnknownReason, constant::MAX_ARRAY_ITEMS},
+    syntax::{UnknownReason, constant::MAX_ARRAY_ITEMS},
 };
 
 #[test]
@@ -41,11 +41,7 @@ fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
     };
     assert_eq!(
         resolver.call_provenance_for_value(ValueId::UNKNOWN),
-        SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
-            component: BudgetComponent::Values,
-            limit: MAX_VALUES,
-            observed: None,
-        })
+        SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted { limit: MAX_VALUES })
     );
 }
 

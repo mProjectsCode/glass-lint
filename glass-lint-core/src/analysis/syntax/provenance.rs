@@ -14,22 +14,11 @@ pub(in crate::analysis) enum UnknownReason {
     /// The syntax is outside the supported semantic subset.
     Unsupported,
     /// A bounded operation prevented a resolution answer.
-    BudgetExhausted {
-        component: BudgetComponent,
-        limit: usize,
-        observed: Option<usize>,
-    },
+    BudgetExhausted { limit: usize },
     /// The requested identity or source record was unavailable.
     Missing,
     /// Resolution encountered a recursive identity cycle.
     Cycle,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-/// Semantic component whose bounded work prevented a resolution answer.
-pub(in crate::analysis) enum BudgetComponent {
-    /// Interned value identities reached their per-file cap.
-    Values,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

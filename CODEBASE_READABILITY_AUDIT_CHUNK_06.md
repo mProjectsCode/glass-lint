@@ -130,7 +130,7 @@ cache-identity and `NameTable` capacity semantics must not change.
 
 **Fix Applied:** `MAX_NAMES` stays core's deliberate artifact bound, now pinned at compile time via `const _: () = assert!(MAX_NAMES == glass_lint_datastructures::DEFAULT_MAX_NAMES)`. `DEFAULT_MAX_NAMES` was re-exported at the datastructures crate root (`pub use name::{DEFAULT_MAX_NAMES, ...}`), and the `MAX_NAMES` doc comment now states it matches both the datastructures default and the default semantic-operation bound. Cache-identity and `NameTable` capacity semantics are unchanged.
 
-#### [ ] READ-004 — `BudgetComponent` is a single-variant enum with an always-`None` `observed` payload
+#### [x] READ-004 — `BudgetComponent` is a single-variant enum with an always-`None` `observed` payload
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -154,7 +154,7 @@ fields are part of the public reason contract. Guardrail: keep the
 `Cycle` — budget exhaustion is a materially different fail-closed outcome and
 must not be collapsed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `UnknownReason::BudgetExhausted` was collapsed to `BudgetExhausted { limit }` and the single-variant `BudgetComponent` enum was deleted. All three construction sites (`resolution/expression.rs`, `resolution/call.rs`, `resolution/expression/static_values.rs`) and the `analysis::syntax` re-export now use `{ limit: MAX_VALUES }`; `BudgetComponent` was removed from imports and the resolution unit test. `BudgetExhausted` remains distinct from `Unresolved`/`Unsupported`/`Missing`/`Cycle`.
 
 ### [analysis/syntax — names module surface]
 
