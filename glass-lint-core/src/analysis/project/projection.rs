@@ -9,6 +9,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+mod outcome;
+pub use outcome::ProjectionOutcome;
+
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel,
@@ -24,7 +27,6 @@ use crate::{
         },
         model::flow::FlowLimits,
         project::state::LinkingSession,
-        semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         trace::TraceArena,
     },
     api::{
@@ -365,198 +367,6 @@ impl ProjectModuleProjection<'_> {
 /// into the project model through hidden interior mutability.  The caller
 /// decides how to merge or report these instead of the project mutating
 /// itself through a shared reference.
-#[derive(Debug, Default)]
-pub struct ProjectionOutcome {
-    status: ProjectionStatus,
-    metrics: ProjectionMetrics,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum ProjectionCompletion {
-    #[default]
-    Complete,
-    Incomplete,
-}
-
-impl ProjectionCompletion {
-    fn is_incomplete(self) -> bool {
-        matches!(self, Self::Incomplete)
-    }
-
-    fn mark_incomplete(&mut self) {
-        *self = Self::Incomplete;
-    }
-}
-
-#[derive(Debug, Default)]
-struct ProjectionStatus {
-    flow: ProjectionCompletion,
-    /// Operation count when exhaustion was reached, if applicable.
-    flow_observed: Option<usize>,
-    /// Flow-owned operations, excluding matcher overlay construction.
-    flow_operations: usize,
-    effects: ProjectionCompletion,
-    /// Effect operations consumed when the effect budget was exhausted.
-    effect_observed: Option<usize>,
-    /// Modules whose effect extraction was incomplete.
-    effect_exhausted_modules: Vec<ModuleId>,
-    evidence_error: Option<RuleEvidenceError>,
-}
-
-impl ProjectionStatus {
-    fn record_analysis_status(&self, project: &ProjectSemanticModel, status: &mut AnalysisStatus) {
-        if self.effects.is_incomplete() {
-            for module_id in &self.effect_exhausted_modules {
-                if let Some(module) = project.module(*module_id) {
-                    status.record(
-                        StatusScope::File(module.path().clone()),
-                        IncompleteReason::BudgetExhausted {
-                            component: AnalysisComponent::Effects,
-                            limit: project.effect_limit(),
-                            observed: self.effect_observed,
-                        },
-                    );
-                }
-            }
-        }
-        if self.flow.is_incomplete() {
-            status.record(
-                StatusScope::Project,
-                IncompleteReason::BudgetExhausted {
-                    component: AnalysisComponent::Flow,
-                    limit: project.flow_limit(),
-                    observed: self.flow_observed,
-                },
-            );
-        }
-        if let Some(error) = self.evidence_error {
-            let (expected, actual) = match error {
-                RuleEvidenceError::RuleOutOfRange { rule, capacity } => {
-                    (capacity, rule.get().saturating_add(1))
-                }
-                RuleEvidenceError::CapacityMismatch { expected, actual } => (expected, actual),
-            };
-            status.record(
-                StatusScope::Project,
-                IncompleteReason::EvidenceCapacityMismatch { expected, actual },
-            );
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct ProjectionMetrics {
-    /// Number of effect projections performed during this projection.
-    effect_projections: usize,
-    /// Complete trace heads emitted by local and cross-module flow.
-    trace_heads: usize,
-    /// Maximum live local semantic alternatives.
-    max_live_alternatives: usize,
-    /// Local coalescing comparisons.
-    coalescing_comparisons: usize,
-    /// Local loop fixed-point iterations.
-    fixed_point_iterations: usize,
-    operations: usize,
-}
-
-impl ProjectionOutcome {
-    pub(crate) fn record_analysis_status(
-        &self,
-        project: &ProjectSemanticModel,
-        status: &mut AnalysisStatus,
-    ) {
-        self.status.record_analysis_status(project, status);
-    }
-
-    pub(crate) fn metrics(&self) -> &ProjectionMetrics {
-        &self.metrics
-    }
-
-    fn record_effects(
-        &mut self,
-        module: ModuleId,
-        effects: &crate::analysis::flow::effect::FunctionEffects,
-    ) {
-        if !effects.completion().is_incomplete() {
-            return;
-        }
-        self.status.effects.mark_incomplete();
-        self.status.effect_exhausted_modules.push(module);
-        self.status.effect_observed = Some(
-            self.status
-                .effect_observed
-                .unwrap_or_default()
-                .saturating_add(effects.operation_count()),
-        );
-    }
-
-    fn record_evidence_error(&mut self, error: RuleEvidenceError) {
-        self.status.evidence_error.get_or_insert(error);
-    }
-
-    fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
-        if local.is_exhausted() {
-            self.status.flow.mark_incomplete();
-        }
-        self.status.flow_operations = self.status.flow_operations.saturating_add(local.operations);
-        self.metrics.max_live_alternatives = self
-            .metrics
-            .max_live_alternatives
-            .max(local.max_live_alternatives);
-        self.metrics.coalescing_comparisons = self
-            .metrics
-            .coalescing_comparisons
-            .saturating_add(local.coalescing_comparisons);
-        self.metrics.fixed_point_iterations = self
-            .metrics
-            .fixed_point_iterations
-            .saturating_add(local.fixed_point_iterations);
-        self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(local.trace_heads);
-        self.metrics.operations = self.metrics.operations.saturating_add(local.operations);
-    }
-
-    fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
-        if cross.completion.is_incomplete() {
-            self.status.flow.mark_incomplete();
-        }
-        self.status.flow_operations = self.status.flow_operations.saturating_add(cross.operations);
-        self.metrics.effect_projections = cross.projections;
-        self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(cross.trace_heads);
-        self.metrics.operations = self.metrics.operations.saturating_add(cross.operations);
-    }
-
-    fn finish(mut self) -> Self {
-        self.status.flow_observed = self
-            .status
-            .flow
-            .is_incomplete()
-            .then_some(self.status.flow_operations);
-        self
-    }
-}
-
-impl ProjectionMetrics {
-    pub(crate) fn effect_projections(&self) -> usize {
-        self.effect_projections
-    }
-
-    pub(crate) fn trace_heads(&self) -> usize {
-        self.trace_heads
-    }
-
-    pub(crate) fn max_live_alternatives(&self) -> usize {
-        self.max_live_alternatives
-    }
-
-    pub(crate) fn coalescing_comparisons(&self) -> usize {
-        self.coalescing_comparisons
-    }
-
-    pub(crate) fn fixed_point_iterations(&self) -> usize {
-        self.fixed_point_iterations
-    }
-}
-
 impl ProjectSemanticModel {
     /// Project a linked semantic model into matcher queries without rewalking
     /// any source AST.  Side effects such as budget exhaustion and projection
@@ -675,25 +485,4 @@ impl ProjectMatcherModel<'_, '_> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn flow_observed_excludes_non_flow_projection_work() {
-        let mut outcome = ProjectionOutcome::default();
-        let mut local = LocalFlowProjectionOutcome::default();
-        local.operations = 7;
-        outcome.record_local(&local);
-        let cross = flow::cross::CrossProjectionOutcome {
-            operations: 5,
-            ..flow::cross::CrossProjectionOutcome::default()
-        };
-        outcome.record_cross(&cross);
-        outcome.status.flow.mark_incomplete();
-        outcome.metrics.operations = 100;
-
-        let finished = outcome.finish();
-
-        assert_eq!(finished.status.flow_observed, Some(12));
-    }
-}
+mod tests;

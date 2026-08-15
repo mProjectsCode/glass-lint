@@ -40,14 +40,4 @@ impl Confidence {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Confidence;
-
-    #[test]
-    fn confidence_thresholds_follow_semantic_strength() {
-        assert!(Confidence::High.meets(Confidence::High));
-        assert!(Confidence::High.meets(Confidence::Medium));
-        assert!(Confidence::Medium.meets(Confidence::Medium));
-        assert!(!Confidence::Low.meets(Confidence::Medium));
-    }
-}
+mod tests;

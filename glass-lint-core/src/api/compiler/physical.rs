@@ -3,24 +3,26 @@ use glass_lint_datastructures::SymbolPath;
 #[cfg(test)]
 use crate::api::rule::ArgumentConstraint;
 use crate::api::{
-    classification::MatchKind,
     compiler::{
         error::PhysicalPlanValidationError,
         limits as compiler_limits,
-        normalized::{
-            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedQuery,
-            NormalizedRoot, ObjectSlot as NormalizedObjectSlot,
-        },
+        normalized::{CanonicalArgumentConstraints, ObjectSlot as NormalizedObjectSlot},
         object_flow::CompiledObjectFlow,
         requirements::PlanRequirements,
-        rule::{EventSpec, EvidenceDescriptor, IdentityConstraint, lower_identity},
-        validate::{SubjectRelation, classify_subject_relation},
+        rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
     },
-    rule::{
-        ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
-        ValueMatcherKind, query::limits,
-    },
+    rule::query::limits,
 };
+
+mod planner;
+mod validation;
+
+#[cfg(test)]
+pub(crate) use planner::plan_normalized;
+pub(crate) use planner::plan_normalized_roots_into;
+#[cfg(test)]
+pub(crate) use validation::validate_physical_plan;
+use validation::{requirements_for_roots, validate_canonical_constraints};
 
 /// Compile raw argument constraints into canonical grouped form.
 ///
@@ -472,212 +474,5 @@ fn explain_root(root: &PhysicalRoot) -> String {
             evidence.kind, evidence.symbol
         ),
         PhysicalRoot::Lifecycle { flow } => format!("lifecycle {flow:?}"),
-    }
-}
-
-// ── Planner ─────────────────────────────────────────────────────────────
-
-/// Plan a normalized query into a [`PhysicalPlan`].
-#[cfg(test)]
-pub(crate) fn plan_normalized(
-    nq: &NormalizedQuery,
-) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
-    let mut budget = RootBudget::new();
-    let mut roots = Vec::new();
-    plan_normalized_roots_into(nq, &mut budget, &mut roots)?;
-    PhysicalPlan::from_roots(roots.into_boxed_slice())
-}
-
-pub(crate) fn plan_normalized_roots_into(
-    nq: &NormalizedQuery,
-    budget: &mut RootBudget,
-    roots: &mut Vec<PhysicalRoot>,
-) -> Result<(), PhysicalPlanValidationError> {
-    let emission = nq.emission();
-    let kind = emission.kind();
-    let symbol = emission.symbol();
-    plan_root(nq.root(), kind, symbol, budget, roots)
-}
-
-fn plan_root(
-    root: &NormalizedRoot,
-    kind: MatchKind,
-    symbol: &str,
-    budget: &mut RootBudget,
-    roots: &mut Vec<PhysicalRoot>,
-) -> Result<(), PhysicalPlanValidationError> {
-    match root {
-        NormalizedRoot::Event(ev) => {
-            let planned = plan_event(ev, kind, symbol)?;
-            budget.reserve()?;
-            roots.push(planned);
-        }
-        NormalizedRoot::Any(branches) => {
-            for b in branches {
-                plan_root(b, kind, symbol, budget, roots)?;
-            }
-        }
-        NormalizedRoot::Lifecycle(lc) => {
-            let planned = plan_lifecycle(lc, symbol)?;
-            budget.reserve()?;
-            roots.push(planned);
-        }
-    }
-    Ok(())
-}
-
-fn plan_event(
-    ev: &NormalizedEvent,
-    kind: MatchKind,
-    symbol: &str,
-) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
-    let relation = classify_subject_relation(ev.event(), ev.subject())
-        .map_err(|_| PhysicalPlanValidationError::ImpossibleDimensions)?;
-    let evidence = EvidenceDescriptor {
-        kind,
-        symbol: symbol.to_owned(),
-    };
-
-    match relation {
-        SubjectRelation::Direct { identity } => {
-            if ev.arguments().is_empty() {
-                Ok(PhysicalRoot::indexed_scan(
-                    lower_identity(identity),
-                    ev.event().clone(),
-                    evidence,
-                ))
-            } else {
-                Ok(PhysicalRoot::constrained_scan(
-                    lower_identity(identity),
-                    ev.event().clone(),
-                    ev.arguments().clone(),
-                    evidence,
-                ))
-            }
-        }
-        SubjectRelation::Returned {
-            producer,
-            object_slot,
-            member,
-            event,
-        } => Ok(PhysicalRoot::returned_subject(
-            lower_identity(producer),
-            object_slot,
-            member.clone(),
-            event.clone(),
-            evidence,
-        )?),
-        SubjectRelation::Instance {
-            constructor,
-            object_slot,
-            member,
-        } => Ok(PhysicalRoot::instance_subject(
-            lower_identity(constructor),
-            object_slot,
-            member.clone(),
-            evidence,
-        )?),
-    }
-}
-
-fn plan_lifecycle(
-    lc: &NormalizedLifecycle,
-    symbol: &str,
-) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
-    CompiledObjectFlow::from_normalized_lifecycle(lc, symbol)
-        .map(|flow| PhysicalRoot::Lifecycle { flow })
-        .map_err(
-            |error| PhysicalPlanValidationError::InvalidLifecycleSource {
-                detail: error.detail(),
-            },
-        )
-}
-
-// ── Validation ──────────────────────────────────────────────────────────
-
-#[cfg(test)]
-pub(crate) fn validate_physical_plan(
-    plan: &PhysicalPlan,
-) -> Result<(), PhysicalPlanValidationError> {
-    for root in plan.roots() {
-        root.validate()?;
-    }
-    if requirements_for_roots(plan.roots()) != *plan.requirements() {
-        return Err(PhysicalPlanValidationError::RequirementsMismatch);
-    }
-    Ok(())
-}
-
-fn requirements_for_roots(roots: &[PhysicalRoot]) -> PlanRequirements {
-    let mut requirements = PlanRequirements::default();
-    for root in roots {
-        root.merge_requirements_into(&mut requirements);
-    }
-    requirements
-}
-
-/// Validate that compiled constraints are well-formed.
-///
-/// Groups must be non-empty, in ascending index order, with at least one
-/// predicate per group and no empty predicates.  Group and predicate counts
-/// must be within declared limits.
-fn validate_canonical_constraints(
-    constraints: &CanonicalArgumentConstraints,
-) -> Result<(), PhysicalPlanValidationError> {
-    let groups = constraints.groups();
-    if groups.is_empty() {
-        return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
-    }
-
-    if groups.len() > limits::MAX_ARGUMENT_GROUPS {
-        return Err(PhysicalPlanValidationError::ExcessiveArgumentGroups(
-            groups.len(),
-        ));
-    }
-
-    let mut prev_index: Option<ArgumentIndex> = None;
-    for group in groups {
-        if group.predicates().is_empty() {
-            return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
-        }
-        if group.predicates().len() > limits::MAX_PREDICATES_PER_ARGUMENT {
-            return Err(PhysicalPlanValidationError::ExcessivePredicateCount(
-                group.predicates().len(),
-            ));
-        }
-        if let Some(prev) = prev_index
-            && prev >= group.index()
-        {
-            return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
-        }
-        prev_index = Some(group.index());
-
-        // Check static-string alternative limits per predicate
-        for matcher in group.predicates() {
-            if let Some(count) = count_matcher_alternatives(matcher)
-                && count > limits::MAX_STATIC_ALTERNATIVES
-            {
-                return Err(PhysicalPlanValidationError::ExcessiveAlternatives(count));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Count the number of static-string alternatives in an argument matcher, if
-/// applicable.
-fn count_matcher_alternatives(matcher: &ArgumentMatcher) -> Option<usize> {
-    match matcher.kind() {
-        ArgumentMatcherKind::Value(vm) => match vm.kind() {
-            ValueMatcherKind::StaticString(sp) => match sp.kind() {
-                StaticStringPredicateKind::Exact(v)
-                | StaticStringPredicateKind::Prefix(v)
-                | StaticStringPredicateKind::ContainsAny(v)
-                | StaticStringPredicateKind::ContainsAll(v) => Some(v.len()),
-                StaticStringPredicateKind::Any => None,
-            },
-            ValueMatcherKind::Any => None,
-        },
-        _ => None,
     }
 }

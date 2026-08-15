@@ -10,8 +10,8 @@
 //!      [`TsconfigPatternSet`], discarding raw selection strings. This is the
 //!      production type used for source membership.
 
+mod fields;
 pub mod selection;
-
 use std::{
     fmt,
     io::Read,
@@ -19,6 +19,8 @@ use std::{
     time::Instant,
 };
 
+use fields::{FieldState, type_name};
+pub use fields::{ParsedField, StringArrayField, StringField};
 use serde_json::Value;
 
 use crate::{boundary::realpath, budget::ProjectResourceBudget, error::ProjectLoadError};
@@ -47,88 +49,6 @@ impl Default for ConfigTraversalBudget {
             max_config_count: 100,
             max_depth: 20,
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Field-level representation for the parsed DTO
-// ---------------------------------------------------------------------------
-
-/// Generic parsed field representation distinguishing absent, null,
-/// wrong-type, and present states.
-#[derive(Clone, Debug)]
-pub enum ParsedField<T> {
-    Absent,
-    Null,
-    WrongType(String),
-    Present(T),
-}
-
-pub type StringField = ParsedField<String>;
-pub type StringArrayField = ParsedField<Vec<String>>;
-
-impl<T> ParsedField<T> {
-    fn ok(self) -> Option<T> {
-        match self {
-            Self::Present(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    fn from_value_opt(value: Option<&Value>) -> Self
-    where
-        Self: FromValue,
-    {
-        value.map_or(Self::Absent, Self::from_value)
-    }
-}
-
-trait FromValue: Sized {
-    fn from_value(value: &Value) -> Self;
-}
-
-impl FromValue for ParsedField<String> {
-    fn from_value(value: &Value) -> Self {
-        match value {
-            Value::Null => Self::Null,
-            Value::String(s) => Self::Present(s.clone()),
-            other => Self::WrongType(format!("expected string, got {}", type_name(other))),
-        }
-    }
-}
-
-impl FromValue for ParsedField<Vec<String>> {
-    fn from_value(value: &Value) -> Self {
-        match value {
-            Value::Null => Self::Null,
-            Value::Array(arr) => {
-                let mut items = Vec::with_capacity(arr.len());
-                for v in arr {
-                    match v.as_str() {
-                        Some(s) => items.push(s.to_owned()),
-                        None => {
-                            return Self::WrongType(format!(
-                                "expected string element in array, got {}",
-                                type_name(v)
-                            ));
-                        }
-                    }
-                }
-                Self::Present(items)
-            }
-            other => Self::WrongType(format!("expected array, got {}", type_name(other))),
-        }
-    }
-}
-
-fn type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
     }
 }
 
@@ -253,20 +173,6 @@ fn parse_references(value: Option<&Value>) -> (Vec<ReferenceEntry>, Vec<String>)
                 type_name(other)
             )],
         ),
-    }
-}
-
-trait FieldState {
-    fn error(&self) -> Option<String>;
-}
-
-impl<T> FieldState for ParsedField<T> {
-    fn error(&self) -> Option<String> {
-        match self {
-            Self::WrongType(message) => Some(message.clone()),
-            Self::Null => Some("value is null".into()),
-            Self::Absent | Self::Present(_) => None,
-        }
     }
 }
 

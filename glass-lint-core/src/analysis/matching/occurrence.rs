@@ -9,10 +9,14 @@ use std::{
     collections::{BTreeMap, BTreeSet, binary_heap::BinaryHeap},
 };
 
-use glass_lint_datastructures::{ByteRange, NameId, NamePath, SymbolPath};
+use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
 
 use crate::analysis::facts::FactId;
+
+mod storage;
+
+pub(in crate::analysis) use storage::{Occurrence, OccurrenceIndex};
 
 /// A raw borrowed, merged, or owned occurrence selection.
 ///
@@ -68,9 +72,9 @@ impl OrderedOccurrences<'_> {
         let mut occurrences = occurrences.into_iter().collect::<Vec<_>>();
         occurrences.sort_unstable_by_key(|occurrence| {
             (
-                occurrence.event,
-                occurrence.span.start(),
-                occurrence.span.end(),
+                occurrence.event(),
+                occurrence.span().start(),
+                occurrence.span().end(),
             )
         });
         Self::Sorted(occurrences.into_iter())
@@ -210,9 +214,9 @@ fn push_candidate(
     let Some(slice) = slice else { return };
     if let Some(&occurrence) = slice.get(position) {
         heap.push(Reverse(MergeItem {
-            event: occurrence.event,
-            start: occurrence.span.start(),
-            end: occurrence.span.end(),
+            event: occurrence.event(),
+            start: occurrence.span().start(),
+            end: occurrence.span().end(),
             bucket,
             occurrence,
         }));
@@ -383,148 +387,6 @@ impl Iterator for BorrowedPackageOccurrenceIter<'_> {
     }
 }
 
-/// Typed occurrence storage. Keeping insertion and normalization in one
-/// container prevents semantic collectors from inventing subtly different
-/// span ordering or duplicate policies for each provenance view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::analysis) struct Occurrence {
-    /// Canonical semantic event identity.
-    event: FactId,
-    /// Canonical source span used for trace correlation and tie-breaking.
-    span: ByteRange,
-}
-
-impl Occurrence {
-    /// Construct one typed event/span occurrence.
-    pub(super) fn new(event: FactId, span: ByteRange) -> Self {
-        Self { event, span }
-    }
-
-    /// Return the canonical event identity.
-    pub(super) fn event(&self) -> FactId {
-        self.event
-    }
-
-    /// Return the source span associated with the event.
-    pub(super) fn span(&self) -> ByteRange {
-        self.span
-    }
-}
-
-#[derive(Clone, Debug)]
-/// Ordered occurrence buckets keyed by a typed semantic identity.
-pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
-
-impl<K: Ord> Default for OccurrenceIndex<K> {
-    fn default() -> Self {
-        Self(BTreeMap::new())
-    }
-}
-
-impl<K: Ord> OccurrenceIndex<K> {
-    /// Look up one normalized occurrence bucket as a slice.
-    pub(super) fn get<Q>(&self, key: &Q) -> Option<&[Occurrence]>
-    where
-        K: std::borrow::Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        self.0.get(key).map(Vec::as_slice)
-    }
-
-    /// Whether no occurrence buckets are present.
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Iterate over buckets for reference assertions in unit tests.
-    #[cfg(test)]
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &[Occurrence])> {
-        self.0.iter().map(|(key, values)| (key, values.as_slice()))
-    }
-
-    /// Collect occurrences from all buckets satisfying one identity
-    /// predicate.
-    pub(super) fn matching(
-        &self,
-        mut predicate: impl FnMut(&K) -> bool,
-    ) -> Option<OccurrenceSelection<'_>> {
-        let occurrences = self
-            .0
-            .iter()
-            .filter(|(key, _)| predicate(key))
-            .flat_map(|(_, values)| values.iter().copied())
-            .collect::<Vec<_>>();
-        if occurrences.is_empty() {
-            return None;
-        }
-        Some(OccurrenceSelection::scanned(occurrences))
-    }
-
-    /// Append an already constructed occurrence before normalization.
-    pub(super) fn push_occurrence(&mut self, key: K, occurrence: Occurrence) {
-        self.0.entry(key).or_default().push(occurrence);
-    }
-
-    /// Append one event/span pair before normalization.
-    #[cfg(test)]
-    pub(super) fn push(&mut self, key: K, event: FactId, span: ByteRange) {
-        self.push_occurrence(key, Occurrence::new(event, span));
-    }
-
-    /// Sort and deduplicate every key bucket.
-    ///
-    /// Sorting here makes the normalized ordering an owner invariant rather
-    /// than a promise that every collector happened to append monotonically.
-    pub(super) fn normalize(&mut self) {
-        for occurrences in self.0.values_mut() {
-            occurrences.sort_unstable_by_key(|occurrence| {
-                (
-                    occurrence.event,
-                    occurrence.span.start(),
-                    occurrence.span.end(),
-                )
-            });
-            occurrences.dedup_by_key(|occurrence| {
-                (
-                    occurrence.event,
-                    occurrence.span.start(),
-                    occurrence.span.end(),
-                )
-            });
-        }
-    }
-}
-
-impl OccurrenceIndex<ModuleExportKey> {
-    /// Visit normalized module buckets without exposing the backing map.
-    pub(super) fn for_each_bucket<'a>(
-        &'a self,
-        mut visit: impl FnMut(&ModuleExportKey, &'a [Occurrence]),
-    ) {
-        for (key, occurrences) in &self.0 {
-            visit(key, occurrences.as_slice());
-        }
-    }
-
-    /// Lazily scan package exports in the local occurrence index.
-    pub(super) fn package_candidates<'a>(
-        &'a self,
-        predicate: PackageKeyPredicate<'a>,
-    ) -> BorrowedPackageOccurrenceIter<'a> {
-        BorrowedPackageOccurrenceIter::base(predicate, &self.0)
-    }
-
-    /// Lazily scan package exports with a completed linked overlay.
-    pub(super) fn package_candidates_with_overlay<'a>(
-        &'a self,
-        predicate: PackageKeyPredicate<'a>,
-        overlay: PackageOverlay<'a>,
-    ) -> BorrowedPackageOccurrenceIter<'a> {
-        BorrowedPackageOccurrenceIter::with_overlay(predicate, &self.0, overlay)
-    }
-}
-
 pub(in crate::analysis) type Occurrences = OccurrenceIndex<SmolStr>;
 pub(in crate::analysis) type NameOccurrences = OccurrenceIndex<NameId>;
 
@@ -606,210 +468,4 @@ impl ModuleExportKey {
 pub(in crate::analysis) type ModuleOccurrences = OccurrenceIndex<ModuleExportKey>;
 
 #[cfg(test)]
-mod tests {
-    use glass_lint_datastructures::ByteRange;
-
-    use super::*;
-
-    fn span(start: u32, end: u32) -> ByteRange {
-        ByteRange::new(start, end).unwrap()
-    }
-
-    fn occ(event_id: u32, start: u32, end: u32) -> Occurrence {
-        Occurrence::new(FactId::from_test(event_id), span(start, end))
-    }
-
-    /// Reference merge: collect all occurrences then sort by
-    /// (event, start, end, bucket) — mirrors the old O(k·n) contract.
-    fn reference_merge<'a>(
-        base: Option<&'a [Occurrence]>,
-        overlay: &'a [&'a [Occurrence]],
-    ) -> Vec<Occurrence> {
-        let mut all: Vec<(Occurrence, usize)> = Vec::new();
-        if let Some(b) = base {
-            for &o in b {
-                all.push((o, 0));
-            }
-        }
-        for (bi, &bucket) in overlay.iter().enumerate() {
-            let bucket_idx = usize::from(base.is_some()) + bi;
-            for &o in bucket {
-                all.push((o, bucket_idx));
-            }
-        }
-        all.sort_by_key(|&(o, bi)| (o.event, o.span.start(), o.span.end(), bi));
-        all.into_iter().map(|(o, _)| o).collect()
-    }
-
-    #[test]
-    fn cursor_single_overlay_bucket() {
-        let bucket = [occ(1, 5, 10), occ(2, 20, 30)];
-        let overlays: Vec<&[Occurrence]> = vec![&bucket];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        assert_eq!(result, vec![occ(1, 5, 10), occ(2, 20, 30)]);
-    }
-
-    #[test]
-    fn cursor_base_only() {
-        let base = [occ(1, 5, 10), occ(2, 20, 30)];
-        let iter = BorrowedOccurrenceIter::new(Some(&base), &[]);
-        let result: Vec<_> = iter.collect();
-        assert_eq!(result, vec![occ(1, 5, 10), occ(2, 20, 30)]);
-    }
-
-    #[test]
-    fn cursor_empty_overlay() {
-        let mut iter = BorrowedOccurrenceIter::new(None, &[]);
-        assert!(iter.next().is_none());
-    }
-
-    #[test]
-    fn multi_merge_two_buckets() {
-        let b0 = [occ(1, 5, 10), occ(3, 15, 20)];
-        let b1 = [occ(2, 8, 12)];
-        let overlays: Vec<&[Occurrence]> = vec![&b0, &b1];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(None, &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_three_buckets_interleaved() {
-        let b0 = [occ(1, 10, 20), occ(4, 40, 50)];
-        let b1 = [occ(2, 10, 20), occ(3, 30, 40)];
-        let b2 = [occ(1, 5, 10), occ(5, 50, 60)];
-        let overlays: Vec<&[Occurrence]> = vec![&b0, &b1, &b2];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(None, &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_base_and_overlay() {
-        let base = [occ(1, 5, 10)];
-        let overlay = [occ(2, 8, 12)];
-        let overlays: Vec<&[Occurrence]> = vec![&overlay];
-        let iter = BorrowedOccurrenceIter::new(Some(&base), &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(Some(&base), &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_tie_break_by_bucket() {
-        let b0 = [occ(1, 10, 20)];
-        let b1 = [occ(1, 10, 20)];
-        let overlays: Vec<&[Occurrence]> = vec![&b0, &b1];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(None, &overlays);
-        assert_eq!(result, expected);
-        assert_eq!(result.len(), 2);
-    }
-
-    #[test]
-    fn multi_merge_with_empty_buckets() {
-        let b0: [Occurrence; 0] = [];
-        let b1 = [occ(1, 5, 10), occ(3, 25, 30)];
-        let b2: [Occurrence; 0] = [];
-        let b3 = [occ(2, 8, 12)];
-        let overlays: Vec<&[Occurrence]> = vec![&b0, &b1, &b2, &b3];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(None, &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn ordered_selection_sorts_without_deduplicating_physical_events() {
-        let selection = OccurrenceSelection::scanned(vec![
-            occ(3, 30, 31),
-            occ(1, 10, 11),
-            occ(1, 10, 11),
-            occ(2, 20, 21),
-        ]);
-
-        let ordered: Vec<_> = selection.into_ordered().collect();
-        assert_eq!(
-            ordered,
-            vec![
-                occ(1, 10, 11),
-                occ(1, 10, 11),
-                occ(2, 20, 21),
-                occ(3, 30, 31)
-            ]
-        );
-    }
-
-    #[test]
-    fn ordered_normalized_selections_keep_their_lazy_order() {
-        let values = [occ(1, 10, 11), occ(2, 20, 21)];
-        let indexed: Vec<_> = OccurrenceSelection::indexed(&values)
-            .into_ordered()
-            .collect();
-        assert_eq!(indexed, values);
-
-        let borrowed =
-            OccurrenceSelection::Borrowed(BorrowedOccurrenceIter::new(Some(&values), &[]));
-        let borrowed: Vec<_> = borrowed.into_ordered().collect();
-        assert_eq!(borrowed, values);
-    }
-
-    #[test]
-    fn multi_merge_base_is_empty() {
-        let base: [Occurrence; 0] = [];
-        let o0 = [occ(1, 5, 10), occ(2, 20, 30)];
-        let o1 = [occ(3, 15, 20)];
-        let overlays: Vec<&[Occurrence]> = vec![&o0, &o1];
-        let iter = BorrowedOccurrenceIter::new(Some(&base), &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(Some(&base), &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_large_bucket_set() {
-        let buckets: Vec<Vec<Occurrence>> = (0u32..20)
-            .map(|i| {
-                let event = (i % 7) + 1;
-                let start = (i * 3) % 50;
-                let end = start + (i % 10) + 5;
-                vec![occ(event, start, end)]
-            })
-            .collect();
-        let overlays: Vec<&[Occurrence]> = buckets.iter().map(Vec::as_slice).collect();
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(None, &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_base_and_multiple_overlays() {
-        let base = [occ(2, 10, 20), occ(5, 50, 60)];
-        let o0 = [occ(1, 5, 10), occ(3, 15, 20)];
-        let o1 = [occ(4, 30, 40)];
-        let overlays: Vec<&[Occurrence]> = vec![&o0, &o1];
-        let iter = BorrowedOccurrenceIter::new(Some(&base), &overlays);
-        let result: Vec<_> = iter.collect();
-        let expected = reference_merge(Some(&base), &overlays);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn multi_merge_preserves_duplicates() {
-        let b0 = [occ(1, 5, 10), occ(2, 20, 30)];
-        let b1 = [occ(1, 5, 10), occ(2, 20, 30)];
-        let overlays: Vec<&[Occurrence]> = vec![&b0, &b1];
-        let iter = BorrowedOccurrenceIter::new(None, &overlays);
-        let result: Vec<_> = iter.collect();
-        assert_eq!(result.len(), 4);
-        assert_eq!(result[0], occ(1, 5, 10));
-        assert_eq!(result[1], occ(1, 5, 10));
-        assert_eq!(result[2], occ(2, 20, 30));
-        assert_eq!(result[3], occ(2, 20, 30));
-    }
-}
+mod tests;

@@ -1,0 +1,474 @@
+use std::collections::BTreeMap;
+
+use smol_str::SmolStr;
+
+use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
+use crate::api::rule::query::{
+    EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
+    value::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
+};
+
+macro_rules! define_lifecycle_adapter {
+    ($trait_name:ident, $method:ident, $value:ty) => {
+        #[doc = "Sealed fallible lifecycle input adapter."]
+        pub trait $trait_name: private::Sealed {
+            fn $method(self) -> Result<$value, QueryBuildError>;
+        }
+
+        impl $trait_name for $value {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                Ok(self)
+            }
+        }
+
+        impl private::Sealed for $value {}
+
+        impl $trait_name for Result<$value, QueryBuildError> {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                self
+            }
+        }
+
+        impl private::Sealed for Result<$value, QueryBuildError> {}
+    };
+}
+
+// ── LifecycleEvent ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum LifecycleEventKind {
+    PropertyWrite {
+        property: SmolStr,
+        value: ValueMatcher,
+    },
+    MemberCall {
+        member: MemberChain,
+        arguments: Vec<ArgumentConstraint>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LifecycleEvent {
+    pub(crate) kind: LifecycleEventKind,
+}
+
+impl LifecycleEvent {
+    pub(crate) fn kind(&self) -> &LifecycleEventKind {
+        &self.kind
+    }
+
+    pub fn property_write(
+        property: impl Into<SmolStr>,
+        value: ValueMatcher,
+    ) -> Result<Self, QueryBuildError> {
+        let property = property.into();
+        if property.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        Ok(Self {
+            kind: LifecycleEventKind::PropertyWrite { property, value },
+        })
+    }
+
+    pub fn member_call(
+        member: impl Into<String>,
+    ) -> Result<LifecycleEventBuilder, QueryBuildError> {
+        let member = member.into();
+        if member.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        let member = checked_chain(member)?;
+        Ok(LifecycleEventBuilder {
+            event: LifecycleEventKind::MemberCall {
+                member,
+                arguments: Vec::new(),
+            },
+            argument_counts: BTreeMap::new(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LifecycleEventBuilder {
+    event: LifecycleEventKind,
+    argument_counts: BTreeMap<crate::api::rule::query::value::ArgumentIndex, usize>,
+}
+
+impl LifecycleEventBuilder {
+    pub fn arg(
+        mut self,
+        index: usize,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
+        let index = crate::api::rule::query::value::ArgumentIndex::try_from_usize(index)?;
+        if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
+            crate::api::rule::query::value::push_argument_constraint(
+                arguments,
+                &mut self.argument_counts,
+                index,
+                matcher,
+            )?;
+        }
+        Ok(self)
+    }
+
+    pub fn build(self) -> LifecycleEvent {
+        LifecycleEvent { kind: self.event }
+    }
+}
+
+define_lifecycle_adapter!(IntoLifecycleEvent, into_lifecycle_event, LifecycleEvent);
+
+impl IntoLifecycleEvent for LifecycleEventBuilder {
+    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
+        Ok(self.build())
+    }
+}
+
+// ── LifecycleCondition ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum LifecycleConditionKind {
+    AnyOf(LifecycleEvents),
+    AllOf(LifecycleEvents),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LifecycleCondition {
+    kind: LifecycleConditionKind,
+}
+
+/// Non-empty, bounded, deterministic lifecycle event collections.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct CanonicalLifecycleItems<T>(Box<[T]>);
+
+impl<T: Ord> CanonicalLifecycleItems<T> {
+    fn new(
+        mut items: Vec<T>,
+        empty: QueryBuildError,
+        label: &'static str,
+        limit: usize,
+    ) -> Result<Self, QueryBuildError> {
+        if items.is_empty() {
+            return Err(empty);
+        }
+        items.sort();
+        items.dedup();
+        if items.len() > limit {
+            return Err(QueryBuildError::CollectionTooLarge(label, items.len()));
+        }
+        Ok(Self(items.into_boxed_slice()))
+    }
+
+    fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleEvents(CanonicalLifecycleItems<LifecycleEvent>);
+
+impl LifecycleEvents {
+    fn new(events: Vec<LifecycleEvent>) -> Result<Self, QueryBuildError> {
+        Ok(Self(CanonicalLifecycleItems::new(
+            events,
+            QueryBuildError::EmptyLifecycleCondition,
+            "lifecycle condition events",
+            limits::MAX_LIFECYCLE_EVENTS,
+        )?))
+    }
+
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleEvent> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+fn bounded_lifecycle_items<I, T, F>(
+    items: I,
+    label: &'static str,
+    mut convert: F,
+) -> Result<Vec<T>, QueryBuildError>
+where
+    I: IntoIterator,
+    F: FnMut(I::Item) -> Result<T, QueryBuildError>,
+{
+    let mut converted = Vec::new();
+    for item in items {
+        if converted.len() >= limits::MAX_LIFECYCLE_EVENTS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                label,
+                converted.len() + 1,
+            ));
+        }
+        converted.push(convert(item)?);
+    }
+    Ok(converted)
+}
+
+impl LifecycleCondition {
+    pub(crate) fn kind(&self) -> &LifecycleConditionKind {
+        &self.kind
+    }
+
+    pub fn any_of<I>(events: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator,
+        I::Item: IntoLifecycleEvent,
+    {
+        let events = bounded_lifecycle_items(
+            events,
+            "lifecycle condition events",
+            IntoLifecycleEvent::into_lifecycle_event,
+        )?;
+        Ok(Self {
+            kind: LifecycleConditionKind::AnyOf(LifecycleEvents::new(events)?),
+        })
+    }
+
+    /// Require every event on the same tracked lifecycle object.
+    ///
+    /// This is a bounded multi-event correlation. It preserves path-local
+    /// identity: an event from another object, an incompatible branch, an
+    /// unknown value, or an exhausted alternative cannot complete the
+    /// conjunction.
+    pub fn all_of<I>(events: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator,
+        I::Item: IntoLifecycleEvent,
+    {
+        let events = bounded_lifecycle_items(
+            events,
+            "lifecycle condition events",
+            IntoLifecycleEvent::into_lifecycle_event,
+        )?;
+        Ok(Self {
+            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(events)?),
+        })
+    }
+
+    pub fn event(event: impl IntoLifecycleEvent) -> Result<Self, QueryBuildError> {
+        Ok(Self {
+            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(vec![
+                event.into_lifecycle_event()?,
+            ])?),
+        })
+    }
+}
+
+// ── LifecycleCompletion ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum LifecycleCompletionKind {
+    Configuration,
+    AnySink(LifecycleSinks),
+    AllSinks(LifecycleSinks),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LifecycleCompletion {
+    kind: LifecycleCompletionKind,
+}
+
+/// Non-empty, bounded, deterministic lifecycle sink collections.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleSinks(CanonicalLifecycleItems<LifecycleSink>);
+
+impl LifecycleSinks {
+    fn new(sinks: Vec<LifecycleSink>) -> Result<Self, QueryBuildError> {
+        Ok(Self(CanonicalLifecycleItems::new(
+            sinks,
+            QueryBuildError::EmptyLifecycleSinks,
+            "lifecycle completion sinks",
+            limits::MAX_LIFECYCLE_SINKS,
+        )?))
+    }
+
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleSink> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl LifecycleCompletion {
+    pub(crate) fn kind(&self) -> &LifecycleCompletionKind {
+        &self.kind
+    }
+
+    pub fn configuration() -> Self {
+        Self {
+            kind: LifecycleCompletionKind::Configuration,
+        }
+    }
+
+    pub fn any_sink<I, S>(sinks: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: IntoLifecycleSink,
+    {
+        let sinks = bounded_lifecycle_items(
+            sinks,
+            "lifecycle completion sinks",
+            IntoLifecycleSink::into_lifecycle_sink,
+        )?;
+        Ok(Self {
+            kind: LifecycleCompletionKind::AnySink(LifecycleSinks::new(sinks)?),
+        })
+    }
+
+    /// Require every sink for the same tracked object, in path order.
+    ///
+    /// Unlike [`Self::any_sink`], one matching sink does not complete the
+    /// flow. Each sink is a separate bounded correlation event; unknown,
+    /// escaped, reassigned, or incompatible-path objects cannot satisfy the
+    /// conjunction.
+    pub fn all_sinks<I, S>(sinks: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: IntoLifecycleSink,
+    {
+        let sinks = bounded_lifecycle_items(
+            sinks,
+            "lifecycle completion sinks",
+            IntoLifecycleSink::into_lifecycle_sink,
+        )?;
+        Ok(Self {
+            kind: LifecycleCompletionKind::AllSinks(LifecycleSinks::new(sinks)?),
+        })
+    }
+}
+
+// Fallible completion input accepted by lifecycle query builders.
+define_lifecycle_adapter!(
+    IntoLifecycleCompletion,
+    into_lifecycle_completion,
+    LifecycleCompletion
+);
+
+// ── LifecycleSink ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum LifecycleSinkKind {
+    ArgumentOf {
+        endpoint: LifecycleCallEndpoint,
+        index: usize,
+    },
+    AnyArgumentOf {
+        endpoint: LifecycleCallEndpoint,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LifecycleSink {
+    pub(crate) kind: LifecycleSinkKind,
+}
+
+impl LifecycleSink {
+    pub(crate) fn kind(&self) -> &LifecycleSinkKind {
+        &self.kind
+    }
+
+    /// Sink argument of a strict configured global call, e.g. `fetch(value)`.
+    pub fn argument_of_global(
+        name: impl Into<String>,
+        index: usize,
+    ) -> Result<Self, QueryBuildError> {
+        Self::build_call_sink(
+            name,
+            |chain| LifecycleCallTarget::Global(chain.as_str().into()),
+            Some(index),
+        )
+    }
+
+    /// Sink argument of a rooted member call, e.g.
+    /// `document.body.appendChild(value)`.
+    pub fn argument_of_member(
+        chain: impl Into<String>,
+        index: usize,
+    ) -> Result<Self, QueryBuildError> {
+        Self::build_call_sink(
+            chain,
+            |chain| LifecycleCallTarget::RootedMember(chain.path().clone()),
+            Some(index),
+        )
+    }
+
+    fn build_call_sink(
+        chain: impl Into<String>,
+        target: impl FnOnce(&MemberChain) -> LifecycleCallTarget,
+        index: Option<usize>,
+    ) -> Result<Self, QueryBuildError> {
+        let chain = chain.into();
+        if chain.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        let chain = checked_chain(chain)?;
+        let target = target(&chain);
+        let endpoint = LifecycleCallEndpoint::new(chain, target);
+        let kind = match index {
+            Some(index) => {
+                if index > limits::MAX_ARGUMENT_INDEX {
+                    return Err(QueryBuildError::InvalidArgumentIndex(index));
+                }
+                LifecycleSinkKind::ArgumentOf { endpoint, index }
+            }
+            None => LifecycleSinkKind::AnyArgumentOf { endpoint },
+        };
+        Ok(Self { kind })
+    }
+
+    /// Sink of any argument of a strict configured global call.
+    pub fn any_argument_of_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        Self::build_call_sink(
+            name,
+            |chain| LifecycleCallTarget::Global(chain.as_str().into()),
+            None,
+        )
+    }
+
+    /// Sink of any argument of a rooted member call.
+    pub fn any_argument_of_member(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        Self::build_call_sink(
+            chain,
+            |chain| LifecycleCallTarget::RootedMember(chain.path().clone()),
+            None,
+        )
+    }
+
+    pub fn chain(&self) -> &str {
+        match &self.kind {
+            LifecycleSinkKind::ArgumentOf { endpoint, .. }
+            | LifecycleSinkKind::AnyArgumentOf { endpoint } => endpoint.chain(),
+        }
+    }
+}
+
+// Fallible sink input accepted by [`LifecycleCompletion::any_sink`].
+define_lifecycle_adapter!(IntoLifecycleSink, into_lifecycle_sink, LifecycleSink);
+
+define_lifecycle_adapter!(IntoLifecycleSource, into_lifecycle_source, EventQuery);
+
+define_lifecycle_adapter!(
+    IntoLifecycleCondition,
+    into_lifecycle_condition,
+    LifecycleCondition
+);
+
+mod private {
+    pub trait Sealed {}
+
+    impl Sealed for super::LifecycleEventBuilder {}
+}
