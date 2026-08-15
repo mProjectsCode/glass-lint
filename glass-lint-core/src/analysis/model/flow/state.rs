@@ -6,7 +6,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowState {
+pub(in crate::analysis) struct FlowState {
     flow: FlowId,
     source_event: FactId,
     object_id: FlowObjectId,
@@ -23,27 +23,31 @@ impl Hash for FlowState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct FlowStateKey {
+pub(in crate::analysis) struct FlowStateKey {
     object: FlowObjectId,
     flow: FlowId,
 }
 
 impl FlowStateKey {
-    pub fn new(object: FlowObjectId, flow: FlowId) -> Self {
+    pub(in crate::analysis) fn new(object: FlowObjectId, flow: FlowId) -> Self {
         Self { object, flow }
     }
 
-    pub fn object(self) -> FlowObjectId {
+    pub(in crate::analysis) fn object(self) -> FlowObjectId {
         self.object
     }
 
-    pub fn flow(self) -> FlowId {
+    pub(in crate::analysis) fn flow(self) -> FlowId {
         self.flow
     }
 }
 
 impl FlowState {
-    pub fn new(flow: FlowId, source_event: FactId, object_id: FlowObjectId) -> Self {
+    pub(in crate::analysis) fn new(
+        flow: FlowId,
+        source_event: FactId,
+        object_id: FlowObjectId,
+    ) -> Self {
         Self {
             flow,
             source_event,
@@ -52,38 +56,46 @@ impl FlowState {
         }
     }
 
-    pub fn key(&self) -> FlowStateKey {
+    pub(in crate::analysis) fn key(&self) -> FlowStateKey {
         FlowStateKey::new(self.object_id, self.flow)
     }
 
-    pub fn flow_id(&self) -> FlowId {
+    pub(in crate::analysis) fn flow_id(&self) -> FlowId {
         self.flow
     }
 
-    pub fn object_id(&self) -> FlowObjectId {
+    pub(in crate::analysis) fn object_id(&self) -> FlowObjectId {
         self.object_id
     }
 
-    pub fn source_event(&self) -> FactId {
+    pub(in crate::analysis) fn source_event(&self) -> FactId {
         self.source_event
     }
 
-    pub fn record_requirement(&mut self, index: RequirementIndex, event: FactId) -> bool {
+    pub(in crate::analysis) fn record_requirement(
+        &mut self,
+        index: RequirementIndex,
+        event: FactId,
+    ) -> bool {
         self.evidence.record_requirement(index, event)
     }
 
-    pub(crate) fn clear_requirement(
+    pub(in crate::analysis) fn clear_requirement(
         &mut self,
         index: RequirementIndex,
     ) -> Option<LifecycleRollback<FactId>> {
         self.evidence.clear_requirement(index)
     }
 
-    pub fn remove_requirement_event(&mut self, index: RequirementIndex, event: FactId) -> bool {
+    pub(in crate::analysis) fn remove_requirement_event(
+        &mut self,
+        index: RequirementIndex,
+        event: FactId,
+    ) -> bool {
         self.evidence.remove_requirement_event(index, &event)
     }
 
-    pub(crate) fn restore_requirement(
+    pub(in crate::analysis) fn restore_requirement(
         &mut self,
         index: RequirementIndex,
         events: &LifecycleRollback<FactId>,
@@ -95,11 +107,15 @@ impl FlowState {
         self.evidence.requirements_ready(readiness)
     }
 
-    pub fn record_sink(&mut self, index: SinkIndex, event: FactId) -> bool {
+    pub(in crate::analysis) fn record_sink(&mut self, index: SinkIndex, event: FactId) -> bool {
         self.evidence.record_sink(index, event)
     }
 
-    pub fn remove_sink_event(&mut self, index: SinkIndex, event: FactId) -> bool {
+    pub(in crate::analysis) fn remove_sink_event(
+        &mut self,
+        index: SinkIndex,
+        event: FactId,
+    ) -> bool {
         self.evidence.remove_sink_event(index, &event)
     }
 
@@ -107,7 +123,7 @@ impl FlowState {
         self.evidence.sinks_ready(readiness)
     }
 
-    pub(crate) fn requirement_entries(
+    pub(in crate::analysis) fn requirement_entries(
         &self,
     ) -> impl Iterator<Item = (RequirementIndex, Vec<FactId>)> {
         self.evidence.requirement_entries()
@@ -119,7 +135,9 @@ impl FlowState {
         self.evidence.first_requirement_events()
     }
 
-    pub(crate) fn sink_entries(&self) -> impl Iterator<Item = (SinkIndex, Vec<FactId>)> {
+    pub(in crate::analysis) fn sink_entries(
+        &self,
+    ) -> impl Iterator<Item = (SinkIndex, Vec<FactId>)> {
         self.evidence.sink_entries()
     }
 

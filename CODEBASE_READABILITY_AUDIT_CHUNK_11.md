@@ -126,7 +126,7 @@ consumers and leave `prior_sink_events`' sorted+dedup contract untouched.
 
 **Fix Applied:** Added a borrowing `first_requirement_events` accessor (`impl Iterator<Item = (RequirementIndex, &E)>`) on `LifecycleEvidence` and `FlowState`; `build_flow_trace` now reads the first event of each index without materializing a per-index `Vec`. The full-valued `requirement_entries`/`sink_entries` views remain only for the loop fixed-point snapshot, and `prior_sink_events`' sorted+dedup contract is unchanged.
 
-#### [ ] READ-004 — `FlowState` and sibling flow types mix three visibility tiers (`pub`, `pub(crate)`, `pub(in crate::analysis)`) even though only `FlowReadiness` is consumed outside `crate::analysis`
+#### [x] READ-004 — `FlowState` and sibling flow types mix three visibility tiers (`pub`, `pub(crate)`, `pub(in crate::analysis)`) even though only `FlowReadiness` is consumed outside `crate::analysis`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -159,7 +159,7 @@ outside `crate::analysis` references `FlowId`/`FlowLimits`/`FlowState`/
 `From<{RequirementIndex,SinkIndex}> for usize` impls used by `EvidenceIndex`
 stay with the types.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Verified no consumer outside `crate::analysis` references the flow model (only `api/compiler/object_flow.rs` uses `FlowReadiness`/`RequirementReadiness`/`SinkReadiness`). Narrowed `FlowId`, `FlowLimits`, `FlowState`, `FlowStateKey`, `RequirementIndex`, `SinkIndex`, `LifecycleRollback`, and `FunctionTable` (plus every `FlowState` method and the flow re-exports) to a uniform `pub(in crate::analysis)`; removed the now-dead `get()` accessors on both index newtypes and kept the `From<…> for usize` impls with the types.
 
 #### [ ] READ-005 — `RequirementIndex` and `SinkIndex` are identical parallel newtypes and the 64-key cap invariant is re-encoded across the evidence stack
 

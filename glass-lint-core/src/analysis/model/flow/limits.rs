@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy)]
-pub struct FlowLimits {
+pub(in crate::analysis) struct FlowLimits {
     objects: u32,
     states: usize,
     emissions: usize,
@@ -21,7 +21,7 @@ const DEFAULT_ALTERNATIVES: usize = 4096;
 const MIN_ALTERNATIVES: usize = 16;
 
 impl FlowLimits {
-    pub fn from_flow_operations(flow_operations: usize) -> Self {
+    pub(in crate::analysis) fn from_flow_operations(flow_operations: usize) -> Self {
         Self {
             objects: u32::try_from(scaled_limit(
                 DEFAULT_OBJECTS,
@@ -53,33 +53,38 @@ impl FlowLimits {
         }
     }
 
-    pub fn object_limit(&self) -> u32 {
+    pub(in crate::analysis) fn object_limit(&self) -> u32 {
         self.objects
     }
 
-    pub fn state_limit(&self) -> usize {
+    pub(in crate::analysis) fn state_limit(&self) -> usize {
         self.states
     }
 
-    pub fn emission_limit(&self) -> usize {
+    pub(in crate::analysis) fn emission_limit(&self) -> usize {
         self.emissions
     }
 
-    pub fn mutation_limit(&self) -> usize {
+    pub(in crate::analysis) fn mutation_limit(&self) -> usize {
         self.mutation
     }
 
-    pub fn alternative_limit(&self) -> usize {
+    pub(in crate::analysis) fn alternative_limit(&self) -> usize {
         self.alternatives
     }
 
     /// Maximum number of charged operations for one flow scope.
-    pub fn operation_limit(&self) -> usize {
+    pub(in crate::analysis) fn operation_limit(&self) -> usize {
         self.operations
     }
 
     #[cfg(test)]
-    pub fn test_new(objects: u32, states: usize, emissions: usize, mutation: usize) -> Self {
+    pub(in crate::analysis) fn test_new(
+        objects: u32,
+        states: usize,
+        emissions: usize,
+        mutation: usize,
+    ) -> Self {
         Self {
             objects,
             states,
@@ -91,7 +96,7 @@ impl FlowLimits {
     }
 
     #[cfg(test)]
-    pub fn test_with_operation_limit(
+    pub(in crate::analysis) fn test_with_operation_limit(
         objects: u32,
         states: usize,
         emissions: usize,

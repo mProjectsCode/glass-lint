@@ -7,33 +7,34 @@ use crate::{
     api::classification::RuleIndex,
 };
 
-pub type FunctionTable<T> = glass_lint_datastructures::IndexTable<FunctionId, T>;
+pub(in crate::analysis) type FunctionTable<T> =
+    glass_lint_datastructures::IndexTable<FunctionId, T>;
 
 mod limits;
 mod state;
 
-pub use limits::FlowLimits;
-pub use state::{FlowState, FlowStateKey};
+pub(in crate::analysis) use limits::FlowLimits;
+pub(in crate::analysis) use state::{FlowState, FlowStateKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FlowId {
+pub(in crate::analysis) struct FlowId {
     rule_index: RuleIndex,
     flow_index: usize,
 }
 
 impl FlowId {
-    pub fn new(rule_index: RuleIndex, flow_index: usize) -> Self {
+    pub(in crate::analysis) fn new(rule_index: RuleIndex, flow_index: usize) -> Self {
         Self {
             rule_index,
             flow_index,
         }
     }
 
-    pub fn rule_index(self) -> RuleIndex {
+    pub(in crate::analysis) fn rule_index(self) -> RuleIndex {
         self.rule_index
     }
 
-    pub fn flow_index(self) -> usize {
+    pub(in crate::analysis) fn flow_index(self) -> usize {
         self.flow_index
     }
 }
@@ -89,15 +90,11 @@ impl<K: Ord> EvidenceValues<K> {
 
 /// Typed index of a lifecycle requirement in one compiled flow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct RequirementIndex(usize);
+pub(in crate::analysis) struct RequirementIndex(usize);
 
 impl RequirementIndex {
-    pub fn new(index: usize) -> Option<Self> {
+    pub(in crate::analysis) fn new(index: usize) -> Option<Self> {
         (index < u64::BITS as usize).then_some(Self(index))
-    }
-
-    pub fn get(self) -> usize {
-        self.0
     }
 }
 
@@ -109,15 +106,11 @@ impl From<RequirementIndex> for usize {
 
 /// Typed index of a lifecycle sink in one compiled flow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SinkIndex(usize);
+pub(in crate::analysis) struct SinkIndex(usize);
 
 impl SinkIndex {
-    pub fn new(index: usize) -> Option<Self> {
+    pub(in crate::analysis) fn new(index: usize) -> Option<Self> {
         (index < u64::BITS as usize).then_some(Self(index))
-    }
-
-    pub fn get(self) -> usize {
-        self.0
     }
 }
 
@@ -172,7 +165,7 @@ impl EvidenceIndex for RequirementIndex {}
 impl EvidenceIndex for SinkIndex {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct LifecycleRollback<E>(EvidenceValues<E>);
+pub(in crate::analysis) struct LifecycleRollback<E>(EvidenceValues<E>);
 
 /// Bounded indexed evidence for lifecycle requirements and sinks.
 ///
