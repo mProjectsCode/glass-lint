@@ -127,24 +127,9 @@ pub enum Value {
     StaticNumber(usize),
     StaticArray(Vec<ValueId>),
     StaticObject(StaticObject),
-    Callable(CallableValue),
+    Callable(ValueId),
     Object(ResolvedObjectId),
     Binding { key: BindingKey, target: ValueId },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CallableValue {
-    target: ValueId,
-}
-
-impl CallableValue {
-    pub fn new(target: ValueId) -> Self {
-        Self { target }
-    }
-
-    pub fn target(&self) -> ValueId {
-        self.target
-    }
 }
 
 pub const MAX_VALUES: usize = 65_536;

@@ -7,7 +7,7 @@
 use smol_str::ToSmolStr;
 
 use crate::analysis::{
-    model::value::{CallableValue, MAX_VALUES},
+    model::value::MAX_VALUES,
     module_request::ModuleRequestContext,
     resolution::{
         Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
@@ -92,7 +92,7 @@ impl Resolver<'_> {
         let target = self.resolve_expr_id(&member.obj);
         let id = self
             .values
-            .intern_value_with_binding(Value::Callable(CallableValue::new(target)), None);
+            .intern_value_with_binding(Value::Callable(target), None);
         self.interned_value(id, false)
     }
 
@@ -146,7 +146,7 @@ impl Resolver<'_> {
                 return SymbolCallProvenance::Unknown(UnknownReason::Missing);
             };
             match value {
-                Value::Callable(callable) => current = callable.target(),
+                Value::Callable(target) => current = *target,
                 Value::Global(name) => {
                     return SymbolCallProvenance::Global { name: name.clone() };
                 }

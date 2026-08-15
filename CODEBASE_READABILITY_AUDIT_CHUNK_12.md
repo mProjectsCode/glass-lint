@@ -213,7 +213,7 @@ the change.
 
 **Fix Applied:** Inlined `ScopeBindings` as a private `HashMap<NameId, BindingProvenance>` field on `LexicalScope`, updating the constructor and all seven access methods; the map stays private.
 
-#### [ ] READ-006 — `CallableValue` is a one-field wrapper whose only member access is a passthrough getter
+#### [x] READ-006 — `CallableValue` is a one-field wrapper whose only member access is a passthrough getter
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -233,7 +233,7 @@ and the constructor/accessor tests (`model/value/tests.rs:43-47`). Guardrail:
 the value must remain hashable/equatable and be resolved identically by
 `resolve`/`static_string`; no other caller reads `CallableValue`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `Value::Callable(CallableValue)` with `Value::Callable(ValueId)`, dropped `CallableValue`, updated the construction and resolution sites in `call.rs`, and removed the constructor/accessor unit test.
 
 ## Systemic Themes
 

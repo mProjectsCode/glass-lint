@@ -41,13 +41,6 @@ fn value_capacity_is_typed_as_exhaustion() {
 }
 
 #[test]
-fn callable_value_constructs_and_exposes_target() {
-    let target = ValueId::from_test(42);
-    let cv = CallableValue::new(target);
-    assert_eq!(cv.target(), target);
-}
-
-#[test]
 fn intern_with_binding_wraps_in_binding_when_key_provided() {
     let mut table = ValueTable::default();
     let inner = table.intern(Value::StaticString("hello".into()));
