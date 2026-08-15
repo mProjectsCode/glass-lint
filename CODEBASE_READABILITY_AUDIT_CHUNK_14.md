@@ -183,7 +183,7 @@ reported diagnostics, and do not pull budget state into a new owner; the shared
 
 ### analysis/local and analysis/semantic construction
 
-#### [ ] READ-005 — `SpanNormalizer` and `LocatedSourceContext` split the shared line-index invariant with an asymmetric constructor surface
+#### [x] READ-005 — `SpanNormalizer` and `LocatedSourceContext` split the shared line-index invariant with an asymmetric constructor surface
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -211,6 +211,16 @@ responsibilities distinct (SWC `BytePos` normalization vs authored display-range
 reporting) and do not collapse them into one type; preserve the invariant that
 `SpanNormalizer` and `LocatedSourceContext` derived from the same source share one
 line-index allocation (asserted by `analysis/local/tests.rs:48-54`).
+
+**Fix Applied:** Both constructors now take the line index by `Arc<SourceLineIndex>`:
+`SpanNormalizer::with_index` accepts an `Arc` (built once with `Arc::new(parsed.lines)`
+in `SemanticAnalyzer::analyze_source`) and stores it directly, and
+`LocatedSourceContext::with_index` already did. Replaced the field-dropping
+`SpanNormalizer::into_source_context` with an explicit
+`LocatedSourceContext::from_normalizer` constructor plus a narrow
+`SpanNormalizer::into_lines` accessor. The two responsibilities remain distinct, and
+the normalizer and context still share one `Arc` allocation (the resolver's cloned
+`SpanNormalizer` and the context come from the same `Arc::new`).
 
 **Fix Applied:** None so far.
 

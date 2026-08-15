@@ -20,7 +20,7 @@ use crate::{
         DerivedPhaseCapabilities, facts,
         flow::effect::FunctionEffects,
         model::module::ModuleInterface,
-        semantic::{AnalyzedSource, status::LocalAnalysisStatus},
+        semantic::{AnalyzedSource, SpanNormalizer, status::LocalAnalysisStatus},
         syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
@@ -109,6 +109,16 @@ impl LocatedSourceContext {
 
     pub(crate) fn with_index(path: ProjectRelativePath, lines: Arc<SourceLineIndex>) -> Self {
         Self { path, lines }
+    }
+
+    pub(in crate::analysis) fn from_normalizer(
+        path: ProjectRelativePath,
+        normalizer: SpanNormalizer,
+    ) -> Self {
+        Self {
+            path,
+            lines: normalizer.into_lines(),
+        }
     }
 
     pub(crate) fn path(&self) -> &ProjectRelativePath {
