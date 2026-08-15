@@ -55,7 +55,6 @@ provider-neutral engine.
 - `path_trie::types::PathId` — Identifies a path in one path store.
 - `path_trie::types::PathSegment` — Represents one normalized path segment.
 - `path_trie::types::PathSegmentInput` — Represents caller input that can become a path segment.
-- `table::IdIndex` — Defines dense index identifiers accepted by an index table.
 - `table::IndexTable` — Stores optional values in a dense typed-indexed table.
 - `table::InsertOutcome` — Reports whether a table insertion added or replaced a value.
 
@@ -72,11 +71,13 @@ module-resolution outcomes for core.
 - `glass_lint_project::discovery` — Discovers source files and follows bounded `tsconfig` membership.
 - `glass_lint_project::error` — Defines expected project-loading and option failures.
 - `glass_lint_project::loader` — Coordinates discovery, reads, resolution, and core project phases.
+- `glass_lint_project::loader::selection` — Resolves the project root, source boundary, and initial source paths against a timeout deadline before the load loop starts.
 - `glass_lint_project::loader_metrics` — Records bounded load counters and phase timings.
 - `glass_lint_project::loader_phases` — Owns the path queue, resolution cache, and frontier state.
 - `glass_lint_project::options` — Validates project selection and loading configuration.
 - `glass_lint_project::resolver` — Adapts Oxc module resolution to core's typed inputs.
 - `glass_lint_project::tsconfig` — Parses and expands project configuration references and patterns.
+- `glass_lint_project::tsconfig::fields` — Models parsed tsconfig field states and how raw JSON values convert into them.
 - `glass_lint_project::tsconfig::selection` — Compiles and merges effective `tsconfig` selections.
 - `glass_lint_project::walk` — Provides bounded deterministic directory walking support.
 
@@ -99,13 +100,13 @@ module-resolution outcomes for core.
 - `discovery::TsconfigGraphWalker` — Walks the bounded graph of referenced configurations.
 - `error::ProjectLoadError` — Classifies failures encountered while loading a project.
 - `error::ProjectOptionError` — Classifies invalid project-loading options.
-- `loader::LoadDeadline` — Tracks the deadline imposed on one project load.
 - `loader::ProjectLoadOutcome` — Returns the loaded core project together with partial status and metrics.
 - `loader::ProjectLoadState` — Holds mutable state for the multi-phase loading loop.
 - `loader::ProjectLoadStatus` — Classifies whether a project load completed or was partial.
 - `loader::ProjectLoader` — Coordinates the complete filesystem-to-core loading workflow.
-- `loader::ProjectPaths` — Groups the canonical paths relevant to one load.
 - `loader::ReadWaveOutcome` — Summarizes one bounded wave of source reads.
+- `loader::selection::LoadDeadline` — Wraps an absolute timeout instant and reports a Timeout error once project loading exceeds it.
+- `loader::selection::ProjectPaths` — Holds the canonical boundary, initial source paths, and tsconfig diagnostics established before the load loop starts.
 - `loader_metrics::ProjectLoadMetrics` — Aggregates project loading counters and timings.
 - `loader_metrics::ProjectPhaseTimings` — Records elapsed time for each loading phase.
 - `loader_phases::PathWorkQueue` — Maintains deterministic pending path work.
@@ -118,15 +119,13 @@ module-resolution outcomes for core.
 - `options::ValidatedProjectLoadOptions` — Stores options after all boundary checks pass.
 - `resolver::ProjectResolver` — Resolves core module requests within project filesystem rules.
 - `tsconfig::ConfigTraversalBudget` — Bounds recursive configuration traversal.
-- `tsconfig::FieldState` — Reports validation errors for parsed configuration fields.
-- `tsconfig::FromValue` — Converts JSON values into typed parsed fields.
-- `tsconfig::ParsedField` — Records the parsed state of a configuration field.
 - `tsconfig::ParsedTsconfig` — Holds the supported fields from one parsed configuration.
 - `tsconfig::ReferenceEntry` — Describes one referenced configuration path.
-- `tsconfig::StringArrayField` — Represents a parsed string-array configuration field.
-- `tsconfig::StringField` — Represents a parsed string configuration field.
 - `tsconfig::TsconfigDiagnostic` — Reports a non-fatal configuration parsing issue.
 - `tsconfig::TsconfigTraversal` — Tracks visited configurations and traversal limits.
+- `tsconfig::fields::ParsedField` — Distinguishes absent, null, wrong-type, and present states of a parsed tsconfig field.
+- `tsconfig::fields::StringArrayField` — ParsedField alias for a string-array tsconfig field value.
+- `tsconfig::fields::StringField` — ParsedField alias for a single-string tsconfig field value.
 - `tsconfig::selection::CompiledTsconfigSelection` — Represents compiled include and exclude matching rules.
 - `tsconfig::selection::MergedSelection` — Represents selection values after inheritance merging.
 - `tsconfig::selection::ParentSelection` — Holds inherited selection data from a parent configuration.
@@ -313,17 +312,18 @@ normalized adapter and report boundaries.
 - `profile::runner::support` — Provides shared profiling runner support operations.
 - `profile::runner::workers` — Coordinates profiling worker execution.
 - `profile::types` — Defines normalized profiling summaries and run values.
+- `profile::types::summary` — Accumulates per-workload profile results and finalizes them into a ProfileSummary.
 - `glass_lint_harness::profile_manifest` — Validates immutable profile corpus manifests.
 - `glass_lint_harness::report` — Renders suite and comparison reports.
 - `glass_lint_harness::runner` — Executes cases and combines adapter timings.
 - `glass_lint_harness::types` — Defines normalized case, protocol, and report types.
 - `types::case` — Defines fixture cases, selectors, and expectations.
+- `types::case::bundle` — Defines the bundle profiles, transformers, targets, and keys that describe a bundle case.
 - `types::protocol` — Defines the JSON adapter request and response protocol.
 - `types::report` — Defines per-case, per-tool, and suite results.
 
 ### Structs and enums
 
-- `adapters::Adapter` — Defines the normalized analysis-tool adapter boundary.
 - `adapters::ExternalAdapter` — Runs an external tool process for one case.
 - `adapters::GlassLintAdapter` — Adapts the built-in Glass Lint engine to the harness protocol.
 - `builtins::BuiltinProfile` — Selects a built-in profiling configuration.
@@ -331,7 +331,6 @@ normalized adapter and report boundaries.
 - `bundler::BundleOutput` — Stores generated bundle source and transformation metadata.
 - `bundler::BundleRequest` — Carries a validated bundle transformation request.
 - `bundler::BundleResponse` — Carries the normalized response from a bundle transformer.
-- `bundler::Bundler` — Defines the normalized bundle transformation boundary.
 - `bundler::ProcessBundler` — Runs the external bundle transformer process.
 - `cases::project::ManifestResolutionOutcome` — Records how a project manifest resolution entry was interpreted.
 - `cases::project::ProjectManifest` — Holds the normalized project case manifest.
@@ -350,27 +349,27 @@ normalized adapter and report boundaries.
 - `profile::config::RuleSelectionProfile` — Selects the rule set used in a profile.
 - `profile::runner::files::PreparedCorpus` — Holds corpus inputs ready for worker execution.
 - `profile::types::MeasuredRepetitionAccumulator` — Accumulates measurements across one profile repetition.
-- `profile::types::PreparedFile` — Stores a file prepared for profile execution.
 - `profile::types::ProfilePhaseTimings` — Records profiling phase durations.
 - `profile::types::ProfileProjectRun` — Stores one project profiling run.
 - `profile::types::ProfileProjectRunAccumulator` — Accumulates repeated project-run measurements.
 - `profile::types::ProfileRepetitionSummary` — Summarizes one measured repetition.
 - `profile::types::ProfileSummary` — Reports the complete profile result.
-- `profile::types::ProfileSummaryAccumulator` — Accumulates profile workload summaries.
-- `profile::types::ProfileSummaryMetadata` — Stores metadata needed to interpret a profile.
 - `profile::types::ProfileWorkloadSummary` — Summarizes one profiled workload.
 - `profile::types::RunOutcome` — Records the result of one profile run.
+- `profile::types::summary::PreparedFile` — Holds one loaded input's path, byte count, and source text for profiling.
+- `profile::types::summary::ProfileSummaryAccumulator` — Tallies total files, bytes, findings, diagnostics, errors, and runs across recorded workload results.
+- `profile::types::summary::ProfileSummaryMetadata` — Carries workload identity, durations, repetition summaries, phase timings, and operation counts that finalize a ProfileSummary.
 - `profile_manifest::ProfileManifest` — Represents a serialized profile manifest.
 - `profile_manifest::ProfileManifestBody` — Stores the internal manifest payload.
 - `profile_manifest::ProfileManifestEntry` — Describes one manifest corpus entry.
 - `profile_manifest::VerifiedProfileManifest` — Represents a manifest after verification succeeds.
 - `runner::AdapterTimings` — Records time spent by an adapter.
 - `runner::BundleTimings` — Records time spent generating each bundle variant.
-- `types::case::BundleKey` — Identifies one bundle profile, transformer, minification, and target combination.
-- `types::case::BundleProfile` — Selects the host profile for bundle verification.
-- `types::case::BundleProfileError` — Reports invalid bundle-profile directives.
-- `types::case::BundleTarget` — Selects the JavaScript target for bundle transformation.
-- `types::case::BundleTransformer` — Selects the bundle transformation tool.
+- `types::case::bundle::BundleKey` — Identifies one bundle profile, transformer, minification, and target combination.
+- `types::case::bundle::BundleProfile` — Selects the host profile for bundle verification.
+- `types::case::bundle::BundleProfileError` — Reports invalid bundle-profile directives.
+- `types::case::bundle::BundleTarget` — Selects the JavaScript target for bundle transformation.
+- `types::case::bundle::BundleTransformer` — Selects the bundle transformation tool.
 - `types::case::Case` — Represents one normalized fixture case.
 - `types::case::CaseError` — Reports invalid fixture-case input.
 - `types::case::ExpectationError` — Reports invalid expectation syntax.

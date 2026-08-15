@@ -25,6 +25,7 @@ formats command-specific output for the `glass-lint` binary.
 - `config::Config` — Stores validated application configuration.
 - `config::FailOn` — Selects the finding threshold that changes the exit status.
 - `config::OutputFormat` — Selects pretty or machine-readable output.
+- `config::PreparedConfig` — Caches a validated rule selection together with its provider, profile, and core settings so repeated linter builds can reuse it.
 - `config::ProjectConfig` — Stores project-loading configuration.
 - `config::Provider` — Selects the provider catalog and environment.
 - `config::RawConfig` — Stores the unvalidated configuration file shape.
