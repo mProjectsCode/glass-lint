@@ -73,7 +73,7 @@ discards it) can be dropped to a bare marker while the fail-closed
 
 **Fix Applied:** Kept `parameter_aliases` keyed by `ScopedName`; deleted `ParameterAliasKey` and `resolve_parameter_aliases`; `parameter_alias_for_scope(scope, name)` is now a direct map access and `storage.rs` no longer hops through `function_for_scope`. `BindingIndexError` is a bare marker with the `scope` payload dropped.
 
-#### [ ] READ-002 — Freeze transition builds two levels of one-shot bundle structs that are immediately destructured
+#### [x] READ-002 — Freeze transition builds two levels of one-shot bundle structs that are immediately destructured
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -107,7 +107,7 @@ the transition and the `InvalidBindingIndex` fallback must stay; no named
 bundle is needed at the build→graph boundary because
 `finish_collected_properties` is the sole consumer.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Flattened the three property vectors onto `FrozenScopeCollectionArtifacts` (deleted `FrozenPropertyArtifacts`) so `freeze.rs` destructures them in one place and passes them directly to `finish_collected_properties`; folded the three `BindingAllocation` maps flat into `BindingFreezeInput` with `allocate_ids` returning a tuple.
 
 ### Pattern projection and alias collection
 

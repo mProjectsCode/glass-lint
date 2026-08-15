@@ -18,7 +18,9 @@ impl ScopeCollector<'_> {
         let FrozenScopeCollectionArtifacts {
             scope_issues: mut issues,
             mutable_static_objects,
-            property_assignments: property_artifacts,
+            property_assignments,
+            rooted_property_mutations,
+            dynamic_evals,
         } = std::mem::take(&mut self.artifacts).seal();
         let parameter_aliases = self.parameter_aliases();
         let function_bindings = self
@@ -27,10 +29,13 @@ impl ScopeCollector<'_> {
             .into_iter()
             .map(|(binding, function)| (binding, function.scope))
             .collect();
-        let allocation = BindingIndex::allocate_ids(&self.lexical.scopes);
+        let (binding_ids, function_ids, function_spans) =
+            BindingIndex::allocate_ids(&self.lexical.scopes);
         let bindings = BindingIndex::from_freeze_input(BindingFreezeInput {
             assignments: std::mem::take(&mut self.assignment.assignments),
-            allocation,
+            binding_ids,
+            function_ids,
+            function_spans,
             function_bindings,
             function_aliases: self.functions.function_aliases,
             parameter_aliases,
@@ -49,7 +54,11 @@ impl ScopeCollector<'_> {
             mutations,
             scope_shape_valid,
         });
-        graph.finish_collected_properties(property_artifacts);
+        graph.finish_collected_properties(
+            property_assignments,
+            rooted_property_mutations,
+            dynamic_evals,
+        );
         let frozen = graph.freeze();
         ScopedProgram {
             graph: frozen,

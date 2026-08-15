@@ -13,7 +13,7 @@ use crate::{
         },
         scope::{
             binding_index::BindingIndex,
-            build::FrozenPropertyArtifacts,
+            build::{PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval},
             frozen_assignments::AssignmentAt,
             mutation_index::{MutationIndex, MutationIndexBuilder},
             name_env::NameEnvironment,
@@ -175,13 +175,10 @@ impl ScopeGraph {
     /// Convert collector-side property events into sorted query indexes.
     pub(in crate::analysis) fn finish_collected_properties(
         &mut self,
-        property_artifacts: FrozenPropertyArtifacts,
+        property_assignments: Vec<PropertyAliasAssignment>,
+        rooted_property_mutations: Vec<RootedPropertyMutation>,
+        dynamic_evals: Vec<ScopedDynamicEval>,
     ) {
-        let FrozenPropertyArtifacts {
-            property_assignments,
-            rooted_property_mutations: rooted_mutations,
-            dynamic_evals,
-        } = property_artifacts;
         for assignment in property_assignments {
             let span = assignment.span();
             let scope = assignment.scope();
@@ -203,7 +200,7 @@ impl ScopeGraph {
                 PropertyAliasFact::new(span, scope, target),
             );
         }
-        for mutation in rooted_mutations {
+        for mutation in rooted_property_mutations {
             let span = mutation.span();
             let scope = mutation.scope();
             let property = mutation.property();

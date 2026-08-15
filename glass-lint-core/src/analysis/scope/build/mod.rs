@@ -91,11 +91,9 @@ impl ScopeCollectionArtifacts {
     /// Consume collection records into the one bundle accepted by freezing.
     pub(super) fn seal(self) -> FrozenScopeCollectionArtifacts {
         FrozenScopeCollectionArtifacts {
-            property_assignments: FrozenPropertyArtifacts {
-                property_assignments: self.property_assignments,
-                rooted_property_mutations: self.rooted_property_mutations,
-                dynamic_evals: self.dynamic_evals,
-            },
+            property_assignments: self.property_assignments,
+            rooted_property_mutations: self.rooted_property_mutations,
+            dynamic_evals: self.dynamic_evals,
             mutable_static_objects: self.mutable_static_objects,
             scope_issues: self.scope_issues,
         }
@@ -103,15 +101,11 @@ impl ScopeCollectionArtifacts {
 }
 
 pub(super) struct FrozenScopeCollectionArtifacts {
-    property_assignments: FrozenPropertyArtifacts,
+    property_assignments: Vec<PropertyAliasAssignment>,
+    rooted_property_mutations: Vec<RootedPropertyMutation>,
+    dynamic_evals: Vec<ScopedDynamicEval>,
     mutable_static_objects: HashSet<ScopedName>,
     scope_issues: Vec<ScopeCollectionIssue>,
-}
-
-pub(in crate::analysis) struct FrozenPropertyArtifacts {
-    pub(in crate::analysis) property_assignments: Vec<PropertyAliasAssignment>,
-    pub(in crate::analysis) rooted_property_mutations: Vec<RootedPropertyMutation>,
-    pub(in crate::analysis) dynamic_evals: Vec<ScopedDynamicEval>,
 }
 
 /// A dynamic evaluation retained with the scope in which it was observed.
