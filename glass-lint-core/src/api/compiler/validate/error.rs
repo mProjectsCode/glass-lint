@@ -404,8 +404,3 @@ pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
         IdentitySpec::PrivateNetworkAddress => false,
     }
 }
-
-/// Check whether constraints are on a call-bearing event.
-pub(crate) fn event_supports_constraints(event: &EventSpec) -> bool {
-    event.supports_arguments()
-}

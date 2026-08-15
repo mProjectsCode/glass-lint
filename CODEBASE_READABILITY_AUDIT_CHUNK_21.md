@@ -83,7 +83,7 @@ reference representation now calls the single production `argument_constraints()
 
 ### api/compiler — the "call-bearing event" predicate is defined three times
 
-#### [ ] READ-003 — `event_supports_constraints` wrapper plus a hand-written duplicate in `PhysicalRoot::validate`
+#### [x] READ-003 — `event_supports_constraints` wrapper plus a hand-written duplicate in `PhysicalRoot::validate`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -104,7 +104,9 @@ future event kind that supports arguments would silently diverge across layers.
 `matches!` at physical.rs:188 with `event.supports_arguments()`. Guardrail: the
 physical check must keep failing closed with `ConstraintsRequireCallEvent`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `event_supports_constraints`; both validation layers now
+delegate to the canonical `EventSpec::supports_arguments`, with the physical boundary
+still failing closed on `ConstraintsRequireCallEvent`.
 
 ### api/compiler/physical — parallel `ObjectSlot` newtype with duplicated conversion
 

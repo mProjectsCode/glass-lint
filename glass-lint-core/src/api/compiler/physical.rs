@@ -185,7 +185,7 @@ impl PhysicalRoot {
                 if identity.is_empty() {
                     return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
-                if !matches!(event, EventSpec::Call | EventSpec::MemberCall { .. }) {
+                if !event.supports_arguments() {
                     return Err(PhysicalPlanValidationError::ConstraintsRequireCallEvent);
                 }
                 if constraints.is_empty() {

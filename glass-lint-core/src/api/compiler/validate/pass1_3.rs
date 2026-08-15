@@ -23,7 +23,7 @@ pub(crate) fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileEr
             detail: "identity name or pattern is empty",
         });
     }
-    if !eq.constraints().is_empty() && !event_supports_constraints(eq.event()) {
+    if !eq.constraints().is_empty() && !eq.event().supports_arguments() {
         return Err(QueryCompileError::InvalidEventPredicate {
             identity: eq.identity().diagnostic_name().to_owned(),
             event: eq.event().diagnostic_name().to_owned(),
@@ -33,8 +33,6 @@ pub(crate) fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileEr
     }
     Ok(())
 }
-
-use super::error::event_supports_constraints;
 
 /// Return true if `actual` is compatible with `expected`.
 /// Event is compatible with CallEvent and MemberEvent (Event is a supertype).
