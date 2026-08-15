@@ -253,12 +253,18 @@ impl<'a> PackageKeyPredicate<'a> {
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct BorrowedPackageOccurrenceIter<'a> {
     predicate: PackageKeyPredicate<'a>,
-    masked: Option<&'a BTreeSet<ModuleExportKey>>,
+    overlay: Option<PackageOverlay<'a>>,
     base_iter: std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<Occurrence>>,
-    overlay_iter:
-        Option<std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<&'a [Occurrence]>>>,
+    phase: PackagePhase<'a>,
     current: Option<BorrowedOccurrenceIter<'a>>,
-    checking_base: bool,
+}
+
+/// Two-phase package scan: base buckets first, then linked overlay buckets.
+#[derive(Clone, Debug)]
+enum PackagePhase<'a> {
+    Base,
+    Overlay(std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<&'a [Occurrence]>>),
+    Done,
 }
 
 /// Linked package buckets with their masking policy.
@@ -301,15 +307,12 @@ impl<'a> BorrowedPackageOccurrenceIter<'a> {
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
         overlay: Option<PackageOverlay<'a>>,
     ) -> Self {
-        let masked = overlay.as_ref().map(|overlay| overlay.masked);
-        let overlay_iter = overlay.map(|overlay| overlay.buckets.iter());
         Self {
             predicate,
-            masked,
+            overlay,
             base_iter: base.iter(),
-            overlay_iter,
+            phase: PackagePhase::Base,
             current: None,
-            checking_base: true,
         }
     }
 }
@@ -326,28 +329,36 @@ impl Iterator for BorrowedPackageOccurrenceIter<'_> {
             }
             self.current = None;
 
-            if self.checking_base {
-                if let Some((key, values)) = self.base_iter.next() {
-                    if self.predicate.matches(key)
-                        && self.masked.is_none_or(|mask| !mask.contains(key))
-                    {
-                        self.current =
-                            Some(BorrowedOccurrenceIter::new(Some(values.as_slice()), &[]));
+            let phase = core::mem::replace(&mut self.phase, PackagePhase::Done);
+            match phase {
+                PackagePhase::Base => {
+                    if let Some((key, values)) = self.base_iter.next() {
+                        self.phase = PackagePhase::Base;
+                        if self.predicate.matches(key)
+                            && self
+                                .overlay
+                                .is_none_or(|overlay| !overlay.masked.contains(key))
+                        {
+                            self.current =
+                                Some(BorrowedOccurrenceIter::new(Some(values.as_slice()), &[]));
+                        }
+                        continue;
                     }
-                    continue;
+                    self.phase = self.overlay.map_or(PackagePhase::Done, |overlay| {
+                        PackagePhase::Overlay(overlay.buckets.iter())
+                    });
                 }
-                self.checking_base = false;
-            }
-
-            let Some(iter) = &mut self.overlay_iter else {
-                return None;
-            };
-            let Some((key, values)) = iter.next() else {
-                self.overlay_iter = None;
-                return None;
-            };
-            if self.predicate.matches(key) {
-                self.current = Some(BorrowedOccurrenceIter::new(None, values.as_slice()));
+                PackagePhase::Overlay(mut iter) => {
+                    let Some((key, values)) = iter.next() else {
+                        self.phase = PackagePhase::Done;
+                        return None;
+                    };
+                    self.phase = PackagePhase::Overlay(iter);
+                    if self.predicate.matches(key) {
+                        self.current = Some(BorrowedOccurrenceIter::new(None, values.as_slice()));
+                    }
+                }
+                PackagePhase::Done => return None,
             }
         }
     }

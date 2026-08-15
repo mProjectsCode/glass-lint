@@ -102,7 +102,7 @@ as today.
 
 **Fix Applied:** Deleted the `ScannedOccurrences` struct and its hand-rolled `next`; the `Scanned` variant now carries `std::vec::IntoIter<Occurrence>`, `scanned` wraps the `Vec` with `.into_iter()`, and `into_ordered`/`Iterator::next` route through the std iterator. Sorting and duplicate retention are unchanged.
 
-#### [ ] READ-003 — `BorrowedPackageOccurrenceIter` encodes its two-phase traversal with a flag plus two nullable fields
+#### [x] READ-003 — `BorrowedPackageOccurrenceIter` encodes its two-phase traversal with a flag plus two nullable fields
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -128,7 +128,7 @@ skipped while overlay buckets still contribute (`occurrence.rs:363-384`) — and
 keep the deterministic base-then-overlay iteration order and the fail-closed
 `None` when neither base nor overlay yields a match.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the `checking_base` flag and ambiguous `Option` overlay iterator with an explicit `PackagePhase { Base, Overlay(iter), Done }` state machine plus a single `Option<PackageOverlay>` that exists only when an overlay is configured. Masking semantics (masked base keys skipped while overlay buckets still contribute), base-then-overlay order, and fail-closed `None` are unchanged.
 
 ### Query view and private-network scan (`analysis/matching/query`)
 
