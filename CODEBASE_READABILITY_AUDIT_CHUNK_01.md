@@ -182,7 +182,7 @@ order of `emit_call` relative to other facts.
 
 ### Stream API
 
-#### [ ] READ-006 — `register_function_parameters` panics while the symmetric read path is fail-closed
+#### [x] READ-006 — `register_function_parameters` panics while the symmetric read path is fail-closed
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -210,7 +210,7 @@ fallback untouched. Guardrail: registration must still fail closed (never
 partially register a function with a missing slot) and the
 program-level `FunctionId::new(0)` slot behavior must be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the panicking `usize::try_from(...).expect(...)` in `register_function_parameters` with the infallible `id.raw() as usize` and documented the invariant; the fail-closed read path and program-level slot behavior are unchanged.
 
 #### [ ] READ-007 — `FactStream` invalidity is tracked by two overlapping signals
 

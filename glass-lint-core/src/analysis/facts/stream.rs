@@ -292,12 +292,15 @@ impl FactStream<Building> {
     }
 
     /// Register parameter bindings for a function identity.
+    ///
+    /// `FunctionId::raw()` is a `u32`, and `usize` is at least 32 bits on
+    /// every supported target, so the conversion is infallible.
     pub(super) fn register_function_parameters(
         &mut self,
         id: FunctionId,
         parameters: Vec<ParameterBinding>,
     ) {
-        let index = usize::try_from(id.raw()).expect("FunctionId fits in usize");
+        let index = id.raw() as usize;
         if self.function_parameters.len() <= index {
             self.function_parameters.resize_with(index + 1, Vec::new);
         }
