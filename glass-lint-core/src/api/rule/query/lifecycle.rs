@@ -6,18 +6,14 @@ use crate::api::rule::{
 
 mod endpoint;
 mod types;
-#[allow(unused_imports)]
-pub(crate) use endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
-#[allow(unused_imports)]
+pub(crate) use endpoint::LifecycleCallTarget;
 pub use types::{
     IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleQuery,
     IntoLifecycleSink, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,
-    LifecycleEvent, LifecycleEventBuilder, LifecycleSink,
+    LifecycleEvent, LifecycleSink,
 };
-#[allow(unused_imports)]
 pub(crate) use types::{
-    LifecycleCompletionKind, LifecycleConditionKind, LifecycleEventKind, LifecycleEvents,
-    LifecycleSinkKind, LifecycleSinks,
+    LifecycleCompletionKind, LifecycleConditionKind, LifecycleEventKind, LifecycleSinkKind,
 };
 
 // ── LifecycleQueryBuilder ─────────────────────────────────────────────

@@ -78,7 +78,6 @@ impl QueryExpr {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn kind(&self) -> &QueryExprKind {
         &self.kind
     }

@@ -254,7 +254,7 @@ not change the sorted ordering or the per-argument/predicate bounds.
 
 ### [api/rule/query/composition.rs, value.rs, expression.rs, lifecycle.rs]
 
-#### [ ] READ-006 — Dead placeholder and redundant checks in bounded construction paths, plus stale no-op `allow` attributes
+#### [x] READ-006 — Dead placeholder and redundant checks in bounded construction paths, plus stale no-op `allow` attributes
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -287,7 +287,7 @@ value.rs; remove the four stale no-op `allow` attributes. Guardrails: keep
 `EmptyAlternatives` on empty input, keep `MAX_STATIC_ALTERNATIVES` enforced on
 input size, and keep the re-export paths used by planning.rs and normalize.rs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `default_emission`; `any_impl` now takes the first emission via `let Some(...) else { return EmptyAlternatives }` so the fallback path and fabricated placeholder emission are gone. The redundant post-canonicalization size check in `value.rs` disappeared with the READ-005 consolidation. Removed the `#[allow(dead_code)]` on `QueryExpr::kind()` and the three `#[allow(unused_imports)]` blocks, trimming the genuinely-unused `LifecycleCallEndpoint`/`LifecycleEventBuilder`/`LifecycleEvents`/`LifecycleSinks` re-exports while keeping the used `LifecycleCallTarget` and `*Kind` paths.
 
 ### [api/rule/query/mod.rs, composition.rs]
 

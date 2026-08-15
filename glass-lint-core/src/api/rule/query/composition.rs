@@ -168,11 +168,10 @@ impl QueryDecl {
             }
             exprs.push(decl.expression);
         }
-        if exprs.is_empty() {
+        let Some(mut first) = first_emission else {
             return Err(QueryBuildError::EmptyAlternatives);
-        }
+        };
         let any = AnyExpr::new(exprs)?;
-        let mut first = first_emission.unwrap_or_else(Self::default_emission);
         if !any.all_branches_contain(first.primary_var) {
             return Err(QueryBuildError::EvidenceProjection);
         }
@@ -236,15 +235,6 @@ impl QueryDecl {
             expression,
             emission,
         })
-    }
-
-    /// Default emission for placeholder use.
-    fn default_emission() -> EmissionDecl {
-        EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: String::new(),
-        }
     }
 
     /// Wrap a [`LifecycleQuery`] into a [`QueryDecl`] with inferred evidence.
