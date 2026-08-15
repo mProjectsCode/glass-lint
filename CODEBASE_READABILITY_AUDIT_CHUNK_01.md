@@ -284,7 +284,7 @@ exported declarations.
 
 ### Callee/origin surface
 
-#### [ ] READ-009 — The instance-origin surface mixes a one-call forwarding alias with a raw `(SmolStr, SmolStr)` origin tuple
+#### [x] READ-009 — The instance-origin surface mixes a one-call forwarding alias with a raw `(SmolStr, SmolStr)` origin tuple
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -312,7 +312,7 @@ swap-risk. Guardrails: keep `(module, export)` semantics distinct from the
 `member` `SymbolPath`, preserve `InstanceCallable`'s equality behavior, and
 keep the fact payload shapes unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the `instance_origin_for_constructor` forwarding alias; `construction.rs` and `instance_origin_for_expr` now call `constructor_origin_for_expr` directly. The `Origin` tuple alias is left in place per the Systemic Themes note.
 
 ## Systemic Themes
 

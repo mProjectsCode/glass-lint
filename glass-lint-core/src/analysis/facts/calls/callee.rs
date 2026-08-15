@@ -171,7 +171,7 @@ impl FactBuilder<'_, '_> {
                 if let Some(origin) = self.provenance.instance_origin(value) {
                     return Some(origin);
                 }
-                let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
+                let origin = self.constructor_origin_for_expr(&new_expr.callee)?;
                 self.provenance
                     .record_instance_origin(value, origin.clone(), self.resolver.budget);
                 Some(origin)
@@ -193,13 +193,6 @@ impl FactBuilder<'_, '_> {
             Expr::TsTypeAssertion(value) => self.instance_origin_for_expr(&value.expr),
             _ => None,
         }
-    }
-
-    pub(in crate::analysis::facts) fn instance_origin_for_constructor(
-        &mut self,
-        constructor: &Expr,
-    ) -> Option<(SmolStr, SmolStr)> {
-        self.constructor_origin_for_expr(constructor)
     }
 
     pub(in crate::analysis::facts) fn constructor_origin_for_expr(

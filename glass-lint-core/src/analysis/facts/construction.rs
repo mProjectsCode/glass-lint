@@ -22,7 +22,7 @@ impl FactBuilder<'_, '_> {
         new_expr: &NewExpr,
     ) -> ConstructionMetadata {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
-        if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
+        if let Some(instance_class) = self.constructor_origin_for_expr(&new_expr.callee) {
             self.provenance
                 .record_instance_origin(result, instance_class, self.resolver.budget);
         }
