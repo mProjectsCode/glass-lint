@@ -266,7 +266,7 @@ with the build/finalize/commit body in the `Active(guard)` arm, `Cached(value) =
 `Cycle => Self::archive_unknown_with_reason(UnknownReason::Cycle)`; the `unreachable!` arm is gone.
 Cycle handling and guard commit ordering are unchanged.
 
-#### [ ] READ-008 — Borrow-alias noise in `intern_bounded_const_value`
+#### [x] READ-008 — Borrow-alias noise in `intern_bounded_const_value`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -284,6 +284,12 @@ readers about why `self` cannot be used directly.
 **Recommendation:** Remove the `arena` binding and call `self.values.intern_construction(...)`
 directly after the child map is collected. Guardrail: no behavior change; the recursion and the
 `StaticObject { values, names }` construction stay identical.
+
+**Fix Applied:** Already satisfied by an earlier chunk. Chunk 12 READ-003 (commit `5e01c099`)
+removed the `let arena = &mut self.values;` binding and replaced `arena.intern_construction(...)`
+with the direct `self.values.intern_static_object(values, &self.names, binding)` call in
+`Resolver::intern_bounded_const_value`; the child map is collected into a `Vec` before the direct
+call. No further change was needed.
 
 ## Systemic Themes
 
