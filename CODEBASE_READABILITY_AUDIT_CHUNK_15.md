@@ -65,7 +65,7 @@ argument tests.
 
 **Fix Applied:** `EffectiveIdentityResolver` now implements `From<MatcherProjectOverlay>` and `MatcherEvaluator::new` accepts a `MatcherProjectOverlay`, destructuring it once via the `From` impl; the redundant destructure in `compute_constrained_inner` was deleted and the `MatcherEvaluator::new` test in `tests/extended.rs` updated to pass an overlay.
 
-#### [ ] READ-002 — `MatcherEvaluationContext` is an immediately-consumed grouping struct
+#### [x] READ-002 — `MatcherEvaluationContext` is an immediately-consumed grouping struct
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -91,7 +91,7 @@ shared `'borrow` lifetime currently ties the artifact borrow and project borrow
 together, but Rust infers the same region when they are separate parameters, so
 no lifecycle distinction is lost.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MatcherEvaluationContext` was deleted; `compute_constrained_inner` now takes `artifact`, `project`, and `operations` as direct parameters and `try_compute_constrained_evidence` plus the test helper `run_with_ops` were updated accordingly.
 
 #### [ ] READ-003 — `ConstrainedState` phase machine relies on `mem::replace` recovery and a needless clone of the fallback list
 

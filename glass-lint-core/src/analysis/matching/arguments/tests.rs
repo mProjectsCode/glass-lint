@@ -93,14 +93,13 @@ fn run_with_ops(
 ) -> EvaluationOperations {
     let mut evidence = RuleEvidenceTable::new_for_test(roots.len());
     let mut ops = EvaluationOperations::default();
+    let artifact = MatcherArtifact::from_parts_with_overlay(stream, index, overlay);
     compute_constrained_inner(
-        MatcherEvaluationContext {
-            artifact: &MatcherArtifact::from_parts_with_overlay(stream, index, overlay),
-            project: MatcherProjectOverlay::new(None, None),
-            operations: &mut ops,
-        },
+        &artifact,
         roots,
         &mut evidence,
+        MatcherProjectOverlay::new(None, None),
+        &mut ops,
     )
     .expect("test evidence uses its catalog capacity");
     ops

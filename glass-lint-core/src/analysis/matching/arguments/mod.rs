@@ -281,12 +281,6 @@ impl<'a> MatcherProjectOverlay<'a> {
 #[cfg(test)]
 type MatcherLocalInput<'a> = MatcherArtifact<'a>;
 
-struct MatcherEvaluationContext<'borrow, 'artifact> {
-    artifact: &'borrow MatcherArtifact<'artifact>,
-    project: MatcherProjectOverlay<'borrow>,
-    operations: &'borrow mut EvaluationOperations,
-}
-
 fn push_owned_rule_evidence(
     evidence: &mut RuleEvidenceTable,
     rule: RuleIndex,
@@ -312,15 +306,7 @@ pub(in crate::analysis) fn try_compute_constrained_evidence<'artifact>(
     project: MatcherProjectOverlay<'_>,
 ) -> Result<(), RuleEvidenceError> {
     let mut ops = EvaluationOperations::default();
-    compute_constrained_inner(
-        MatcherEvaluationContext {
-            artifact: artifact.borrow(),
-            project,
-            operations: &mut ops,
-        },
-        roots,
-        evidence,
-    )
+    compute_constrained_inner(artifact.borrow(), roots, evidence, project, &mut ops)
 }
 
 #[cfg(test)]
@@ -335,16 +321,13 @@ fn compute_constrained_evidence<'artifact>(
 }
 
 /// Inner implementation that also tracks evaluation operations.
-fn compute_constrained_inner(
-    context: MatcherEvaluationContext<'_, '_>,
+fn compute_constrained_inner<'borrow>(
+    artifact: &'borrow MatcherArtifact<'_>,
     roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
+    project: MatcherProjectOverlay<'borrow>,
+    operations: &mut EvaluationOperations,
 ) -> Result<(), RuleEvidenceError> {
-    let MatcherEvaluationContext {
-        artifact,
-        project,
-        operations,
-    } = context;
     let stream = artifact.stream;
     let indexes = artifact.indexes;
     let names = stream.names();
