@@ -109,7 +109,7 @@ impl FactBuilder<'_, '_> {
         let resolved = self.resolver.resolve_member(member);
         let syntactic_path = self
             .resolver
-            .member_expression_chain(member)
+            .syntactic_member_chain(member)
             .and_then(|chain| self.name_path(&chain));
         let receiver_origin = self.instance_origin_for_expr(&member.obj);
         let instance_class = receiver_origin.or_else(|| {

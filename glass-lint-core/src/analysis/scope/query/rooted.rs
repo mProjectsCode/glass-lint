@@ -5,9 +5,12 @@
 //! shapes; arbitrary computed or dynamic access returns no chain.
 
 use glass_lint_datastructures::SymbolPath;
-use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
+use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
-use crate::analysis::scope::{FrozenScopeGraph, frozen_assignments::BindingResolutionStatus};
+use crate::analysis::{
+    scope::{FrozenScopeGraph, frozen_assignments::BindingResolutionStatus},
+    syntax::{TransparentTerminal, effective_terminal_expr},
+};
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.
@@ -43,26 +46,18 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
     context: &impl RootedExprContext,
     expr: &Expr,
 ) -> Option<SymbolPath> {
-    match expr {
-        Expr::This(_) => Some("this".into()),
-        Expr::Ident(ident) => context.rooted_ident_chain(ident),
-        Expr::Member(member) => context.rooted_member_chain(member),
-        Expr::Call(call) => {
-            let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
-                return None;
-            };
-            rooted_expr_chain_with(context, callee)
-        }
-        Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => context.rooted_member_chain(member),
-            OptChainBase::Call(call) => rooted_expr_chain_with(context, &call.callee),
+    let terminal = effective_terminal_expr(expr)?;
+    match terminal {
+        TransparentTerminal::Expr(expr) => match expr {
+            Expr::This(_) => Some("this".into()),
+            Expr::Ident(ident) => context.rooted_ident_chain(ident),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| rooted_expr_chain_with(context, expr)),
+            _ => None,
         },
-        Expr::Paren(paren) => rooted_expr_chain_with(context, &paren.expr),
-        Expr::Seq(sequence) => sequence
-            .exprs
-            .last()
-            .and_then(|expr| rooted_expr_chain_with(context, expr)),
-        _ => None,
+        TransparentTerminal::Member(member) => context.rooted_member_chain(member),
     }
 }
 

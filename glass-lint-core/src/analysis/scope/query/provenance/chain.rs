@@ -42,7 +42,7 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let syntactic_chain = self.member_expression_chain(member)?;
+        let syntactic_chain = self.contextual_member_chain(member)?;
         self.resolve_member_chain(member, &syntactic_chain)
     }
 

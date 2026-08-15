@@ -8,7 +8,7 @@ use crate::analysis::scope::{
 
 impl FrozenScopeGraph {
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
-        let syntactic_chain = self.member_expression_chain(member);
+        let syntactic_chain = self.contextual_member_chain(member);
         let rooted_chain = syntactic_chain
             .as_ref()
             .and_then(|chain| self.resolve_member_chain(member, chain))

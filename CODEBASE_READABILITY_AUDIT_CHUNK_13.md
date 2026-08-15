@@ -77,7 +77,7 @@ through to the existing callee handling.
 
 ### Expression and static-value resolution
 
-#### [ ] READ-002 — Three parallel transparent-shape expression-chain walkers and a same-named `member_expression_chain` trio
+#### [x] READ-002 — Three parallel transparent-shape expression-chain walkers and a same-named `member_expression_chain` trio
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -109,6 +109,18 @@ them from the structural free function, and make `Resolver::member_expression_ch
 `Resolver::member_key`. Guardrails: keep `Expr::This` handled in the scope walker, keep Seq/TS
 handling only where behavior differs, keep the resolver's dummy-span fallback for synthetic
 identifiers, and do not collapse the distinct identity semantics.
+
+**Fix Applied:** Added one shared walker `syntax::effective_terminal_expr` plus a
+`TransparentTerminal` result type in `syntax::names`; it recurses through the shapes transparent to
+every caller (call callee, optional-chain base, parentheses) and returns the terminal
+expression/member, with each owner supplying only its terminal identity step. `expression_name`,
+`scope::query::rooted_expr_chain_with`, and `Resolver::rooted_expr_chain` now route through it; Seq
+and TS-wrapper handling stays owner-side because the transparency differs (`expression_name` rejects
+Seq, the scope walker rejects TS wrappers). Renamed the resolver and scope member-chain methods to
+`syntactic_member_chain` / `contextual_member_chain`, and `Resolver::syntactic_member_chain` now
+reuses `Resolver::member_key`; all callers (`facts/reads.rs`, `facts/calls/callee.rs`,
+`scope/query/provenance/{object,chain}.rs`) were updated. Added unit tests for the shared walker and
+`expression_name` terminal mapping in `syntax/names.rs`.
 
 #### [ ] READ-003 — Dead `is_unknown` flag on `interned_value` and a trivial `archive_local` forwarder
 

@@ -204,7 +204,7 @@ impl FrozenScopeGraph {
         constant::contextual_member_property_name(&member.prop, self)
     }
 
-    pub(in crate::analysis) fn member_expression_chain(
+    pub(in crate::analysis) fn contextual_member_chain(
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {

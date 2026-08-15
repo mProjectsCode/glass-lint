@@ -10,7 +10,7 @@ impl FactBuilder<'_, '_> {
     /// Project one member expression into a `MemberRead` fact.
     pub(super) fn record_member_read(&mut self, member: &MemberExpr) {
         let resolved = self.resolver.resolve_member(member);
-        let chain = self.resolver.member_expression_chain(member);
+        let chain = self.resolver.syntactic_member_chain(member);
         let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
         self.emit(
             member.span(),

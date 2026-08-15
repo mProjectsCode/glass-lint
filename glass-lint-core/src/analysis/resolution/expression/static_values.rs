@@ -6,10 +6,10 @@ use smol_str::SmolStr;
 use crate::analysis::{
     model::value::MAX_VALUES,
     resolution::{
-        Callee, ConstValue, Expr, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
-        SymbolCallProvenance, Value, ValueId, syntax_constant,
+        ConstValue, Expr, MemberExpr, ResolvedValue, Resolver, SymbolCallProvenance, Value,
+        ValueId, syntax_constant,
     },
-    syntax::UnknownReason,
+    syntax::{TransparentTerminal, UnknownReason, effective_terminal_expr},
 };
 
 impl Resolver<'_> {
@@ -24,49 +24,41 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
-        match expr {
-            Expr::Ident(ident) => self
-                .resolve_ident(ident)
-                .provenance
-                .rooted_chain
-                .clone()
-                .or_else(|| {
-                    ident
-                        .span
-                        .is_dummy()
-                        .then(|| SymbolPath::from(ident.sym.as_ref()))
-                }),
-            Expr::Member(member) => self.resolve_member(member).provenance.rooted_chain.clone(),
-            Expr::Call(call) => match &call.callee {
-                Callee::Expr(callee) => self.rooted_expr_chain(callee),
-                Callee::Super(_) | Callee::Import(_) => None,
+        let terminal = effective_terminal_expr(expr)?;
+        match terminal {
+            TransparentTerminal::Expr(expr) => match expr {
+                Expr::Ident(ident) => self
+                    .resolve_ident(ident)
+                    .provenance
+                    .rooted_chain
+                    .clone()
+                    .or_else(|| {
+                        ident
+                            .span
+                            .is_dummy()
+                            .then(|| SymbolPath::from(ident.sym.as_ref()))
+                    }),
+                Expr::Seq(sequence) => sequence
+                    .exprs
+                    .last()
+                    .and_then(|expr| self.rooted_expr_chain(expr)),
+                Expr::TsAs(value) => self.rooted_expr_chain(&value.expr),
+                Expr::TsNonNull(value) => self.rooted_expr_chain(&value.expr),
+                Expr::TsSatisfies(value) => self.rooted_expr_chain(&value.expr),
+                Expr::TsTypeAssertion(value) => self.rooted_expr_chain(&value.expr),
+                _ => None,
             },
-            Expr::OptChain(chain) => match &*chain.base {
-                swc_ecma_ast::OptChainBase::Member(member) => {
-                    self.resolve_member(member).provenance.rooted_chain.clone()
-                }
-                swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
-            },
-            Expr::Paren(paren) => self.rooted_expr_chain(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.rooted_expr_chain(expr)),
-            Expr::TsAs(value) => self.rooted_expr_chain(&value.expr),
-            Expr::TsNonNull(value) => self.rooted_expr_chain(&value.expr),
-            Expr::TsSatisfies(value) => self.rooted_expr_chain(&value.expr),
-            Expr::TsTypeAssertion(value) => self.rooted_expr_chain(&value.expr),
-            _ => None,
+            TransparentTerminal::Member(member) => {
+                self.resolve_member(member).provenance.rooted_chain.clone()
+            }
         }
     }
 
-    pub(in crate::analysis) fn member_expression_chain(
+    pub(in crate::analysis) fn syntactic_member_chain(
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let key = ResolutionKey::Member {
-            range: member.span.into(),
-        };
+        let key = Self::member_key(member);
         self.cache
             .resolved_values
             .get(&key)

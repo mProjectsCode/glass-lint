@@ -108,28 +108,49 @@ pub fn literal_property_name(name: &swc_ecma_ast::PropName) -> Option<SmolStr> {
     }
 }
 
-/// Render supported rooted expression shapes as a dotted syntax chain.
-pub fn expression_name(expr: &Expr) -> Option<SymbolPath> {
+/// The effective terminal reached after walking through transparent shapes.
+pub(in crate::analysis) enum TransparentTerminal<'a> {
+    Expr(&'a Expr),
+    Member(&'a MemberExpr),
+}
+
+/// Recurse through the expression shapes that are transparent to every caller
+/// (call callee, optional-chain base, and parentheses) to the effective
+/// terminal expression or member. Callers supply the identity step for that
+/// terminal; shapes whose transparency differs between callers (sequences and
+/// TypeScript assertion wrappers) remain terminal here.
+pub(in crate::analysis) fn effective_terminal_expr(expr: &Expr) -> Option<TransparentTerminal<'_>> {
     match expr {
-        Expr::Ident(ident) => Some(SymbolPath::from(ident.sym.as_ref())),
-        Expr::Member(member) => member_expression_chain(member),
+        Expr::Member(member) => Some(TransparentTerminal::Member(member)),
         Expr::Call(call) => {
             let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
                 return None;
             };
-            expression_name(callee)
+            effective_terminal_expr(callee)
         }
-        Expr::This(_) => Some(SymbolPath::from("this")),
         Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => member_expression_chain(member),
-            OptChainBase::Call(call) => expression_name(&call.callee),
+            OptChainBase::Member(member) => Some(TransparentTerminal::Member(member)),
+            OptChainBase::Call(call) => effective_terminal_expr(&call.callee),
         },
-        Expr::Paren(paren) => expression_name(&paren.expr),
-        Expr::TsAs(expr) => expression_name(&expr.expr),
-        Expr::TsNonNull(expr) => expression_name(&expr.expr),
-        Expr::TsSatisfies(expr) => expression_name(&expr.expr),
-        Expr::TsTypeAssertion(expr) => expression_name(&expr.expr),
-        _ => None,
+        Expr::Paren(paren) => effective_terminal_expr(&paren.expr),
+        _ => Some(TransparentTerminal::Expr(expr)),
+    }
+}
+
+/// Render supported rooted expression shapes as a dotted syntax chain.
+pub fn expression_name(expr: &Expr) -> Option<SymbolPath> {
+    let terminal = effective_terminal_expr(expr)?;
+    match terminal {
+        TransparentTerminal::Expr(expr) => match expr {
+            Expr::Ident(ident) => Some(SymbolPath::from(ident.sym.as_ref())),
+            Expr::This(_) => Some(SymbolPath::from("this")),
+            Expr::TsAs(value) => expression_name(&value.expr),
+            Expr::TsNonNull(value) => expression_name(&value.expr),
+            Expr::TsSatisfies(value) => expression_name(&value.expr),
+            Expr::TsTypeAssertion(value) => expression_name(&value.expr),
+            _ => None,
+        },
+        TransparentTerminal::Member(member) => member_expression_chain(member),
     }
 }
 
@@ -212,5 +233,135 @@ fn is_function_like_expr(expr: &Expr) -> bool {
         Expr::Call(_) => function_prototype_builtin(expr).is_some(),
         Expr::Paren(paren) => is_function_like_expr(&paren.expr),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use swc_ecma_ast::{Program, Stmt};
+
+    use super::*;
+    use crate::{parse::SourceLanguage, project::SourceFile};
+
+    fn expression(source: &str) -> Expr {
+        let parsed = crate::parse_test_source(&format!("{source};"), "names.js")
+            .expect("test expression should parse");
+        let Program::Script(script) = parsed.program else {
+            panic!("test expression should parse as a script");
+        };
+        let Stmt::Expr(statement) = script.body.into_iter().next().unwrap() else {
+            panic!("test source should contain one expression");
+        };
+        *statement.expr
+    }
+
+    fn ts_expression(source: &str) -> Expr {
+        let source_text = format!("{source};");
+        let source = SourceFile::with_language("names.ts", source_text, SourceLanguage::TypeScript)
+            .expect("test source should be valid");
+        let parsed = crate::parse::SourceParser::new(&source)
+            .expect("test expression should parse")
+            .parse()
+            .expect("test expression should parse");
+        let Program::Script(script) = parsed.program else {
+            panic!("test expression should parse as a script");
+        };
+        let Stmt::Expr(statement) = script.body.into_iter().next().unwrap() else {
+            panic!("test source should contain one expression");
+        };
+        *statement.expr
+    }
+
+    #[test]
+    fn transparent_member_and_call_shapes_walk_to_the_same_terminal() {
+        for source in [
+            "a.b",
+            "a.b()",
+            "a.b(1, 2)",
+            "a?.b",
+            "a?.b()",
+            "(a.b)",
+            "((a.b))",
+        ] {
+            let expr = expression(source);
+            let Some(TransparentTerminal::Member(member)) = effective_terminal_expr(&expr) else {
+                panic!("{source} should terminate at a member");
+            };
+            assert_eq!(
+                member_expression_chain(member).as_ref(),
+                Some(&SymbolPath::from("a.b"))
+            );
+        }
+        let expr = expression("a.b.c");
+        let Some(TransparentTerminal::Member(member)) = effective_terminal_expr(&expr) else {
+            panic!("a.b.c should terminate at a member");
+        };
+        assert_eq!(
+            member_expression_chain(member).as_ref(),
+            Some(&SymbolPath::from("a.b.c"))
+        );
+    }
+
+    #[test]
+    fn transparent_ident_and_this_shapes_walk_to_an_expr_terminal() {
+        for source in ["a", "(a)", "this"] {
+            let expr = expression(source);
+            assert!(matches!(
+                effective_terminal_expr(&expr),
+                Some(TransparentTerminal::Expr(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn unsupported_callee_shapes_fail_closed() {
+        let expr = expression("import('m')");
+        assert!(effective_terminal_expr(&expr).is_none());
+    }
+
+    #[test]
+    fn sequences_are_terminal_for_the_structural_name() {
+        let expr = expression("(a, b)");
+        assert!(matches!(
+            effective_terminal_expr(&expr),
+            Some(TransparentTerminal::Expr(Expr::Seq(_)))
+        ));
+        assert_eq!(expression_name(&expr), None);
+    }
+
+    #[test]
+    fn expression_name_renders_supported_shapes() {
+        assert_eq!(
+            expression_name(&expression("a.b")),
+            Some(SymbolPath::from("a.b"))
+        );
+        assert_eq!(
+            expression_name(&expression("a.b()")),
+            Some(SymbolPath::from("a.b"))
+        );
+        assert_eq!(
+            expression_name(&expression("a?.b")),
+            Some(SymbolPath::from("a.b"))
+        );
+        assert_eq!(
+            expression_name(&expression("this.x")),
+            Some(SymbolPath::from("this.x"))
+        );
+        assert_eq!(
+            expression_name(&expression("a")),
+            Some(SymbolPath::from("a"))
+        );
+    }
+
+    #[test]
+    fn ts_assertions_are_transparent_for_the_structural_name() {
+        assert_eq!(
+            expression_name(&ts_expression("a as T")),
+            Some(SymbolPath::from("a"))
+        );
+        assert_eq!(
+            expression_name(&ts_expression("(a.b) as T")),
+            Some(SymbolPath::from("a.b"))
+        );
     }
 }
