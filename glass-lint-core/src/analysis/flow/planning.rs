@@ -81,53 +81,50 @@ impl BoundLifecycleCallTarget {
             LifecycleCallTarget::Global(name) => Some(Self::Global(name.clone())),
         }
     }
-
-    fn member(path: NamePath) -> Self {
-        Self::Member(path)
-    }
-
-    fn global(name: impl Into<SmolStr>) -> Self {
-        Self::Global(name.into())
-    }
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct BoundTargetIndex<T> {
-    entries: BTreeMap<BoundLifecycleCallTarget, Vec<T>>,
+    globals: BTreeMap<SmolStr, Vec<T>>,
+    members: BTreeMap<NamePath, Vec<T>>,
 }
 
 impl<T> Default for BoundTargetIndex<T> {
     fn default() -> Self {
         Self {
-            entries: BTreeMap::new(),
+            globals: BTreeMap::new(),
+            members: BTreeMap::new(),
         }
     }
 }
 
 impl<T> BoundTargetIndex<T> {
     pub(super) fn insert(&mut self, target: BoundLifecycleCallTarget, value: T) {
-        self.entries.entry(target).or_default().push(value);
-    }
-
-    pub(super) fn get(&self, target: &BoundLifecycleCallTarget) -> Option<&[T]> {
-        self.entries.get(target).map(Vec::as_slice)
+        match target {
+            BoundLifecycleCallTarget::Global(name) => {
+                self.globals.entry(name).or_default().push(value);
+            }
+            BoundLifecycleCallTarget::Member(path) => {
+                self.members.entry(path).or_default().push(value);
+            }
+        }
     }
 
     pub(super) fn candidates_for_call(&self, call: &CallShape<'_>) -> Option<&[T]> {
         call.global_name()
-            .and_then(|name| self.get(&BoundLifecycleCallTarget::global(name.clone())))
+            .and_then(|name| self.globals.get(name).map(Vec::as_slice))
             .or_else(|| {
                 call.rooted()
                     .then(|| call.chain())
                     .flatten()
-                    .and_then(|chain| self.get(&BoundLifecycleCallTarget::member(chain.clone())))
+                    .and_then(|chain| self.members.get(chain).map(Vec::as_slice))
             })
     }
 }
 
 impl<T: Ord> BoundTargetIndex<T> {
     pub(super) fn normalize(&mut self) {
-        for values in self.entries.values_mut() {
+        for values in self.globals.values_mut().chain(self.members.values_mut()) {
             values.sort_unstable();
             values.dedup();
         }

@@ -136,7 +136,7 @@ outlives the module's value arena.
 
 **Fix Applied:** The four construction sites are deleted. The view is now built once per phase boundary: in `ProjectionInputs::new` (local projector, used by `match_source` and `record_configuration`), once per module in the cross source collector (`collect_candidates`), and once per `UsageProjector` (cross `apply_receiver`). `UsageProjector` also hoists the per-module `FactStream` borrow that the three apply paths re-fetched. The view stays borrowed and immutable; no `ValueTable` is stored in any plan.
 
-#### [ ] READ-004 — `BoundLifecycleCallTarget::member`/`global` are single-call-site constructors and force a redundant clone
+#### [x] READ-004 — `BoundLifecycleCallTarget::member`/`global` are single-call-site constructors and force a redundant clone
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -159,7 +159,7 @@ inline in `candidates_for_call` (or change the lookup to accept a borrowed
 the global-before-rooted precedence and the `BTreeMap` key ordering, which the
 deterministic candidate ordering relies on.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `BoundLifecycleCallTarget::member`/`global` are deleted. `BoundTargetIndex` now owns two `BTreeMap`s (`globals` keyed by `SmolStr`, `members` keyed by `NamePath`), so `candidates_for_call` looks up borrowed `&SmolStr`/`&NamePath` probes with no per-call clone, while preserving the global-before-rooted precedence and per-map `BTreeMap` key ordering (normalize sorts and dedups both maps).
 
 #### [ ] READ-005 — Source-index binding is duplicated between `BoundFlowPlan::new` and `FlowSources::collect_candidates`
 
