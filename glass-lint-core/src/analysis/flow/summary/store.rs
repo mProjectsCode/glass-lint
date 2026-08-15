@@ -100,11 +100,15 @@ impl<'a> SummaryPathStore<'a> {
         }
     }
 
-    pub(super) fn is_valid(&self, id: SummaryPathId) -> bool {
+    fn store_for(&self, id: SummaryPathId) -> &PathStore {
         match id {
-            SummaryPathId::Frozen(path) => self.frozen.is_valid(path),
-            SummaryPathId::Overlay(path) => self.overlay.is_valid(path),
+            SummaryPathId::Frozen(_) => self.frozen,
+            SummaryPathId::Overlay(_) => &self.overlay,
         }
+    }
+
+    pub(super) fn is_valid(&self, id: SummaryPathId) -> bool {
+        self.store_for(id).is_valid(id.path_id())
     }
 
     pub(super) fn intern_frozen(&self, path: PathId) -> Option<SummaryPathId> {
@@ -114,10 +118,7 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     pub(super) fn depth(&self, id: SummaryPathId) -> Option<u32> {
-        match id {
-            SummaryPathId::Frozen(path) => self.frozen.depth(path),
-            SummaryPathId::Overlay(path) => self.overlay.depth(path),
-        }
+        self.store_for(id).depth(id.path_id())
     }
 
     fn parent(&self, id: SummaryPathId) -> Option<SummaryPathId> {
@@ -164,17 +165,11 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn segment(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        match id {
-            SummaryPathId::Frozen(path) => self.frozen.segment(path),
-            SummaryPathId::Overlay(path) => self.overlay.segment(path),
-        }
+        self.store_for(id).segment(id.path_id())
     }
 
     fn first_segment_of(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        match id {
-            SummaryPathId::Frozen(path) => self.frozen.first_segment_of(path),
-            SummaryPathId::Overlay(path) => self.overlay.first_segment_of(path),
-        }
+        self.store_for(id).first_segment_of(id.path_id())
     }
 
     pub(super) fn first_index(&self, id: SummaryPathId) -> Option<u32> {
@@ -184,21 +179,14 @@ impl<'a> SummaryPathStore<'a> {
         }
     }
 
-    fn find_edge_impl(&self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
-        match parent {
-            SummaryPathId::Overlay(path) => self
-                .overlay
-                .find_edge(path, &segment)
-                .map(SummaryPathId::from_overlay_path),
-            SummaryPathId::Frozen(path) => self
-                .frozen
-                .find_edge(path, &segment)
-                .map(SummaryPathId::from_frozen_path),
-        }
-    }
-
     fn find_edge(&self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
-        self.find_edge_impl(parent, segment)
+        let path = self
+            .store_for(parent)
+            .find_edge(parent.path_id(), &segment)?;
+        match parent {
+            SummaryPathId::Frozen(_) => Some(SummaryPathId::from_frozen_path(path)),
+            SummaryPathId::Overlay(_) => Some(SummaryPathId::from_overlay_path(path)),
+        }
     }
 
     fn overlay_append(

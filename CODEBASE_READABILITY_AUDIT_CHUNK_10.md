@@ -65,7 +65,7 @@ current code matches the recommendation; nothing further to do.
 
 ### [state/tables.rs — canonical flow state table]
 
-#### [ ] READ-002 — Per-method frozen/overlay dispatch repeated across six `SummaryPathStore` methods
+#### [x] READ-002 — Per-method frozen/overlay dispatch repeated across six `SummaryPathStore` methods
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -91,7 +91,13 @@ Delete the `find_edge`/`find_edge_impl` split; `find_edge` re-wraps the matched
 translate `ParentRef::Linked(link)` to `Frozen(link.path())`; keep the
 overlay-capacity fail-closed behavior (`PathStore::with_max_nodes`) intact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added private `SummaryPathStore::store_for(&self, id) -> &PathStore`
+and rewrote `is_valid`, `depth`, `segment`, and `first_segment_of` as
+`self.store_for(id).X(id.path_id())`. Merged `find_edge_impl` into `find_edge`,
+which resolves through `store_for(parent)` and re-wraps the found `PathId` in
+the parent's variant. `parent` keeps its `ParentRef::Linked(link)` →
+`Frozen(link.path())` translation, and the overlay-capacity fail-closed behavior
+is unchanged.
 
 ### [state.rs — control stack]
 
