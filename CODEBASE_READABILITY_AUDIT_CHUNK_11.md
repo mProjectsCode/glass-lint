@@ -62,7 +62,7 @@ keep the two lifecycle phases (buildable vs. retained) distinct.
 
 **Fix Applied:** Removed the 14-arg `CallEvent::resolved` constructor and added `ResolvedCallee::into_call_event` (`model/fact.rs`), which lowers the resolved callee into `CallEvent` from one mapping site. `emit_call` interns `callee_name`/`rooted_chain`/`returned_member` via the `FactBuilder` and passes the derived `result`/`effective_args`/`unwrap`; `CallEvent` fields stay private and `ResolvedCallee` was widened to `pub(in crate::analysis)` and re-exported from `facts`.
 
-#### [ ] READ-002 — `ArgumentView` duplicates the argument-derived-data logic of `ArgumentData` and its prepared overlays only partially memoize
+#### [x] READ-002 — `ArgumentView` duplicates the argument-derived-data logic of `ArgumentData` and its prepared overlays only partially memoize
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -95,7 +95,7 @@ resolution and predicates stay O(1) — and keep the arena-backed `ArgumentData
 for CallArgInfo` for the flow side, which matches raw `CallArgInfo` without an
 overlay.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ArgumentData` is now a minimal trait whose `ArgumentView` impl returns the prepared overlay directly (authoritative, no arena fallback), so each argument group pays one `ValueTable` resolution in `argument_with_overlay` and predicates stay O(1). The unused `value()` method and the `argument` field on `ArgumentView` were removed; `ArgumentView` now derives `Default` and the arena-backed `ArgumentData for CallArgInfo` remains for the flow side.
 
 ### Model flow types — lifecycle evidence and limits
 

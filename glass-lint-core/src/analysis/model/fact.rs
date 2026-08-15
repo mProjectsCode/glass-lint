@@ -120,23 +120,14 @@ impl CallArgInfo {
     }
 }
 
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct ArgumentView<'a> {
-    pub(in crate::analysis) argument: &'a CallArgInfo,
     pub(in crate::analysis) static_string: Option<&'a str>,
     pub(in crate::analysis) object: Option<&'a StaticObject>,
     pub(in crate::analysis) rooted_chain: Option<&'a NamePath>,
 }
 
 impl<'a> ArgumentView<'a> {
-    pub fn new(argument: &'a CallArgInfo) -> Self {
-        Self {
-            argument,
-            static_string: None,
-            object: None,
-            rooted_chain: None,
-        }
-    }
-
     pub fn with_static_string(mut self, value: &'a str) -> Self {
         self.static_string = Some(value);
         self

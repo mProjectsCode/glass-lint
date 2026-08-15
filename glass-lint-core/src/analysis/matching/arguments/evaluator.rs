@@ -228,7 +228,7 @@ impl<'a> MatcherEvaluator<'a> {
         &'b self,
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
-        let mut view = ArgumentView::new(argument);
+        let mut view = ArgumentView::default();
         let value = self.values.resolve(argument.value);
         let (object, rooted_chain) = match value {
             Some(Value::StaticObject(object)) => (Some(object), None),

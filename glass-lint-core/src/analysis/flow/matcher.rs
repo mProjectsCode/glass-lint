@@ -5,7 +5,7 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        model::value::{StaticObject, Value, ValueId, ValueTable},
+        model::value::{StaticObject, Value, ValueTable},
     },
     api::rule::{
         ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,
@@ -98,53 +98,26 @@ impl ArgumentMatcher {
 }
 
 pub(in crate::analysis) trait ArgumentData {
-    fn value(&self) -> ValueId;
+    fn static_string<'a>(&'a self, values: &'a ValueTable) -> Option<&'a str>;
 
-    fn static_string<'a>(&'a self, values: &'a ValueTable) -> Option<&'a str> {
-        self.overlay_static_string()
-            .or_else(|| values.static_string(self.value()))
-    }
+    fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject>;
 
-    fn overlay_static_string(&self) -> Option<&str> {
-        None
-    }
-
-    fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject> {
-        self.prepared_static_object()
-            .or_else(|| self.arena_static_object(values))
-    }
-
-    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject>;
-
-    fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath> {
-        self.prepared_rooted_chain()
-            .or_else(|| self.arena_rooted_chain(values))
-    }
-
-    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath>;
-
-    fn prepared_static_object(&self) -> Option<&StaticObject> {
-        None
-    }
-
-    fn prepared_rooted_chain(&self) -> Option<&NamePath> {
-        None
-    }
+    fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath>;
 }
 
 impl ArgumentData for CallArgInfo {
-    fn value(&self) -> ValueId {
-        self.value
+    fn static_string<'a>(&'a self, values: &'a ValueTable) -> Option<&'a str> {
+        values.static_string(self.value)
     }
 
-    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
+    fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject> {
         match values.resolve(self.value)? {
             Value::StaticObject(object) => Some(object),
             _ => None,
         }
     }
 
-    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
+    fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath> {
         match values.resolve(self.value)? {
             Value::RootedMember { path } => Some(path),
             _ => None,
@@ -153,27 +126,15 @@ impl ArgumentData for CallArgInfo {
 }
 
 impl ArgumentData for ArgumentView<'_> {
-    fn value(&self) -> ValueId {
-        self.argument.value()
-    }
-
-    fn overlay_static_string(&self) -> Option<&str> {
+    fn static_string<'a>(&'a self, _values: &'a ValueTable) -> Option<&'a str> {
         self.static_string
     }
 
-    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
-        self.argument.arena_static_object(values)
-    }
-
-    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
-        self.argument.arena_rooted_chain(values)
-    }
-
-    fn prepared_static_object(&self) -> Option<&StaticObject> {
+    fn static_object<'a>(&'a self, _values: &'a ValueTable) -> Option<&'a StaticObject> {
         self.object
     }
 
-    fn prepared_rooted_chain(&self) -> Option<&NamePath> {
+    fn rooted_chain<'a>(&'a self, _values: &'a ValueTable) -> Option<&'a NamePath> {
         self.rooted_chain
     }
 }
