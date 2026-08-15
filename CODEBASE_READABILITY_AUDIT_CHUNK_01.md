@@ -155,7 +155,7 @@ granularity then; do not silently enable one phase after another was disabled.
 
 ### Wrapper lowering
 
-#### [ ] READ-005 — `.call` / `.apply` unwrap arms are near-identical
+#### [x] READ-005 — `.call` / `.apply` unwrap arms are near-identical
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -178,7 +178,7 @@ extraction. Guardrail: preserve the distinct failure behavior — `call` needs
 at least one argument and `apply` needs at least two — and keep the existing
 order of `emit_call` relative to other facts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted private `FactBuilder::emit_callable_unwrap` performing the shared chain-resolution + `emit_call` tail; the `"call"` and `"apply"` arms now only differ in argument extraction while keeping their distinct arity guards.
 
 ### Stream API
 

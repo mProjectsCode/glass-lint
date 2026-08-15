@@ -15,43 +15,42 @@ impl FactBuilder<'_, '_> {
         };
         match property.as_str() {
             "call" if !args.is_empty() => {
-                let chain = self.resolve_target_chain(&member.obj);
                 let effective_args: Vec<_> = args[1..]
                     .iter()
                     .map(|a| self.arg_info_projection(&a.expr))
                     .collect();
-                let target = effective_callee_expr(&member.obj);
-                let Some(resolved) = self.resolve_call_callee(target) else {
-                    return;
-                };
-                let chain = chain.unwrap_or_default().without_this_prefix();
-                let chain_path = self.name_path(&chain);
-                let unwrap = Some(Box::new(CallUnwrap {
-                    chain_path,
-                    effective_args,
-                }));
-                self.emit_call(span, resolved, args, unwrap);
+                self.emit_callable_unwrap(member, span, args, effective_args);
             }
             "apply" if args.len() >= 2 => {
-                let effective_args = self.try_unwrap_apply_args(&args[1].expr);
-                let Some(effective_args) = effective_args else {
+                let Some(effective_args) = self.try_unwrap_apply_args(&args[1].expr) else {
                     return;
                 };
-                let chain = self.resolve_target_chain(&member.obj);
-                let target = effective_callee_expr(&member.obj);
-                let Some(resolved) = self.resolve_call_callee(target) else {
-                    return;
-                };
-                let chain = chain.unwrap_or_default().without_this_prefix();
-                let chain_path = self.name_path(&chain);
-                let unwrap = Some(Box::new(CallUnwrap {
-                    chain_path,
-                    effective_args,
-                }));
-                self.emit_call(span, resolved, args, unwrap);
+                self.emit_callable_unwrap(member, span, args, effective_args);
             }
             _ => {}
         }
+    }
+
+    /// Resolve the shared call-unwrap chain and emit the unwrapped call.
+    fn emit_callable_unwrap(
+        &mut self,
+        member: &MemberExpr,
+        span: Span,
+        args: &[ExprOrSpread],
+        effective_args: Vec<CallArgInfo>,
+    ) {
+        let chain = self.resolve_target_chain(&member.obj);
+        let target = effective_callee_expr(&member.obj);
+        let Some(resolved) = self.resolve_call_callee(target) else {
+            return;
+        };
+        let chain = chain.unwrap_or_default().without_this_prefix();
+        let chain_path = self.name_path(&chain);
+        let unwrap = Some(Box::new(CallUnwrap {
+            chain_path,
+            effective_args,
+        }));
+        self.emit_call(span, resolved, args, unwrap);
     }
 
     pub(super) fn try_unwrap_apply_args(&mut self, args_expr: &Expr) -> Option<Vec<CallArgInfo>> {
