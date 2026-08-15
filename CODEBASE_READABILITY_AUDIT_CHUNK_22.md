@@ -183,7 +183,7 @@ deserializer must keep producing the same values.
 
 ### [parse]
 
-#### [ ] READ-003 — `SyntaxDepthError` is a single-variant unit error used only as a boolean control-flow flag
+#### [x] READ-003 — `SyntaxDepthError` is a single-variant unit error used only as a boolean control-flow flag
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -209,7 +209,7 @@ early-abort behavior on exceeding `max_depth` (before SWC recursion) and the
 pre/post-parse phase selection in `SyntaxDepthGuard::new` (parse.rs:345-352)
 must be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `SyntaxDepthError`; `DepthScanner::observe`/`push_delimiter` and `SyntaxDepthGuard::check_before_parse`/`check_after_parse` now return plain `bool`, keeping `SyntaxDepthOutcome` for the test helper. Early-abort and phase selection are unchanged.
 
 #### [ ] READ-002 — Test-only `MAX_SYNTAX_DEPTH` duplicates `limits::default_syntax_depth`
 

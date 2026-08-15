@@ -227,11 +227,7 @@ impl SourceParser {
     }
 
     fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
-        if self
-            .depth_guard
-            .check_before_parse(&self.file, self.syntax)
-            .is_err()
-        {
+        if self.depth_guard.check_before_parse(&self.file, self.syntax) {
             return Err(self.syntax_depth_diagnostic());
         }
 
@@ -246,7 +242,6 @@ impl SourceParser {
         if self
             .depth_guard
             .check_after_parse(parser.input().iter.tokens())
-            .is_err()
         {
             return Err(self.syntax_depth_diagnostic());
         }
@@ -351,29 +346,21 @@ impl SyntaxDepthGuard {
         Self { max_depth, phase }
     }
 
-    fn check_before_parse(
-        self,
-        file: &swc_common::SourceFile,
-        syntax: Syntax,
-    ) -> Result<(), SyntaxDepthError> {
+    fn check_before_parse(self, file: &swc_common::SourceFile, syntax: Syntax) -> bool {
         match self.phase {
             SyntaxDepthPhase::PreParse => DepthScanner::new(self.max_depth)
                 .scan_source(file, syntax)
-                .is_exceeded()
-                .then_some(SyntaxDepthError::Exceeded)
-                .map_or(Ok(()), Err),
-            SyntaxDepthPhase::PostParse => Ok(()),
+                .is_exceeded(),
+            SyntaxDepthPhase::PostParse => false,
         }
     }
 
-    fn check_after_parse(self, tokens: &[TokenAndSpan]) -> Result<(), SyntaxDepthError> {
+    fn check_after_parse(self, tokens: &[TokenAndSpan]) -> bool {
         match self.phase {
-            SyntaxDepthPhase::PreParse => Ok(()),
+            SyntaxDepthPhase::PreParse => false,
             SyntaxDepthPhase::PostParse => DepthScanner::new(self.max_depth)
                 .scan_tokens(tokens)
-                .is_exceeded()
-                .then_some(SyntaxDepthError::Exceeded)
-                .map_or(Ok(()), Err),
+                .is_exceeded(),
         }
     }
 
@@ -385,11 +372,6 @@ impl SyntaxDepthGuard {
     fn max_depth(self) -> usize {
         self.max_depth
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SyntaxDepthError {
-    Exceeded,
 }
 
 #[cfg(test)]

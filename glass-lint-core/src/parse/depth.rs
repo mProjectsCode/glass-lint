@@ -5,7 +5,7 @@ use swc_ecma_parser::{
     unstable::{Token, TokenAndSpan},
 };
 
-use super::{SyntaxDepthError, SyntaxDepthOutcome};
+use super::SyntaxDepthOutcome;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Delimiter {
@@ -73,7 +73,7 @@ impl DepthScanner {
             if token == Token::Error {
                 break;
             }
-            if self.observe(token).is_err() {
+            if self.observe(token) {
                 return SyntaxDepthOutcome::Exceeded;
             }
         }
@@ -113,12 +113,22 @@ impl DepthScanner {
         Some(token)
     }
 
-    pub(super) fn observe(&mut self, token: Token) -> Result<(), SyntaxDepthError> {
+    pub(super) fn observe(&mut self, token: Token) -> bool {
         match token {
-            Token::LParen => self.push_delimiter(Delimiter::Parenthesis)?,
-            Token::LBracket => self.push_delimiter(Delimiter::Bracket)?,
+            Token::LParen => {
+                if self.push_delimiter(Delimiter::Parenthesis) {
+                    return true;
+                }
+            }
+            Token::LBracket => {
+                if self.push_delimiter(Delimiter::Bracket) {
+                    return true;
+                }
+            }
             Token::LBrace | Token::DollarLBrace | Token::TemplateHead => {
-                self.push_delimiter(Delimiter::Brace)?;
+                if self.push_delimiter(Delimiter::Brace) {
+                    return true;
+                }
             }
             Token::RParen => self.pop_delimiter(Delimiter::Parenthesis),
             Token::RBracket => self.pop_delimiter(Delimiter::Bracket),
@@ -134,17 +144,17 @@ impl DepthScanner {
             matches!(token, Token::PlusPlus | Token::MinusMinus) && self.expression_can_end;
         self.expression_can_end = Self::token_can_end_expression(token, self.previous_postfix);
         self.previous = Some(token);
-        Ok(())
+        false
     }
 
-    fn push_delimiter(&mut self, delimiter: Delimiter) -> Result<(), SyntaxDepthError> {
+    fn push_delimiter(&mut self, delimiter: Delimiter) -> bool {
         self.depth = self.depth.saturating_add(1);
         self.maximum = self.maximum.max(self.depth);
         if self.maximum > self.max_depth {
-            return Err(SyntaxDepthError::Exceeded);
+            return true;
         }
         self.delimiters.push(delimiter);
-        Ok(())
+        false
     }
 
     fn pop_delimiter(&mut self, expected: Delimiter) {
