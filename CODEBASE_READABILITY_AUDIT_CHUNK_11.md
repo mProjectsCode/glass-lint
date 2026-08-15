@@ -190,7 +190,7 @@ the `u64::BITS` overflow special case for `count == 64`.
 
 **Fix Applied:** Added a module-private `BoundedIndex` newtype owning the 64-key cap (`MAX`), `new` bound, per-index `bit`, and the `count == 64`/`count > 64` `mask` arithmetic; both index newtypes now wrap it and stay type-distinct, and `IndexedEvidence` routes `bit` and the readiness masks through it. Split the bool-flagged `ready` into named `ready_any`/`ready_all` (with the fail-closed out-of-range check preserved) and renamed the test-only `len` to `key_count`.
 
-#### [ ] READ-006 — `cross/mod.rs` constructs a full `FlowLimits` only to read back its pass-through operation budget
+#### [x] READ-006 — `cross/mod.rs` constructs a full `FlowLimits` only to read back its pass-through operation budget
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -214,7 +214,7 @@ Guardrails: keep `from_flow_operations` for the projector path and keep the
 min/clamp saturation behavior; do not change the cross-phase budget semantics
 while collapsing the call.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by chunk 07 read 007 (`95d1682f`): `cross/mod.rs:212` now reads `project.flow_limit()` directly as the operation budget, so no `FlowLimits` is constructed and discarded. `from_flow_operations` remains the single scaling site at `analysis/project/projection.rs:390`, and the min/clamp saturation behavior and cross-phase budget semantics are unchanged. No code changes were needed in this chunk.
 
 ## Systemic Themes
 
