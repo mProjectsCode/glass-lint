@@ -10,6 +10,8 @@
 //! here because they are produced by syntax-directed normalization and
 //! consumed by both the scope collector and the fact builder.
 
+use swc_common::Span;
+
 pub(super) mod constant;
 pub(super) mod name;
 mod names;
@@ -19,3 +21,8 @@ pub use names::*;
 pub(in crate::analysis) use provenance::{
     BudgetComponent, SymbolCallProvenance, SymbolMemberProvenance, UnknownReason,
 };
+
+/// Inclusive span containment: `inner` lies within `outer`.
+pub(in crate::analysis) fn span_contains(outer: Span, inner: Span) -> bool {
+    outer.lo <= inner.lo && outer.hi >= inner.hi
+}

@@ -2,6 +2,8 @@ use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use hashbrown::HashMap;
 use swc_common::Span;
 
+use crate::analysis::syntax::span_contains;
+
 mod provenance;
 pub(in crate::analysis) use provenance::ProvenanceJoin;
 pub use provenance::{
@@ -273,7 +275,7 @@ impl LexicalScope {
     }
 
     pub(in crate::analysis) fn contains(&self, span: Span) -> bool {
-        self.span.lo <= span.lo && self.span.hi >= span.hi
+        span_contains(self.span, span)
     }
 
     pub(in crate::analysis) fn insert_binding(

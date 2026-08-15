@@ -111,7 +111,7 @@ bundle is needed at the build→graph boundary because
 
 ### Pattern projection and alias collection
 
-#### [ ] READ-003 — Span-containment predicate is duplicated and exported from the wrong module
+#### [x] READ-003 — Span-containment predicate is duplicated and exported from the wrong module
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -139,7 +139,7 @@ spans.) Guardrails: the predicate is a plain inclusive containment
 assignment's scope span against a use span — semantics must not change in
 `chain.rs`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `syntax::span_contains` as the single implementation; `LexicalScope::contains` and `query/provenance/chain.rs` now delegate to it; deleted the `aliases.rs` free function and the `query/mod.rs` re-export.
 
 #### [ ] READ-004 — `collect_value_aliases` and `collect_assignment_aliases` duplicate the projection/error sequence
 

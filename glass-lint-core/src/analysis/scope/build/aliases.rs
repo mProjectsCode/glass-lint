@@ -136,7 +136,3 @@ impl ScopeCollector<'_> {
         }
     }
 }
-
-pub(in crate::analysis::scope) fn contains(outer: Span, inner: Span) -> bool {
-    outer.lo <= inner.lo && outer.hi >= inner.hi
-}

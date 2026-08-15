@@ -4,9 +4,9 @@ use crate::analysis::{
     scope::{
         FrozenScopeGraph,
         frozen_assignments::{BindingResolution, BindingResolutionStatus},
-        query::{BindingKey, BindingProvenance, MemberExpr, Span, contains},
+        query::{BindingKey, BindingProvenance, MemberExpr, Span},
     },
-    syntax::member_root_identifier,
+    syntax::{member_root_identifier, span_contains},
 };
 
 impl FrozenScopeGraph {
@@ -122,7 +122,7 @@ impl FrozenScopeGraph {
                 assignments.partition_point(|assignment| assignment.span().lo <= member.span.lo);
             let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
                 self.scope_span(assignment.scope())
-                    .is_some_and(|scope| contains(scope, member.span))
+                    .is_some_and(|scope| span_contains(scope, member.span))
             }) else {
                 continue;
             };
@@ -279,7 +279,7 @@ impl FrozenScopeGraph {
                     assignment.span().lo <= span.lo
                         && self
                             .scope_span(assignment.scope())
-                            .is_some_and(|scope| contains(scope, span))
+                            .is_some_and(|scope| span_contains(scope, span))
                 })
             })
     }
@@ -311,7 +311,7 @@ impl FrozenScopeGraph {
                         .is_none_or(|written| property.is_none_or(|expected| written == expected))
                     && self
                         .scope_span(mutation.scope())
-                        .is_some_and(|scope| contains(scope, span))
+                        .is_some_and(|scope| span_contains(scope, span))
             })
         })
     }
