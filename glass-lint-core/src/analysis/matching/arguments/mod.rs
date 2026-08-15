@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::NameTable;
 
@@ -273,9 +273,6 @@ impl<'a> MatcherProjectOverlay<'a> {
     }
 }
 
-#[cfg(test)]
-type MatcherLocalInput<'a> = MatcherArtifact<'a>;
-
 fn push_owned_rule_evidence(
     evidence: &mut RuleEvidenceTable,
     rule: RuleIndex,
@@ -294,19 +291,19 @@ fn push_owned_rule_evidence(
     Ok(())
 }
 
-pub(in crate::analysis) fn try_compute_constrained_evidence<'artifact>(
-    artifact: impl Borrow<MatcherArtifact<'artifact>>,
+pub(in crate::analysis) fn try_compute_constrained_evidence(
+    artifact: &MatcherArtifact<'_>,
     roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,
 ) -> Result<(), RuleEvidenceError> {
     let mut ops = EvaluationOperations::default();
-    compute_constrained_inner(artifact.borrow(), roots, evidence, project, &mut ops)
+    compute_constrained_inner(artifact, roots, evidence, project, &mut ops)
 }
 
 #[cfg(test)]
-fn compute_constrained_evidence<'artifact>(
-    artifact: impl Borrow<MatcherArtifact<'artifact>>,
+fn compute_constrained_evidence(
+    artifact: &MatcherArtifact<'_>,
     roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,

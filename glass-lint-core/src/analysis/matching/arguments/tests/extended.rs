@@ -23,7 +23,7 @@ fn object_keys_matcher_accepts_expected_keys() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -58,7 +58,7 @@ fn object_property_value_matcher_accepts_matching_property() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),

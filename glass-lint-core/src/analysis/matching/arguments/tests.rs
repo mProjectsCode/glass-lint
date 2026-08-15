@@ -53,7 +53,7 @@ fn constrained_publication_returns_capacity_error() {
     let mut evidence = RuleEvidenceTable::new_for_test(0);
 
     let error = try_compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -134,7 +134,7 @@ fn constrained_calls_and_members_execute_once() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&call), root_input(&member)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -167,7 +167,7 @@ fn constrained_evidence_is_source_ordered_and_deduplicated() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&roots[0])],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -221,7 +221,7 @@ fn missing_argument_fails_closed() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&patched)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -245,7 +245,7 @@ fn dynamic_value_does_not_match_static_predicate() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -283,7 +283,7 @@ fn sparse_argument_positions() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -339,13 +339,13 @@ fn constraint_order_does_not_affect_matching() {
     let mut ev_a = RuleEvidenceTable::new_for_test(1);
     let mut ev_b = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root_a)],
         &mut ev_a,
         MatcherProjectOverlay::new(None, None),
     );
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root_b)],
         &mut ev_b,
         MatcherProjectOverlay::new(None, None),
@@ -376,7 +376,7 @@ fn equals_any_accepts_any_matching_alternative() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -406,7 +406,7 @@ fn equals_any_rejects_non_matching_values() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -439,7 +439,7 @@ fn contains_any_accepts_string_containing_marker() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),
@@ -475,7 +475,7 @@ fn prefix_matches_static_string_start() {
     let index = build_index(&stream);
     let mut evidence = RuleEvidenceTable::new_for_test(1);
     compute_constrained_evidence(
-        MatcherLocalInput::from_parts(&stream, &index),
+        &MatcherArtifact::from_parts(&stream, &index),
         &[root_input(&root)],
         &mut evidence,
         MatcherProjectOverlay::new(None, None),

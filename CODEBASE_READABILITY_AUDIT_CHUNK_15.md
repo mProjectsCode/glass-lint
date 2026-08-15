@@ -129,7 +129,7 @@ root).
 
 **Fix Applied:** `publish_fallback` now extracts the recorded fallback occurrences by move, publishes them by value, and returns on error without restoring the replaced phase; the full-clone of every fallback occurrence was removed.
 
-#### [ ] READ-006 — `try_compute_constrained_evidence` takes `impl Borrow<MatcherArtifact>` and a test-only `MatcherLocalInput` alias so tests can pass an owned artifact
+#### [x] READ-006 — `try_compute_constrained_evidence` takes `impl Borrow<MatcherArtifact>` and a test-only `MatcherLocalInput` alias so tests can pass an owned artifact
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -159,7 +159,7 @@ tied to the borrowed `FactStream`/`OccurrenceIndexes`, so the alias removal
 must not decouple the stream and index borrows that `MatcherArtifact`
 intentionally groups.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `try_compute_constrained_evidence` and the `#[cfg(test)]` `compute_constrained_evidence` wrapper now take `&MatcherArtifact`, the `MatcherLocalInput` alias and the `Borrow` bound were deleted, and tests pass `&MatcherArtifact::from_parts(...)` with the inner `'artifact` lifetime still tied to the borrowed stream and indexes.
 
 ### Matching / indexed query execution
 
