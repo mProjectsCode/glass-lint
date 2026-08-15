@@ -93,7 +93,7 @@ no lifecycle distinction is lost.
 
 **Fix Applied:** `MatcherEvaluationContext` was deleted; `compute_constrained_inner` now takes `artifact`, `project`, and `operations` as direct parameters and `try_compute_constrained_evidence` plus the test helper `run_with_ops` were updated accordingly.
 
-#### [ ] READ-003 — `ConstrainedState` phase machine relies on `mem::replace` recovery and a needless clone of the fallback list
+#### [x] READ-003 — `ConstrainedState` phase machine relies on `mem::replace` recovery and a needless clone of the fallback list
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ in the bounded linear pass (`mod.rs:414-443`), and a `RuleEvidenceError` from
 publication still propagates fail-closed (no evidence recorded for the failing
 root).
 
-**Fix Applied:** None so far.
+**Fix Applied:** `publish_fallback` now extracts the recorded fallback occurrences by move, publishes them by value, and returns on error without restoring the replaced phase; the full-clone of every fallback occurrence was removed.
 
 #### [ ] READ-006 — `try_compute_constrained_evidence` takes `impl Borrow<MatcherArtifact>` and a test-only `MatcherLocalInput` alias so tests can pass an owned artifact
 

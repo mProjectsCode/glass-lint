@@ -119,12 +119,7 @@ impl<'a> PreparedConstrainedRoot<'a> {
         evidence: &mut RuleEvidenceTable,
     ) -> Result<(), RuleEvidenceError> {
         match std::mem::replace(&mut self.state, ConstrainedState::Published) {
-            ConstrainedState::Fallback(occurrences) => {
-                if let Err(error) = self.publish(evidence, occurrences.clone()) {
-                    self.state = ConstrainedState::Fallback(occurrences);
-                    return Err(error);
-                }
-            }
+            ConstrainedState::Fallback(occurrences) => self.publish(evidence, occurrences)?,
             state => {
                 self.state = state;
             }
