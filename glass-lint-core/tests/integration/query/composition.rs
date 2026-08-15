@@ -444,7 +444,7 @@ fn argument_index_at_limit_succeeds() {
         .unwrap()
         .with_arg(255, ValueMatcher::static_string())
         .unwrap();
-    assert_eq!(q.constraints().len(), 1);
+    assert_eq!(q.constraint_count(), 1);
 }
 
 #[test]

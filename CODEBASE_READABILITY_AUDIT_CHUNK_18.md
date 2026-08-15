@@ -222,7 +222,7 @@ foreign types), and preserve `QueryBuildError` mapping.
 
 ### [api/rule/query/mod.rs]
 
-#### [ ] READ-004 — `EventQuery::constraints()` exposes storage-shaped access publicly while sibling accessors are `pub(crate)` and no external caller exists
+#### [x] READ-004 — `EventQuery::constraints()` exposes storage-shaped access publicly while sibling accessors are `pub(crate)` and no external caller exists
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -250,7 +250,7 @@ operation such as `constraint_count()` instead of the raw slice. Guardrails:
 the compiler and crate-internal tests keep full access via the raw slice; do
 not change the sorted ordering or the per-argument/predicate bounds.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `constraints()` is now `pub(crate)` like its sibling accessors, and a public `constraint_count()` returns the number of constraints; the integration test asserting the count now uses it.
 
 ### [api/rule/query/composition.rs, value.rs, expression.rs, lifecycle.rs]
 

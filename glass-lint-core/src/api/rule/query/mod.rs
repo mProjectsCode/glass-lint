@@ -175,8 +175,15 @@ impl EventQuery {
         &self.identity
     }
 
-    pub fn constraints(&self) -> &[ArgumentConstraint] {
+    pub(crate) fn constraints(&self) -> &[ArgumentConstraint] {
         &self.constraints
+    }
+
+    /// Return the number of argument constraints, kept sorted by argument
+    /// index.
+    #[must_use]
+    pub fn constraint_count(&self) -> usize {
+        self.constraints.len()
     }
 
     /// Construct the invariant-empty event-query shell used by every public
