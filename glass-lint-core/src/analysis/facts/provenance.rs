@@ -6,9 +6,13 @@ use crate::analysis::{SemanticBudget, facts::instance::InstanceCallable, model::
 
 pub(in crate::analysis::facts) type Origin = (SmolStr, SmolStr);
 
-pub(in crate::analysis::facts) struct FactProvenanceState {
+/// The four provenance channels: instance origins, class origins, instance
+/// callables, and static-string origins. Each lifecycle operation is
+/// expressed once here with the intentionally asymmetric per-map semantics.
+pub(in crate::analysis::facts) struct OriginChannels {
+    instances: OriginMap<Origin>,
+    classes: OriginMap<Origin>,
     instance_callables: OriginMap<InstanceCallable>,
-    origins: OriginChannels,
     static_string_origins: OriginMap<ByteRange>,
 }
 
@@ -30,11 +34,6 @@ pub(in crate::analysis::facts) struct InstanceProvenanceSnapshot {
     static_strings: OriginSnapshot<ByteRange>,
 }
 
-pub(in crate::analysis::facts) struct OriginChannels {
-    instances: OriginMap<Origin>,
-    classes: OriginMap<Origin>,
-}
-
 #[derive(Default)]
 pub(in crate::analysis::facts) struct TargetProvenance {
     pub(in crate::analysis::facts) callable: Option<InstanceCallable>,
@@ -43,19 +42,20 @@ pub(in crate::analysis::facts) struct TargetProvenance {
     pub(in crate::analysis::facts) static_string_origin: Option<ByteRange>,
 }
 
-impl FactProvenanceState {
+impl OriginChannels {
     pub(in crate::analysis::facts) fn new() -> Self {
         Self {
+            instances: OriginMap::new(),
+            classes: OriginMap::new(),
             instance_callables: OriginMap::new(),
-            origins: OriginChannels::new(),
             static_string_origins: OriginMap::new(),
         }
     }
 
     pub(in crate::analysis::facts) fn checkpoint(&mut self) -> ProvenanceCheckpoint {
         ProvenanceCheckpoint {
-            instance: self.origins.instances.checkpoint(),
-            class: self.origins.classes.checkpoint(),
+            instance: self.instances.checkpoint(),
+            class: self.classes.checkpoint(),
             callable: self.instance_callables.checkpoint(),
             static_string: self.static_string_origins.checkpoint(),
         }
@@ -65,7 +65,8 @@ impl FactProvenanceState {
         &mut self,
         checkpoint: &ProvenanceCheckpoint,
     ) {
-        self.origins.restore_branch_entry(checkpoint);
+        self.instances.restore(&checkpoint.instance);
+        self.classes.restore(&checkpoint.class);
         self.instance_callables.restore(&checkpoint.callable);
         self.static_string_origins
             .restore(&checkpoint.static_string);
@@ -75,7 +76,7 @@ impl FactProvenanceState {
         &mut self,
         checkpoint: &ProvenanceCheckpoint,
     ) {
-        self.origins.restore_instance_alternative(checkpoint);
+        self.instances.restore(&checkpoint.instance);
         self.instance_callables.restore(&checkpoint.callable);
         self.static_string_origins
             .restore(&checkpoint.static_string);
@@ -87,7 +88,9 @@ impl FactProvenanceState {
         &mut self,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.origins.finish_control_region(checkpoint);
+        self.restore_instance_alternative(checkpoint);
+        self.instances.commit(&mut checkpoint.instance);
+        self.classes.rollback(&mut checkpoint.class);
         self.instance_callables.commit(&mut checkpoint.callable);
         self.static_string_origins
             .commit(&mut checkpoint.static_string);
@@ -98,20 +101,17 @@ impl FactProvenanceState {
         budget: &SemanticBudget,
     ) -> InstanceProvenanceSnapshot {
         InstanceProvenanceSnapshot {
-            origins: self.origins.snapshot_instances(budget),
+            origins: self.instances.snapshot(budget),
             callables: self.instance_callables.snapshot(budget),
             static_strings: self.static_string_origins.snapshot(budget),
         }
     }
 
-    pub(in crate::analysis::facts) fn branch_provenance(
+    pub(in crate::analysis::facts) fn snapshot_classes(
         &self,
         budget: &SemanticBudget,
-    ) -> BranchProvenance {
-        BranchProvenance {
-            instances: self.snapshot_instances(budget),
-            classes: self.origins.snapshot_classes(budget),
-        }
+    ) -> OriginSnapshot<Origin> {
+        self.classes.snapshot(budget)
     }
 
     pub(in crate::analysis::facts) fn restore_instance_snapshot(
@@ -119,8 +119,8 @@ impl FactProvenanceState {
         snapshot: InstanceProvenanceSnapshot,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.origins
-            .restore_instance_snapshot(snapshot.origins, checkpoint);
+        self.instances
+            .restore_snapshot(snapshot.origins, &mut checkpoint.instance);
         self.instance_callables
             .restore_snapshot(snapshot.callables, &mut checkpoint.callable);
         self.static_string_origins
@@ -132,8 +132,7 @@ impl FactProvenanceState {
         snapshot: &InstanceProvenanceSnapshot,
         budget: &SemanticBudget,
     ) {
-        self.origins
-            .retain_common_instance(&snapshot.origins, budget);
+        self.instances.retain_common(&snapshot.origins, budget);
         self.instance_callables
             .retain_common(&snapshot.callables, budget);
         self.static_string_origins
@@ -146,12 +145,15 @@ impl FactProvenanceState {
         then: &BranchProvenance,
         budget: &SemanticBudget,
     ) {
-        self.origins
-            .finish_branch_with_else(checkpoint, then, budget);
+        self.instances
+            .retain_common(&then.instances.origins, budget);
+        self.classes.retain_common(&then.classes, budget);
         self.instance_callables
             .retain_common(&then.instances.callables, budget);
         self.static_string_origins
             .retain_common(&then.instances.static_strings, budget);
+        self.instances.commit(&mut checkpoint.instance);
+        self.classes.commit(&mut checkpoint.class);
         self.instance_callables.commit(&mut checkpoint.callable);
         self.static_string_origins
             .commit(&mut checkpoint.static_string);
@@ -161,14 +163,40 @@ impl FactProvenanceState {
         &mut self,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.origins.finish_branch_without_else(checkpoint);
+        self.instances.rollback(&mut checkpoint.instance);
+        self.classes.rollback(&mut checkpoint.class);
         self.instance_callables.rollback(&mut checkpoint.callable);
         self.static_string_origins
             .rollback(&mut checkpoint.static_string);
     }
 
+    pub(in crate::analysis::facts) fn replace_target(
+        &mut self,
+        target: ValueId,
+        replacement: &TargetProvenance,
+        budget: &SemanticBudget,
+    ) {
+        self.instances.remove(target, budget);
+        self.classes.remove(target, budget);
+        self.instance_callables.remove(target, budget);
+        self.static_string_origins.remove(target, budget);
+        if let Some(origin) = &replacement.instance_origin {
+            self.instances.insert(target, origin.clone(), budget);
+        }
+        if let Some(origin) = &replacement.class_origin {
+            self.classes.insert(target, origin.clone(), budget);
+        }
+        if let Some(callable) = &replacement.callable {
+            self.instance_callables
+                .insert(target, callable.clone(), budget);
+        }
+        if let Some(origin) = replacement.static_string_origin {
+            self.static_string_origins.insert(target, origin, budget);
+        }
+    }
+
     pub(in crate::analysis::facts) fn instance_origin(&self, value: ValueId) -> Option<Origin> {
-        self.origins.instances.get(value).cloned()
+        self.instances.get(value).cloned()
     }
 
     pub(in crate::analysis::facts) fn record_instance_origin(
@@ -177,7 +205,7 @@ impl FactProvenanceState {
         origin: Origin,
         budget: &SemanticBudget,
     ) {
-        self.origins.instances.insert(value, origin, budget);
+        self.instances.insert(value, origin, budget);
     }
 
     pub(in crate::analysis::facts) fn record_class_origin(
@@ -186,11 +214,11 @@ impl FactProvenanceState {
         origin: Origin,
         budget: &SemanticBudget,
     ) {
-        self.origins.classes.insert(value, origin, budget);
+        self.classes.insert(value, origin, budget);
     }
 
     pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<Origin> {
-        self.origins.classes.get(value).cloned()
+        self.classes.get(value).cloned()
     }
 
     pub(in crate::analysis::facts) fn instance_callable(
@@ -215,54 +243,40 @@ impl FactProvenanceState {
     ) {
         self.static_string_origins.insert(value, origin, budget);
     }
-
-    pub(in crate::analysis::facts) fn replace_targets(
-        &mut self,
-        targets: &[ValueId],
-        replacement: &TargetProvenance,
-        budget: &SemanticBudget,
-    ) {
-        for &target in targets {
-            self.instance_callables.remove(target, budget);
-            self.origins.replace_target(
-                target,
-                replacement.instance_origin.as_ref(),
-                replacement.class_origin.as_ref(),
-                budget,
-            );
-            self.static_string_origins.remove(target, budget);
-            if let Some(callable) = &replacement.callable {
-                self.instance_callables
-                    .insert(target, callable.clone(), budget);
-            }
-            if let Some(origin) = replacement.static_string_origin {
-                self.static_string_origins.insert(target, origin, budget);
-            }
-        }
-    }
 }
 
-impl OriginChannels {
+/// Thin coordinator over the four provenance channels.
+///
+/// Each lifecycle operation is defined once on [`OriginChannels`] with the
+/// correct per-map semantics; this type keeps the domain vocabulary used by
+/// control-flow orchestration.
+pub(in crate::analysis::facts) struct FactProvenanceState {
+    origins: OriginChannels,
+}
+
+impl FactProvenanceState {
     pub(in crate::analysis::facts) fn new() -> Self {
         Self {
-            instances: OriginMap::new(),
-            classes: OriginMap::new(),
+            origins: OriginChannels::new(),
         }
+    }
+
+    pub(in crate::analysis::facts) fn checkpoint(&mut self) -> ProvenanceCheckpoint {
+        self.origins.checkpoint()
     }
 
     pub(in crate::analysis::facts) fn restore_branch_entry(
         &mut self,
         checkpoint: &ProvenanceCheckpoint,
     ) {
-        self.instances.restore(&checkpoint.instance);
-        self.classes.restore(&checkpoint.class);
+        self.origins.restore_branch_entry(checkpoint);
     }
 
     pub(in crate::analysis::facts) fn restore_instance_alternative(
         &mut self,
         checkpoint: &ProvenanceCheckpoint,
     ) {
-        self.instances.restore(&checkpoint.instance);
+        self.origins.restore_instance_alternative(checkpoint);
     }
 
     /// Complete a control region whose instance origins can flow out of one
@@ -271,40 +285,40 @@ impl OriginChannels {
         &mut self,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.restore_instance_alternative(checkpoint);
-        self.instances.commit(&mut checkpoint.instance);
-        self.classes.rollback(&mut checkpoint.class);
+        self.origins.finish_control_region(checkpoint);
     }
 
     pub(in crate::analysis::facts) fn snapshot_instances(
         &self,
         budget: &SemanticBudget,
-    ) -> OriginSnapshot<Origin> {
-        self.instances.snapshot(budget)
+    ) -> InstanceProvenanceSnapshot {
+        self.origins.snapshot_instances(budget)
     }
 
-    pub(in crate::analysis::facts) fn snapshot_classes(
+    pub(in crate::analysis::facts) fn branch_provenance(
         &self,
         budget: &SemanticBudget,
-    ) -> OriginSnapshot<Origin> {
-        self.classes.snapshot(budget)
+    ) -> BranchProvenance {
+        BranchProvenance {
+            instances: self.snapshot_instances(budget),
+            classes: self.origins.snapshot_classes(budget),
+        }
     }
 
     pub(in crate::analysis::facts) fn restore_instance_snapshot(
         &mut self,
-        snapshot: OriginSnapshot<Origin>,
+        snapshot: InstanceProvenanceSnapshot,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.instances
-            .restore_snapshot(snapshot, &mut checkpoint.instance);
+        self.origins.restore_instance_snapshot(snapshot, checkpoint);
     }
 
     pub(in crate::analysis::facts) fn retain_common_instance(
         &mut self,
-        snapshot: &OriginSnapshot<Origin>,
+        snapshot: &InstanceProvenanceSnapshot,
         budget: &SemanticBudget,
     ) {
-        self.instances.retain_common(snapshot, budget);
+        self.origins.retain_common_instance(snapshot, budget);
     }
 
     pub(in crate::analysis::facts) fn finish_branch_with_else(
@@ -313,35 +327,75 @@ impl OriginChannels {
         then: &BranchProvenance,
         budget: &SemanticBudget,
     ) {
-        self.instances
-            .retain_common(&then.instances.origins, budget);
-        self.classes.retain_common(&then.classes, budget);
-        self.instances.commit(&mut checkpoint.instance);
-        self.classes.commit(&mut checkpoint.class);
+        self.origins
+            .finish_branch_with_else(checkpoint, then, budget);
     }
 
     pub(in crate::analysis::facts) fn finish_branch_without_else(
         &mut self,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.instances.rollback(&mut checkpoint.instance);
-        self.classes.rollback(&mut checkpoint.class);
+        self.origins.finish_branch_without_else(checkpoint);
     }
 
-    pub(in crate::analysis::facts) fn replace_target(
+    pub(in crate::analysis::facts) fn instance_origin(&self, value: ValueId) -> Option<Origin> {
+        self.origins.instance_origin(value)
+    }
+
+    pub(in crate::analysis::facts) fn record_instance_origin(
         &mut self,
-        target: ValueId,
-        instance_origin: Option<&Origin>,
-        class_origin: Option<&Origin>,
+        value: ValueId,
+        origin: Origin,
         budget: &SemanticBudget,
     ) {
-        self.instances.remove(target, budget);
-        self.classes.remove(target, budget);
-        if let Some(origin) = instance_origin {
-            self.instances.insert(target, origin.clone(), budget);
-        }
-        if let Some(origin) = class_origin {
-            self.classes.insert(target, origin.clone(), budget);
+        self.origins.record_instance_origin(value, origin, budget);
+    }
+
+    pub(in crate::analysis::facts) fn record_class_origin(
+        &mut self,
+        value: ValueId,
+        origin: Origin,
+        budget: &SemanticBudget,
+    ) {
+        self.origins.record_class_origin(value, origin, budget);
+    }
+
+    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<Origin> {
+        self.origins.class_origin(value)
+    }
+
+    pub(in crate::analysis::facts) fn instance_callable(
+        &self,
+        value: ValueId,
+    ) -> Option<InstanceCallable> {
+        self.origins.instance_callable(value)
+    }
+
+    pub(in crate::analysis::facts) fn static_string_origin(
+        &self,
+        value: ValueId,
+    ) -> Option<ByteRange> {
+        self.origins.static_string_origin(value)
+    }
+
+    pub(in crate::analysis::facts) fn record_static_string_origin(
+        &mut self,
+        value: ValueId,
+        origin: ByteRange,
+        budget: &SemanticBudget,
+    ) {
+        self.origins
+            .record_static_string_origin(value, origin, budget);
+    }
+
+    pub(in crate::analysis::facts) fn replace_targets(
+        &mut self,
+        targets: &[ValueId],
+        replacement: &TargetProvenance,
+        budget: &SemanticBudget,
+    ) {
+        for &target in targets {
+            self.origins.replace_target(target, replacement, budget);
         }
     }
 }

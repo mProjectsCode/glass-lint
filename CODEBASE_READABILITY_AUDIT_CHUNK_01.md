@@ -87,7 +87,7 @@ twice.
 
 ### Provenance lifecycle
 
-#### [ ] READ-003 — `FactProvenanceState` and `OriginChannels` expose a duplicated, unevenly split lifecycle surface
+#### [x] READ-003 — `FactProvenanceState` and `OriginChannels` expose a duplicated, unevenly split lifecycle surface
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -124,7 +124,7 @@ flow out of a region, class origins roll back) and the snapshot-vs-checkpoint
 distinction that `control.rs` relies on; keep budget charging per map
 unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved `instance_callables` and `static_string_origins` into `OriginChannels`, so all four provenance maps are owned together and each lifecycle operation (restore/commit/rollback/snapshot/retain-common/replace) is expressed once with its exact per-map semantics; `FactProvenanceState` is now a thin coordinator holding only the channels plus the domain-vocabulary accessors.
 
 ### Capabilities
 
