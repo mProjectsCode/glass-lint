@@ -8,10 +8,10 @@ fn semantic_model_is_send_sync() {
     assert_send_sync::<ProjectSemanticModel>();
 }
 
-/// The linking session must be sendable across threads as it owns only
-/// Send types (ExportLookupCache).
+/// The export lookup cache must be sendable across threads as it owns only
+/// Send types (a BTreeMap of QualifiedExportId and a capacity bound).
 #[test]
-fn linking_session_is_send() {
+fn export_lookup_cache_is_send() {
     fn assert_send<T: Send>() {}
-    assert_send::<LinkingSession>();
+    assert_send::<ExportLookupCache>();
 }

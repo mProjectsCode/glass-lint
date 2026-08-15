@@ -124,7 +124,7 @@ fail-closed `Unknown` for unsupported/missing targets.
 
 ### Linking session and linker state (`analysis/project/state.rs`, `linker/mod.rs`, `linker/export.rs`)
 
-#### [ ] READ-004 — `LinkingSession` is a transparent one-field wrapper whose field is poked directly and whose name misleads during projection
+#### [x] READ-004 — `LinkingSession` is a transparent one-field wrapper whose field is poked directly and whose name misleads during projection
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -149,7 +149,7 @@ must not share a cache — keep the `ExportLookupCache` capacity bound intact,
 and update the `assert_send::<LinkingSession>()` check (model/tests.rs:14-16)
 to whichever type survives the change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `LinkingSession` and threaded `ExportLookupCache` directly through the linker, projection session, model, identities, and cross-flow callers; one cache per pass retained and the `assert_send` check updated to `ExportLookupCache`.
 
 #### [ ] READ-005 — `ProjectLinker` transient state is over-wrapped (`Option<graph>` plus a three-state enum) and forces a `mem::replace` borrow dance
 

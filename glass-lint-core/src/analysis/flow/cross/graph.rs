@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::analysis::{
-    ProjectSemanticModel, QualifiedFunctionId, project::state::LinkingSession,
+    ProjectSemanticModel, QualifiedFunctionId, project::state::ExportLookupCache,
     trace::QualifiedEvent,
 };
 
@@ -17,7 +17,7 @@ pub(super) struct QualifiedCallGraph {
 }
 
 impl QualifiedCallGraph {
-    pub(super) fn build(project: &ProjectSemanticModel, session: &mut LinkingSession) -> Self {
+    pub(super) fn build(project: &ProjectSemanticModel, session: &mut ExportLookupCache) -> Self {
         let mut targets = BTreeMap::new();
         for module in project.modules() {
             let module_id = module.id();

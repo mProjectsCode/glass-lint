@@ -14,7 +14,7 @@ use crate::analysis::{
     matching::{ModuleExportKey, ModuleIdentityContributions, ModuleIdentityMap},
     model::module::{ImportedBinding, ModuleRequestId, ModuleRequestRole, NAMESPACE_EXPORT},
     project::{
-        model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
+        model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::ExportLookupCache,
     },
     syntax::SymbolCallProvenance,
 };
@@ -25,7 +25,7 @@ impl ProjectSemanticModel {
     pub(super) fn call_result_identities(
         &self,
         importer: ModuleId,
-        session: &mut LinkingSession,
+        session: &mut ExportLookupCache,
     ) -> BTreeMap<crate::analysis::model::value::ValueId, ExportResolution> {
         let mut identities = BTreeMap::new();
         let Some(module) = self.module(importer) else {
@@ -51,7 +51,7 @@ impl ProjectSemanticModel {
         &self,
         importer: ModuleId,
         call: &CallShape<'_>,
-        session: &mut LinkingSession,
+        session: &mut ExportLookupCache,
     ) -> Option<ExportResolution> {
         let target =
             self.qualified_function_target(importer, call.target(), call.provenance(), session)?;
@@ -61,7 +61,7 @@ impl ProjectSemanticModel {
     fn target_return_identity(
         &self,
         target: crate::analysis::QualifiedFunctionId,
-        session: &mut LinkingSession,
+        session: &mut ExportLookupCache,
     ) -> Option<ExportResolution> {
         let target_effect = self.effect(target)?;
         if target_effect.is_invalid() {
@@ -109,7 +109,7 @@ impl ProjectSemanticModel {
     pub(super) fn module_identities(
         &self,
         module: ModuleId,
-        session: &mut LinkingSession,
+        session: &mut ExportLookupCache,
     ) -> ModuleIdentityMap {
         let mut identities = ModuleIdentityMap::new();
         let Some(project_module) = self.module(module) else {

@@ -28,7 +28,7 @@ use crate::{
             planning::{BoundFlowPlan, BoundLifecycleRoot},
         },
         model::flow::FlowId,
-        project::state::LinkingSession,
+        project::state::ExportLookupCache,
         trace::TraceArena,
     },
     api::{classification::RuleEvidenceCapacity, compiler::CompiledObjectFlow},
@@ -185,7 +185,7 @@ pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     roots: &[BoundLifecycleRoot<'_>],
     capacity: RuleEvidenceCapacity,
-    session: &mut LinkingSession,
+    session: &mut ExportLookupCache,
     arena: &mut TraceArena,
 ) -> (
     BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,

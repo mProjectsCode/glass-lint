@@ -17,7 +17,7 @@ use crate::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
             resolver::ExportResolver,
-            state::{ExportTable, LinkingSession},
+            state::{ExportLookupCache, ExportTable},
         },
         semantic::status::AnalysisStatus,
         syntax::SymbolCallProvenance,
@@ -329,13 +329,13 @@ impl ProjectSemanticModel {
         importer: ModuleId,
         authored_module: &SmolStr,
         authored_export: &SmolStr,
-        session: &mut LinkingSession,
+        cache: &mut ExportLookupCache,
     ) -> ExportResolution {
         ExportResolver::from_maps(
             &self.linked.modules,
             &self.linked.resolutions,
             &self.linked.exports,
-            &mut session.lookup_cache,
+            cache,
         )
         .resolve_imported_identity(importer, authored_module, authored_export)
     }
@@ -395,7 +395,7 @@ impl ProjectSemanticModel {
         importer: ModuleId,
         local: Option<FunctionId>,
         provenance: &SymbolCallProvenance,
-        session: &mut LinkingSession,
+        cache: &mut ExportLookupCache,
     ) -> Option<QualifiedFunctionId> {
         if let Some(local) = local {
             return Some(QualifiedFunctionId::new(importer, local));
@@ -406,7 +406,7 @@ impl ProjectSemanticModel {
         let ExportResolution::Qualified {
             module: target,
             export: target_export,
-        } = self.resolve_imported_identity(importer, module, export, session)
+        } = self.resolve_imported_identity(importer, module, export, cache)
         else {
             return None;
         };

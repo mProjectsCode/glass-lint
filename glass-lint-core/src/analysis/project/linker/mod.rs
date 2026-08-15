@@ -17,7 +17,7 @@ use super::resolver::ExportResolver;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        project::state::{ExportTable, LinkingSession, NormalizedModuleGraph, SccPartition},
+        project::state::{ExportLookupCache, ExportTable, NormalizedModuleGraph, SccPartition},
         semantic::status::AnalysisStatus,
     },
     project::AnalysisDiagnostic,
@@ -48,7 +48,7 @@ pub(super) struct ProjectLinker {
     graph: Option<NormalizedModuleGraph>,
     scc_partition: SccPartitionState,
     exports: ExportTable,
-    lookup_session: LinkingSession,
+    lookup_session: ExportLookupCache,
     link_budget: BudgetTracker,
     link_limit: usize,
     link_cycle_rounds: usize,
@@ -65,7 +65,7 @@ impl ProjectLinker {
             &self.modules,
             &self.resolutions,
             &self.exports,
-            &mut self.lookup_session.lookup_cache,
+            &mut self.lookup_session,
         ))
     }
 
@@ -82,7 +82,7 @@ impl ProjectLinker {
             graph: None,
             scc_partition: SccPartitionState::Pending,
             exports: ExportTable::default(),
-            lookup_session: LinkingSession::new(export_lookup_capacity),
+            lookup_session: ExportLookupCache::new(export_lookup_capacity),
             link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status: AnalysisStatus::default(),

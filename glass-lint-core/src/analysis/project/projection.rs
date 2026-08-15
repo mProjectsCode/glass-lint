@@ -26,7 +26,7 @@ use crate::{
             MatcherProjectOverlay,
         },
         model::flow::FlowLimits,
-        project::state::LinkingSession,
+        project::state::ExportLookupCache,
         trace::TraceArena,
     },
     api::{
@@ -103,7 +103,7 @@ struct ProjectionSession<'project, 'plan, 'roots, 'arena> {
     plan: &'plan ProjectionPlan<'roots>,
     flow_limits: FlowLimits,
     arena: &'arena mut TraceArena,
-    linking: LinkingSession,
+    linking: ExportLookupCache,
 }
 
 impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots, 'arena> {
@@ -118,7 +118,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
             plan,
             flow_limits,
             arena,
-            linking: LinkingSession::new(project.export_lookup_capacity()),
+            linking: ExportLookupCache::new(project.export_lookup_capacity()),
         }
     }
 
