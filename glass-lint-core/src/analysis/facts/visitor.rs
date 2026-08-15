@@ -21,7 +21,7 @@ use crate::analysis::facts::{
 
 impl Visit for FactBuilder<'_, '_> {
     fn visit_ident(&mut self, ident: &Ident) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         // References are intentionally emitted even when the resolver cannot
@@ -39,7 +39,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         // A member expression is a read role at this node; its object and
@@ -49,7 +49,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_pattern_locals(&declarator.name);
@@ -66,14 +66,14 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_assignment(assignment);
     }
 
     fn visit_update_expr(&mut self, update: &UpdateExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         update.arg.visit_with(self);
@@ -81,7 +81,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_unary_expr(&mut self, unary: &UnaryExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         unary.arg.visit_with(self);
@@ -91,14 +91,14 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_call_expr(call);
     }
 
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         match &*chain.base {
@@ -133,7 +133,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_new_expr(&mut self, new_expr: &NewExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         let metadata = self.resolve_construction_metadata(new_expr);
@@ -142,7 +142,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_static_import(import);
@@ -151,7 +151,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_str(&mut self, value: &Str) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         let id = self.resolver.resolve_string_literal(value).id;
@@ -167,12 +167,12 @@ impl Visit for FactBuilder<'_, '_> {
             && let Ok(span) = self.resolver.normalize_span(value.span())
         {
             self.provenance
-                .record_static_string_origin(terminal_id, span, self.resolver.budget);
+                .record_static_string_origin(terminal_id, span, self.resolver.budget());
         }
     }
 
     fn visit_tpl(&mut self, template: &Tpl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         let complete = self.resolver.resolve_template(template).id;
@@ -206,21 +206,21 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_class_decl(&mut self, class_decl: &swc_ecma_ast::ClassDecl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_class_decl(class_decl);
     }
 
     fn visit_class_expr(&mut self, class_expr: &swc_ecma_ast::ClassExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_class_expr(class_expr);
     }
 
     fn visit_bin_expr(&mut self, binary: &BinExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         if binary.op != swc_ecma_ast::BinaryOp::InstanceOf {
@@ -243,112 +243,112 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_fn_decl(&mut self, function: &FnDecl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_function_decl(function);
     }
 
     fn visit_function(&mut self, function: &Function) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_function(function);
     }
 
     fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_arrow(arrow);
     }
 
     fn visit_class_method(&mut self, method: &swc_ecma_ast::ClassMethod) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_class_method(method);
     }
 
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_if(stmt);
     }
 
     fn visit_for_stmt(&mut self, stmt: &ForStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_for(stmt);
     }
 
     fn visit_for_in_stmt(&mut self, stmt: &ForInStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_for_in(stmt);
     }
 
     fn visit_for_of_stmt(&mut self, stmt: &ForOfStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_for_of(stmt);
     }
 
     fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_while(stmt);
     }
 
     fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_do_while(stmt);
     }
 
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_switch(stmt);
     }
 
     fn visit_try_stmt(&mut self, stmt: &TryStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_try(stmt);
     }
 
     fn visit_cond_expr(&mut self, expr: &CondExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_conditional(expr);
     }
 
     fn visit_break_stmt(&mut self, stmt: &swc_ecma_ast::BreakStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.emit(stmt.span(), FactPayload::Break);
     }
 
     fn visit_continue_stmt(&mut self, stmt: &swc_ecma_ast::ContinueStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.emit(stmt.span(), FactPayload::Continue);
     }
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         stmt.arg.visit_with(self);
@@ -362,7 +362,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_export_decl(&mut self, export: &ExportDecl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_export_decl(&export.decl);
@@ -370,21 +370,21 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_named_export(&mut self, export: &swc_ecma_ast::NamedExport) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_named_export(export);
     }
 
     fn visit_export_all(&mut self, export: &swc_ecma_ast::ExportAll) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_export_all(export);
     }
 
     fn visit_export_default_expr(&mut self, export: &ExportDefaultExpr) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_default_expr(export);
@@ -392,7 +392,7 @@ impl Visit for FactBuilder<'_, '_> {
     }
 
     fn visit_export_default_decl(&mut self, export: &swc_ecma_ast::ExportDefaultDecl) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         self.record_default_decl(export);

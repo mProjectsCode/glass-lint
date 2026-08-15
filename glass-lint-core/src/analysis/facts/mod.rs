@@ -149,8 +149,8 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     }
 
     fn append_path(&mut self, parent: PathId, segment: PathSegmentInput<'_>) -> PathId {
-        self.resolver.budget.try_charge();
-        if self.resolver.budget.exhausted() {
+        self.resolver.budget().try_charge();
+        if self.resolver.budget().exhausted() {
             return PathId::EMPTY;
         }
         let segment = match segment {
@@ -181,7 +181,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     }
 
     fn emit(&mut self, span: Span, payload: FactPayload) {
-        if self.resolver.budget.exhausted() {
+        if self.resolver.budget().exhausted() {
             return;
         }
         let Some(scope) = self.scope_at(span) else {
@@ -199,7 +199,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         let Some(span) = normalized_span else {
             return;
         };
-        self.resolver.budget.try_charge();
+        self.resolver.budget().try_charge();
         let function = if self.traversal.current_function() == FunctionId::new(0) {
             self.resolver.function_scope_at(scope)
         } else {

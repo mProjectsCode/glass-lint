@@ -24,7 +24,7 @@ impl FactBuilder<'_, '_> {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.constructor_origin_for_expr(&new_expr.callee) {
             self.provenance
-                .record_instance_origin(result, instance_class, self.resolver.budget);
+                .record_instance_origin(result, instance_class, self.resolver.budget());
         }
         let effective_callee = effective_callee_expr(&new_expr.callee);
         let resolved = self.resolver.resolve_expr(effective_callee);
@@ -131,7 +131,7 @@ impl FactBuilder<'_, '_> {
             TargetProvenance::default()
         };
         self.provenance
-            .replace_targets(targets, &replacement, self.resolver.budget);
+            .replace_targets(targets, &replacement, self.resolver.budget());
     }
 
     pub(super) fn emit_declarations(

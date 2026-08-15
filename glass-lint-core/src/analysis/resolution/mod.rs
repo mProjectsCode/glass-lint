@@ -180,7 +180,7 @@ pub(super) struct Resolver<'a> {
     /// Resolution cache, fresh-object map, and recursion guard.
     cache: ResolverCache,
     /// Shared semantic budget charged for each intern and resolution step.
-    pub(super) budget: &'a SemanticBudget,
+    budget: &'a SemanticBudget,
 }
 
 impl Lookup for Resolver<'_> {
@@ -319,6 +319,10 @@ impl Resolver<'_> {
 
     pub(super) fn name_table_exhausted(&self) -> bool {
         self.names.exhausted()
+    }
+
+    pub(super) fn budget(&self) -> &SemanticBudget {
+        self.budget
     }
 
     pub(super) fn name_exhaustion(&self) -> Option<NameExhausted> {

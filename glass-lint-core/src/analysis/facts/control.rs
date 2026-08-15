@@ -140,27 +140,27 @@ impl FactBuilder<'_, '_> {
 
     pub(super) fn record_try(&mut self, stmt: &TryStmt) {
         let mut checkpoint = self.provenance.checkpoint();
-        let incoming_snapshot = self.provenance.snapshot_instances(self.resolver.budget);
+        let incoming_snapshot = self.provenance.snapshot_instances(self.resolver.budget());
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
-        let try_origins = self.provenance.snapshot_instances(self.resolver.budget);
+        let try_origins = self.provenance.snapshot_instances(self.resolver.budget());
         self.provenance.restore_instance_alternative(&checkpoint);
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
-                let handler_origins = self.provenance.snapshot_instances(self.resolver.budget);
+                let handler_origins = self.provenance.snapshot_instances(self.resolver.budget());
                 self.provenance
                     .restore_instance_snapshot(try_origins, &mut checkpoint);
                 self.provenance
-                    .retain_common_instance(&handler_origins, self.resolver.budget);
+                    .retain_common_instance(&handler_origins, self.resolver.budget());
             }
         } else if stmt.finalizer.is_some() {
             self.provenance
                 .restore_instance_snapshot(try_origins, &mut checkpoint);
             self.provenance
-                .retain_common_instance(&incoming_snapshot, self.resolver.budget);
+                .retain_common_instance(&incoming_snapshot, self.resolver.budget());
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
@@ -198,13 +198,13 @@ impl FactBuilder<'_, '_> {
         visit_test(self);
         self.emit_control(then_span, ControlKind::BranchThen, region);
         visit_then(self);
-        let then = self.provenance.branch_provenance(self.resolver.budget);
+        let then = self.provenance.branch_provenance(self.resolver.budget());
         self.provenance.restore_branch_entry(&checkpoint);
         if let Some(else_span) = else_span {
             self.emit_control(else_span, ControlKind::BranchElse, region);
             visit_else(self);
             self.provenance
-                .finish_branch_with_else(&mut checkpoint, &then, self.resolver.budget);
+                .finish_branch_with_else(&mut checkpoint, &then, self.resolver.budget());
         } else {
             self.provenance.finish_branch_without_else(&mut checkpoint);
         }

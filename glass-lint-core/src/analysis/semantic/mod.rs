@@ -204,7 +204,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 }
 
-fn check_facts_budget(
+fn check_fact_construction_incompleteness(
     stream: &FactStream<Building>,
     resolver: &Resolver,
     limits: &AnalysisLimits,
@@ -263,7 +263,7 @@ impl AnalysisCompletion {
         self.record_incomplete(IncompleteReason::ScopeShapeMismatch { count: issue_count });
     }
 
-    fn record_fact_failure(&mut self, reason: Option<IncompleteReason>) {
+    fn record_failure(&mut self, reason: Option<IncompleteReason>) {
         if let Some(reason) = reason {
             self.record_incomplete(reason);
         }
@@ -285,14 +285,14 @@ impl AnalysisCompletion {
             policy.record_scope_issue(issues.len());
         }
 
-        policy.record_fact_failure(check_facts_budget(
+        policy.record_failure(check_fact_construction_incompleteness(
             stream,
             resolver,
             limits,
-            resolver.budget,
+            resolver.budget(),
         ));
-        policy.record_fact_failure(check_invalid_parser_span(stream));
-        policy.record_fact_failure(check_name_exhaustion(resolver));
+        policy.record_failure(check_invalid_parser_span(stream));
+        policy.record_failure(check_name_exhaustion(resolver));
         policy
     }
 }

@@ -64,7 +64,7 @@ impl FactBuilder<'_, '_> {
         self.provenance.replace_targets(
             std::slice::from_ref(&target),
             &replacement,
-            self.resolver.budget,
+            self.resolver.budget(),
         );
         self.emit(
             assignment.span(),
@@ -126,7 +126,7 @@ impl FactBuilder<'_, '_> {
         self.provenance.replace_targets(
             &target_values,
             &TargetProvenance::default(),
-            self.resolver.budget,
+            self.resolver.budget(),
         );
         for (target, receiver) in targets {
             self.emit(

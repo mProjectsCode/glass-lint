@@ -139,7 +139,7 @@ constructor (`analysis/project/linker/mod.rs`) and the `diagnostic()` arm, and
 removed the stale `ModuleInterfaceKind` entry from `CODEBASE_STRUCTURE_CORE.md`.
 The diagnostic code (`unsupported_commonjs_exports`) and message are unchanged.
 
-#### [ ] READ-004 — Completion-assessment helpers misnamed and reading `Resolver.budget` across module boundary
+#### [x] READ-004 — Completion-assessment helpers misnamed and reading `Resolver.budget` across module boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -157,6 +157,15 @@ single call site reads it from a sibling module's field: `check_facts_budget(...
 (`semantic/mod.rs:299`) reaches into `Resolver`'s `pub(super) budget` field
 (`resolution/mod.rs:171-173`) instead of using a method, so the owner of the shared
 `SemanticBudget` state is unclear from the call.
+
+**Fix Applied:** Renamed `check_facts_budget` to `check_fact_construction_incompleteness`
+(covering step budget, fact capacity, path capacity, and value-arena exhaustion) and
+`record_fact_failure` to `record_failure` (covering name-exhaustion and
+invalid-parser-span checks too). Added `Resolver::budget()` and made the field
+private, so the call site now passes `resolver.budget()`. Updated every remaining
+`self.resolver.budget` reach-in across `analysis/facts/*` to the accessor, keeping the
+shared `SemanticBudget` reference owner unchanged. Check ordering (step budget before
+capacity) is preserved.
 
 **Recommendation:** Rename the helpers to reflect the full condition set (e.g.
 `check_fact_construction_incompleteness`, and a name for `record_fact_failure` that
