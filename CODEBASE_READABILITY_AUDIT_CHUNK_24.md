@@ -293,7 +293,7 @@ semantics and the deterministic key construction unchanged.
 
 ### Documentation
 
-#### [ ] READ-010 — Garbled module documentation in `project/input.rs`
+#### [x] READ-010 — Garbled module documentation in `project/input.rs`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -313,7 +313,7 @@ the two normalization functions and their callers (`ProjectRelativePath::new`,
 `NormalizedOutsidePath::new`). Guardrail: no behavior change; keep the functions'
 current visibility and error vocabulary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the truncated duplicate in the module doc with a single accurate statement describing the two normalization functions (`ProjectRelativePath::new`, `NormalizedOutsidePath::new`) and their callers; no behavior change.
 
 ## Systemic Themes
 

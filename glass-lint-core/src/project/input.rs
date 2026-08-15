@@ -1,9 +1,8 @@
 //! Normalization and validation of the public project input contract.
 //!
-//! The staged project session owns the canonical normalization pipeline via
-//! The private project-session module owns the canonical normalization
-//! pipeline. The functions here are shared utilities used
-//! by the session, types, and CLI loading code.
+//! The shared utilities behind [`ProjectRelativePath::new`] and
+//! [`NormalizedOutsidePath::new`], used by the session, types, and CLI loading
+//! code.
 
 use crate::project::{ProjectInputError, ProjectRelativePath};
 
