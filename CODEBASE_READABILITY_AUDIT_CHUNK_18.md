@@ -316,7 +316,7 @@ and `MatchKind` comparisons identical in both, and keep the
 
 ### [api/rule/module.rs]
 
-#### [ ] READ-009 — Single-variant `PatternValue` enum adds only indirection today
+#### [x] READ-009 — Single-variant `PatternValue` enum adds only indirection today
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -340,7 +340,7 @@ and the `MatcherBuildError::InvalidModuleSpecifier` conversion inside
 `ModuleSpecifierPattern::package` (module.rs:20-28), which `checked_package`
 (constructors.rs:354-357) maps to `QueryBuildError::InvalidScopePackage`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept the single package-root variant (the Open Questions note an exact-module variant is plausibly planned and the collapse should wait for that decision) and documented the planned exact-module extension point on `PatternValue` instead.
 
 ## Systemic Themes
 

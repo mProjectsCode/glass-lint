@@ -10,6 +10,12 @@ pub struct ModuleSpecifierPattern {
     value: PatternValue,
 }
 
+/// The pattern kind behind a [`ModuleSpecifierPattern`].
+///
+/// Exact module identities remain distinct from package-root patterns
+/// (core `ARCHITECTURE.md`); today exact module specifiers are modeled as
+/// literal-string identities, so this is the single package-root variant.
+/// An exact-module variant is the planned extension point.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum PatternValue {
     Package(PackageSpecifier),
