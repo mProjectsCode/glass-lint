@@ -70,7 +70,7 @@ struct RuleEvidence {
 pub(super) struct ModuleEvidence {
     capacity: crate::api::classification::RuleEvidenceCapacity,
     rules: BTreeMap<RuleIndex, RuleEvidence>,
-    pub(super) trace_heads: usize,
+    trace_heads: usize,
 }
 
 impl ModuleEvidence {
@@ -79,6 +79,16 @@ impl ModuleEvidence {
             capacity,
             rules: BTreeMap::new(),
             trace_heads: 0,
+        }
+    }
+
+    pub(super) fn trace_heads(&self) -> usize {
+        self.trace_heads
+    }
+
+    fn record_trace_head(&mut self, trace_head: Option<TraceNodeId>) {
+        if trace_head.is_some() {
+            self.trace_heads = self.trace_heads.saturating_add(1);
         }
     }
 
@@ -234,7 +244,7 @@ pub(super) fn emit(
         ),
     );
     if trace_head.is_some() {
-        values.trace_heads = values.trace_heads.saturating_add(1);
+        values.record_trace_head(trace_head);
     }
 }
 

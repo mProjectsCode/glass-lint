@@ -234,7 +234,7 @@ from `module`.
 
 **Fix Applied:** Dropped the `module` parameter and field from `CallPropagation`; both read sites now use `self.context.module()`, and both call sites (`UsageProjector::project`, `ContextProjection::propagate_calls`) updated. The `crossed` flag still compares the call target's module.
 
-#### [ ] READ-009 — `ModuleEvidence::trace_heads` is a `pub(super)` counter field mutated and read across module boundaries
+#### [x] READ-009 — `ModuleEvidence::trace_heads` is a `pub(super)` counter field mutated and read across module boundaries
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -254,7 +254,7 @@ assembled) and `fn trace_heads(&self) -> usize`. Guardrails: keep the
 `saturating_add` bound and the "only when `trace_head.is_some()`" rule inside
 the owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `trace_heads` is now a private field on `ModuleEvidence` with `trace_heads()` and `record_trace_head(Option<TraceNodeId>)` (the `is_some` gate and `saturating_add` bound moved inside the owner). `emit` and `CrossWorklist::finish` use the methods.
 
 #### [ ] READ-010 — `apply_property` and `apply_receiver` share the same requirement-advance skeleton
 

@@ -213,7 +213,7 @@ impl CrossWorklist<'_, '_> {
         let trace_heads = self
             .evidence
             .values()
-            .map(|module| module.trace_heads)
+            .map(evidence::ModuleEvidence::trace_heads)
             .sum();
         let output = self
             .evidence
