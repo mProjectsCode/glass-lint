@@ -322,7 +322,7 @@ fn distinct_semantic_snapshots_remain_distinct() {
 #[test]
 fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
     let mut items = RuleEvidenceTable::new_for_test(1);
-    let mut evidence = FlowEvidence::new(&mut items);
+    let mut evidence = FlowEvidence::new(&mut items, 1);
     let key = ReportEvidenceKey::new(
         RuleIndex::new(0),
         0,
@@ -330,8 +330,8 @@ fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
         FactId::from_test(1),
     );
 
-    assert!(evidence.record_if_admitted(key, 1, 256, RuleIndex::new(0), test_evidence(),));
-    assert!(!evidence.record_if_admitted(key, 1, 256, RuleIndex::new(0), test_evidence(),));
+    assert!(evidence.record_if_admitted(key, RuleIndex::new(0), test_evidence(),));
+    assert!(!evidence.record_if_admitted(key, RuleIndex::new(0), test_evidence(),));
     assert_eq!(evidence.emitted_count(), 1);
     assert!(evidence.limit_rejected());
 }
@@ -339,7 +339,7 @@ fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
 #[test]
 fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
     let mut items = RuleEvidenceTable::new_for_test(1);
-    let mut evidence = FlowEvidence::new(&mut items);
+    let mut evidence = FlowEvidence::new(&mut items, 2);
     let first = ReportEvidenceKey::new(
         RuleIndex::new(0),
         0,
@@ -353,10 +353,10 @@ fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
         FactId::from_test(2),
     );
 
-    assert!(evidence.record_if_admitted(first, 2, 256, RuleIndex::new(0), test_evidence(),));
-    assert!(evidence.record_if_admitted(second, 2, 256, RuleIndex::new(0), test_evidence(),));
-    assert!(!evidence.record_if_admitted(first, 2, 256, RuleIndex::new(0), test_evidence(),));
-    assert!(!evidence.record_if_admitted(second, 2, 256, RuleIndex::new(0), test_evidence(),));
+    assert!(evidence.record_if_admitted(first, RuleIndex::new(0), test_evidence(),));
+    assert!(evidence.record_if_admitted(second, RuleIndex::new(0), test_evidence(),));
+    assert!(!evidence.record_if_admitted(first, RuleIndex::new(0), test_evidence(),));
+    assert!(!evidence.record_if_admitted(second, RuleIndex::new(0), test_evidence(),));
     assert_eq!(evidence.emitted_count(), 2);
     assert!(evidence.limit_rejected());
 }

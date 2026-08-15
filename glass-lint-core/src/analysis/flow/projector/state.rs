@@ -121,16 +121,26 @@ pub(super) struct FlowEvidence<'a> {
     total_emitted: usize,
     /// Whether an emission was rejected by the global limit.
     limit_rejected: bool,
+    /// Maximum evidence items emitted for the whole run.
+    limit: usize,
+    /// Maximum emissions retained for one evidence key.
+    max_per_key: u32,
 }
 
+/// Maximum number of emissions kept for one evidence key before later traces
+/// are truncated.
+const MAX_EMISSIONS_PER_KEY: u32 = 256;
+
 impl<'a> FlowEvidence<'a> {
-    pub(super) fn new(evidence: &'a mut RuleEvidenceTable) -> Self {
+    pub(super) fn new(evidence: &'a mut RuleEvidenceTable, limit: usize) -> Self {
         Self {
             items: evidence,
             emitted: BTreeMap::new(),
             truncated: BTreeSet::new(),
             total_emitted: 0,
             limit_rejected: false,
+            limit,
+            max_per_key: MAX_EMISSIONS_PER_KEY,
         }
     }
 
@@ -142,12 +152,10 @@ impl<'a> FlowEvidence<'a> {
     pub(super) fn record_if_admitted(
         &mut self,
         key: ReportEvidenceKey,
-        limit: usize,
-        max_per_key: u32,
         rule_index: RuleIndex,
         evidence: ClassificationEvidence,
     ) -> bool {
-        if !self.reserve(key, limit, max_per_key) {
+        if !self.reserve(key) {
             return false;
         }
         if self.items.record(rule_index, evidence).is_err() {
@@ -157,13 +165,13 @@ impl<'a> FlowEvidence<'a> {
         true
     }
 
-    fn reserve(&mut self, key: ReportEvidenceKey, limit: usize, max_per_key: u32) -> bool {
+    fn reserve(&mut self, key: ReportEvidenceKey) -> bool {
         let count = self.emitted.entry(key).or_insert(0);
-        if *count >= max_per_key {
+        if *count >= self.max_per_key {
             self.truncated.insert(key);
             return false;
         }
-        if self.total_emitted >= limit {
+        if self.total_emitted >= self.limit {
             self.truncated.insert(key);
             self.limit_rejected = true;
             return false;

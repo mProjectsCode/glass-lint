@@ -65,7 +65,7 @@ domains.
 `ObjectFlowProjector::new` alongside the run-state inputs (`evidence`, `limits`,
 `completion`, `trace_arena`), keeping frozen inputs separate from per-run mutable state.
 
-#### [ ] READ-006 — `FlowEvidence` re-receives run-fixed bounds on every call; per-key cap is an unnamed literal
+#### [x] READ-006 — `FlowEvidence` re-receives run-fixed bounds on every call; per-key cap is an unnamed literal
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -89,7 +89,11 @@ lose across edits.
 (state.rs:160-184) must be preserved; the per-key cap must remain bounded and
 deterministic.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FlowEvidence` now stores `limit` and `max_per_key` at
+construction (`FlowEvidence::new` takes the emission limit); the per-key cap is
+the named constant `MAX_EMISSIONS_PER_KEY`. `record_if_admitted` and `reserve`
+take only the key; the reserve/release rollback discipline is unchanged and the
+production caller and unit tests pass the bounds only at construction.
 
 ### Duplicated orchestration
 

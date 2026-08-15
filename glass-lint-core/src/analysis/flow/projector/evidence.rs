@@ -242,13 +242,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ClassificationEvidenceOccurrence::new(span, Some(anchor.raw()), Some(trace_head)),
             certainty,
         );
-        if !self.flow_evidence.record_if_admitted(
-            key,
-            self.run.limits.emission_limit(),
-            256,
-            state.flow_id().rule_index(),
-            evidence,
-        ) {
+        if !self
+            .flow_evidence
+            .record_if_admitted(key, state.flow_id().rule_index(), evidence)
+        {
             return;
         }
         self.run.trace_heads = self.run.trace_heads.saturating_add(1);

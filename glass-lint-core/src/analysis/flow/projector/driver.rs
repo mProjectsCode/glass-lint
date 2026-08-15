@@ -50,7 +50,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     ) -> Self {
         Self {
             inputs,
-            flow_evidence: FlowEvidence::new(evidence),
+            flow_evidence: FlowEvidence::new(evidence, limits.emission_limit()),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             run: ProjectionRunState::new(limits, completion),
             paths: ProjectionPathMachine::initial(),
