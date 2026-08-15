@@ -199,7 +199,7 @@ charge the budget — interning plus budget charging stays in
 
 ### Collector state structs
 
-#### [ ] READ-006 — `unknown_provenance` stored sentinel and hand-rolled `Default` in the collection state
+#### [x] READ-006 — `unknown_provenance` stored sentinel and hand-rolled `Default` in the collection state
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -226,7 +226,7 @@ fresh local root, which is fail-closed), and `PathCollectionState::default()`
 must keep its `DEFAULT_ALTERNATIVE_LIMIT`, `reachable = true`, and
 `BindingProvenance::Local` fallback semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the mutable `unknown_provenance` field with a module-level `const UNKNOWN_PROVENANCE: BindingProvenance = BindingProvenance::Local` returned by `&` in `assignments.rs`; derived `Default` for `AssignmentCollectionState`.
 
 ### Declaration classification
 

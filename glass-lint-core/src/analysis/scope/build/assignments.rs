@@ -175,7 +175,7 @@ impl ScopeCollector<'_> {
             {
                 let provenance = assignment
                     .preferred_witness()
-                    .unwrap_or(&self.assignment.path.unknown_provenance);
+                    .unwrap_or(&super::UNKNOWN_PROVENANCE);
                 return Some((scope, provenance));
             }
             if let Some(binding) = self

@@ -154,20 +154,11 @@ struct FunctionCollectionState {
 }
 
 /// Source-order assignment facts and path-sensitive control-flow state.
+#[derive(Default)]
 struct AssignmentCollectionState {
     assignments: Vec<AliasAssignment>,
     version_counters: HashMap<ScopedName, u32>,
     path: PathCollectionState,
-}
-
-impl Default for AssignmentCollectionState {
-    fn default() -> Self {
-        Self {
-            assignments: Vec::new(),
-            version_counters: HashMap::new(),
-            path: PathCollectionState::default(),
-        }
-    }
 }
 
 struct FunctionCall {
@@ -202,12 +193,16 @@ pub(super) struct ScopeCollector<'a> {
 }
 
 /// State for source-order assignment provenance and control-flow joins.
+///
+/// The unknown-provenance fallback is a constant: collection-time unknown is
+/// treated as a fresh local root, which fails closed against false claims.
+const UNKNOWN_PROVENANCE: BindingProvenance = BindingProvenance::Local;
+
 #[derive(Debug)]
 struct PathCollectionState {
     conditional_depth: u32,
     assignment_environment: AssignmentEnvironment,
     assignment_writes: WriteSet,
-    unknown_provenance: BindingProvenance,
     control_flow: Vec<ControlFlowFrame>,
     function_checkpoints: Vec<FunctionCheckpoint>,
     reachable: bool,
@@ -220,7 +215,6 @@ impl Default for PathCollectionState {
             conditional_depth: 0,
             assignment_environment: AssignmentEnvironment::new(),
             assignment_writes: WriteSet::new(),
-            unknown_provenance: BindingProvenance::Local,
             control_flow: Vec::new(),
             function_checkpoints: Vec::new(),
             reachable: true,
