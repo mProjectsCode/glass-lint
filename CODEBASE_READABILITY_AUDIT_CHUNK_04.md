@@ -148,7 +148,7 @@ not) — that difference is real and load-bearing for budget accounting.
 
 **Fix Applied:** Deleted the one-line `require_module_expr_name` wrapper, widened `module_request_name` to `pub(super)`, and updated the two classification call sites to call `module_request_name(expr, ModuleRequestPolicy::alias())` directly, keeping the policy-parameterized function as the single entry point. The `interned_name` deletion had already been applied by chunk 03 read 005; `lookup_or_intern_name` (interning) and `name_id` (non-interning) remain distinct.
 
-#### [ ] READ-005 — Assignment recording duplicates the versioning-and-push tail across two variants
+#### [x] READ-005 — Assignment recording duplicates the versioning-and-push tail across two variants
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -186,7 +186,7 @@ Guardrail: keep the exact environment-write order — the join must write
 distinct from successful-empty, and the versions must remain strictly
 increasing in source order.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted the private `push_assignment(span, scope, name, alternatives)` tail that owns `next_assignment_version` + the gated environment write (`record_alternatives` when the alternatives have a complete witness, `record_unknown` otherwise) + `assignments.push`, with a new private `AliasAssignment::from_alternatives` constructor. `record_assignment_value` now passes `ProvenanceAlternatives::single(provenance)` and `record_join_assignment` passes `value.alternatives()`. Deleted the now-obsolete `AliasAssignment::single`/`joined` constructors, `ProvenanceJoin::into_alternatives`, and `AssignmentEnvironment::record_known`, updating the model/history tests to the single construction/write path. The join still writes `record_unknown` (not empty) without a complete witness, and versions remain strictly increasing in source order.
 
 ### Pattern projection and alias collection
 

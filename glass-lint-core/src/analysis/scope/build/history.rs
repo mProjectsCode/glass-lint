@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, NameId, ParentLinkedHistory};
 use hashbrown::HashMap;
 
-use crate::analysis::scope::{BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName};
+use crate::analysis::scope::{ProvenanceAlternatives, ScopeId, ScopedName};
 
 /// Default cap on the number of provenance alternatives per (scope, name)
 /// pair. When exceeded, the assignment is marked exhausted and subsequent
@@ -134,15 +134,6 @@ impl AssignmentEnvironment {
     /// Replace the latest assignment for one scope/name pair with unknown.
     pub(super) fn record_unknown(&mut self, scope: ScopeId, name: NameId) {
         self.record(scope, name, ProvenanceAlternatives::unknown());
-    }
-
-    pub(super) fn record_known(
-        &mut self,
-        scope: ScopeId,
-        name: NameId,
-        provenance: BindingProvenance,
-    ) {
-        self.record(scope, name, ProvenanceAlternatives::single(provenance));
     }
 
     pub(super) fn record_alternatives(

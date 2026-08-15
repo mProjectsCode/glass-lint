@@ -16,7 +16,13 @@ fn resolution_status_keeps_complete_witnesses_with_incomplete_joins() {
     let mut join = ProvenanceJoin::new(2);
     join.add(&ProvenanceAlternatives::single(alias.clone()));
     join.add(&ProvenanceAlternatives::unknown());
-    let assignment = AliasAssignment::joined(span, scope, name, BindingVersion::from_test(1), join);
+    let assignment = AliasAssignment::from_alternatives(
+        span,
+        scope,
+        name,
+        BindingVersion::from_test(1),
+        join.alternatives().clone(),
+    );
 
     let resolution = BindingResolution::assignment(&assignment);
     assert_eq!(resolution.status(), BindingResolutionStatus::Incomplete);

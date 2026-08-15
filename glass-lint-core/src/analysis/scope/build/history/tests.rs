@@ -1,6 +1,7 @@
 use glass_lint_datastructures::NameTable;
 
 use super::*;
+use crate::analysis::scope::BindingProvenance;
 
 #[test]
 fn assignment_checkpoints_still_restore_values() {
@@ -8,7 +9,11 @@ fn assignment_checkpoints_still_restore_values() {
     let name = names.intern("value").unwrap();
     let scope = ScopeId::from_test(1);
     let mut environment = AssignmentEnvironment::new();
-    environment.record_known(scope, name, BindingProvenance::Local);
+    environment.record_alternatives(
+        scope,
+        name,
+        ProvenanceAlternatives::single(BindingProvenance::Local),
+    );
     let base = environment.checkpoint();
     environment.record_unknown(scope, name);
     environment

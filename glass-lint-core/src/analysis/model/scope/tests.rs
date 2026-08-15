@@ -255,12 +255,12 @@ fn alias_assignment_constructors_own_the_alternative_set() {
     let scope = ScopeId::from_test(1);
     let span = Span::new(BytePos(0), BytePos(1));
 
-    let precise = AliasAssignment::single(
+    let precise = AliasAssignment::from_alternatives(
         span,
         scope,
         name,
         BindingVersion::from_test(1),
-        BindingProvenance::Local,
+        ProvenanceAlternatives::single(BindingProvenance::Local),
     );
     assert!(!precise.is_joined());
     assert_eq!(precise.preferred_witness(), Some(&BindingProvenance::Local));
@@ -269,8 +269,13 @@ fn alias_assignment_constructors_own_the_alternative_set() {
     let mut exhausted = ProvenanceJoin::new(0);
     exhausted.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
     assert!(exhausted.alternatives().is_exhausted());
-    let joined =
-        AliasAssignment::joined(span, scope, name, BindingVersion::from_test(2), exhausted);
+    let joined = AliasAssignment::from_alternatives(
+        span,
+        scope,
+        name,
+        BindingVersion::from_test(2),
+        exhausted.alternatives().clone(),
+    );
     assert!(joined.is_joined());
     assert!(joined.alternatives().is_exhausted());
     assert_eq!(joined.complete_witnesses().count(), 0);

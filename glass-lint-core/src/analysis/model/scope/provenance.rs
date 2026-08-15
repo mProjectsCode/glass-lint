@@ -206,10 +206,6 @@ impl ProvenanceJoin {
     pub(in crate::analysis) fn alternatives(&self) -> &ProvenanceAlternatives {
         &self.alternatives
     }
-
-    fn into_alternatives(self) -> ProvenanceAlternatives {
-        self.alternatives
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -222,38 +218,20 @@ pub struct AliasAssignment {
 }
 
 impl AliasAssignment {
-    /// A precise write carrying a single provenance.
-    pub fn single(
+    /// Build an assignment from an already-resolved alternative set.
+    pub(in crate::analysis) fn from_alternatives(
         span: Span,
         scope: ScopeId,
         name: NameId,
         version: BindingVersion,
-        provenance: BindingProvenance,
+        alternatives: ProvenanceAlternatives,
     ) -> Self {
         Self {
             span,
             scope,
             name,
             version,
-            alternatives: ProvenanceAlternatives::single(provenance),
-        }
-    }
-
-    /// A synthetic assignment installed after a control-flow join. The
-    /// `alternatives` set is the bounded union of the reachable paths.
-    pub(in crate::analysis) fn joined(
-        span: Span,
-        scope: ScopeId,
-        name: NameId,
-        version: BindingVersion,
-        join: ProvenanceJoin,
-    ) -> Self {
-        Self {
-            span,
-            scope,
-            name,
-            version,
-            alternatives: join.into_alternatives(),
+            alternatives,
         }
     }
 

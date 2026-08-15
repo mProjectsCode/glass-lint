@@ -6,7 +6,8 @@ use swc_ecma_ast::Expr;
 use crate::analysis::{
     model::scope::BindingVersion,
     scope::{
-        BindingProvenance, ProvenanceAlternatives, ProvenanceJoin, ScopeId, ScopedName,
+        AliasAssignment, BindingProvenance, ProvenanceAlternatives, ProvenanceJoin, ScopeId,
+        ScopedName,
         build::{CollectorCheckpoint, ScopeCollectionIssue, ScopeCollector},
         query::rooted::rooted_expr_chain_with,
     },
@@ -104,16 +105,12 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         provenance: BindingProvenance,
     ) {
-        let version = self.next_assignment_version(scope, name);
-        self.assignment
-            .path
-            .assignment_environment
-            .record_known(scope, name, provenance.clone());
-        self.assignment
-            .assignments
-            .push(crate::analysis::scope::AliasAssignment::single(
-                span, scope, name, version, provenance,
-            ));
+        self.push_assignment(
+            span,
+            scope,
+            name,
+            ProvenanceAlternatives::single(provenance),
+        );
     }
 
     fn record_join_assignment(
@@ -123,12 +120,23 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         value: &ProvenanceJoin,
     ) {
+        self.push_assignment(span, scope, name, value.alternatives().clone());
+    }
+
+    /// Version, write, and push one assignment in source order.
+    fn push_assignment(
+        &mut self,
+        span: Span,
+        scope: ScopeId,
+        name: glass_lint_datastructures::NameId,
+        alternatives: ProvenanceAlternatives,
+    ) {
         let version = self.next_assignment_version(scope, name);
-        if value.alternatives().has_complete_witness() {
+        if alternatives.has_complete_witness() {
             self.assignment
                 .path
                 .assignment_environment
-                .record_alternatives(scope, name, value.alternatives().clone());
+                .record_alternatives(scope, name, alternatives.clone());
         } else {
             self.assignment
                 .path
@@ -137,12 +145,12 @@ impl ScopeCollector<'_> {
         }
         self.assignment
             .assignments
-            .push(crate::analysis::scope::AliasAssignment::joined(
+            .push(AliasAssignment::from_alternatives(
                 span,
                 scope,
                 name,
                 version,
-                value.clone(),
+                alternatives,
             ));
     }
 
