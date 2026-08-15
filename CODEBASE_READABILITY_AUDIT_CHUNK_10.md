@@ -28,7 +28,7 @@ visibility or construction surface is inconsistent.
 
 ### [transfer.rs — value transfer and source matching]
 
-#### [ ] READ-001 — Dead conditional around `admit_object`; `StateAdmission` result discarded
+#### [x] READ-001 — Dead conditional around `admit_object`; `StateAdmission` result discarded
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -55,7 +55,13 @@ path (see the Resolved note under Open Questions): a rejected batch leaves
 aliases and states untouched and still flags `state_limit_rejected`; do not let
 rejection silently bind aliases.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already fixed by chunk 09 read 005 (`9dd3a20f`): the
+`matches!(... StateAdmission::Admitted)` conditional in
+`ObjectFlowProjector::assign` was collapsed to a single `admit_object` call
+followed by an unconditional `return`, and the `StateAdmission` import was
+removed. Rejection still leaves aliases/states untouched and flags
+`state_limit_rejected`; no fall-through to the plain alias-binding path. The
+current code matches the recommendation; nothing further to do.
 
 ### [state/tables.rs — canonical flow state table]
 
