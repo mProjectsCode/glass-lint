@@ -1,11 +1,5 @@
-#[cfg(test)]
-use glass_lint_datastructures::ByteRange;
 use glass_lint_datastructures::{NameTable, SymbolPath};
-#[cfg(test)]
-use smol_str::SmolStr;
 
-#[cfg(test)]
-use crate::{analysis::facts::FactId, api::classification::MatchKind};
 use crate::{
     analysis::matching::{
         ClassificationEvidence, LinkedOccurrenceView, OccurrenceIndexes, OccurrenceSelection,
@@ -48,22 +42,7 @@ impl<'a> Iterator for IndexedRootIter<'a> {
     }
 }
 
-#[cfg(test)]
-use crate::analysis::matching::occurrence::Occurrence;
-
 impl OccurrenceIndexes {
-    #[cfg(test)]
-    pub(in crate::analysis) fn evidence_for(
-        &self,
-        plan: &CompiledMatcherPlan,
-    ) -> Vec<ClassificationEvidence> {
-        self.evidence_for_indexed_with_overlay(
-            IndexedRootIter::from_plan(plan),
-            None,
-            &self.test_names,
-        )
-    }
-
     pub(in crate::analysis) fn evidence_for_indexed_with_overlay<'a>(
         &'a self,
         roots: IndexedRootIter<'a>,
@@ -236,66 +215,6 @@ impl OccurrenceIndexes {
             EventSpec::StringReference => EventIndexView::StringReference {
                 literals: self.literals.strings(),
             },
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn record(&mut self, kind: MatchKind, symbol: impl Into<SmolStr>, span: ByteRange) {
-        let symbol = symbol.into();
-        match kind {
-            MatchKind::Call => {
-                let name = self.test_name(symbol.as_str());
-                self.call_indexes
-                    .record_call(name, Occurrence::new(FactId::from_test(u32::MAX), span));
-            }
-            MatchKind::MemberCall => {
-                let key = symbol
-                    .split('.')
-                    .map(|segment| self.test_name(segment))
-                    .collect::<Vec<_>>();
-                self.members.record_call(
-                    glass_lint_datastructures::NamePath::from_ids(key),
-                    Occurrence::new(FactId::from_test(u32::MAX), span),
-                );
-            }
-            MatchKind::MemberRead => {
-                let key = symbol
-                    .split('.')
-                    .map(|segment| self.test_name(segment))
-                    .collect::<Vec<_>>();
-                self.members.record_read(
-                    glass_lint_datastructures::NamePath::from_ids(key),
-                    Occurrence::new(FactId::from_test(u32::MAX), span),
-                );
-            }
-            MatchKind::PropertyWrite => {
-                let key = symbol
-                    .split('.')
-                    .map(|segment| self.test_name(segment))
-                    .collect::<Vec<_>>();
-                self.members.record_rooted_write(
-                    glass_lint_datastructures::NamePath::from_ids(key),
-                    Occurrence::new(FactId::from_test(u32::MAX), span),
-                );
-            }
-            MatchKind::Import => {
-                self.literals
-                    .record_import(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
-            }
-            MatchKind::StringContains => {
-                self.literals
-                    .record_string(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
-            }
-            MatchKind::Class => {
-                self.constructions
-                    .record_class(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
-            }
-            MatchKind::Constructor => {
-                let name = self.test_name(symbol.as_str());
-                self.constructions
-                    .record_constructor(name, Occurrence::new(FactId::from_test(u32::MAX), span));
-            }
-            MatchKind::CallArgument => {}
         }
     }
 }

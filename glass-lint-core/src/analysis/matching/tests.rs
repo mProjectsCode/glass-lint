@@ -35,25 +35,34 @@ fn typed_occurrence_index_is_deduplicated() {
 
 #[test]
 fn optimized_member_query_matches_reference_occurrences() {
-    let mut facts = OccurrenceIndexes::default();
-    facts.record(MatchKind::MemberCall, "client.request", span(30, 44));
-    facts.record(MatchKind::MemberCall, "other.request", span(5, 18));
-    facts.record(MatchKind::MemberCall, "client.request", span(10, 24));
-    facts.normalize_occurrences();
+    let src = "client.request(); other.request(); client.request();";
+    let parsed = crate::parse_test_source(src, "member-query.js").expect("source should parse");
+    let budget = crate::analysis::SemanticBudget::default();
+    let mut resolver = Resolver::collect(&parsed.program, src, &budget);
+    let stream = build_test_stream(&parsed.program, &mut resolver);
+    let index = OccurrenceIndexes::from_stream(
+        &stream,
+        &Environment::default(),
+        DerivedPhaseAvailability::Enabled,
+    );
 
     let compiled =
         CompiledMatcherPlan::compile(&[EventQuery::member_call_heuristic("client.request")
             .unwrap()
             .into_query()])
         .unwrap();
-    let evidence = facts.evidence_for(&compiled);
-    let reference = facts
+    let evidence = index.evidence_for_indexed_with_overlay(
+        IndexedRootIter::from_plan(&compiled),
+        None,
+        stream.names(),
+    );
+    let reference = index
         .members
         .calls()
         .iter()
         .filter(|(symbol, _)| {
-            facts
-                .test_names
+            stream
+                .names()
                 .resolve_path(symbol)
                 .is_some_and(|symbol| symbol == SymbolPath::from_chain("client.request"))
         })
@@ -151,9 +160,15 @@ fn build_from_stream_populates_all_occurrence_indexes() {
         "should have MyClass class"
     );
 
-    assert!(index.has_constructor("URL"), "should have URL constructor");
+    assert!(
+        index.has_constructor(stream.names(), "URL"),
+        "should have URL constructor"
+    );
 
-    assert!(index.has_call("foo"), "should have foo call");
+    assert!(
+        index.has_call(stream.names(), "foo"),
+        "should have foo call"
+    );
     assert!(
         index
             .call_indexes

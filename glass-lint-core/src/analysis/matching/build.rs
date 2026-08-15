@@ -8,6 +8,7 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::analysis::{
+    DerivedPhaseAvailability,
     facts::{CallUnwrap, ClassFactRole, FactId, FactPayload, FactStream, Frozen, SemanticFact},
     matching::{
         OccurrenceIndexes,
@@ -55,6 +56,30 @@ impl<'a> CallProjection<'a> {
 }
 
 impl OccurrenceIndexes {
+    /// Build a normalized occurrence index from one validated fact stream.
+    ///
+    /// Keeping collection and normalization together prevents callers from
+    /// observing the mutable projection between those phases.
+    pub(in crate::analysis) fn from_stream(
+        stream: &FactStream<Frozen>,
+        environment: &crate::Environment,
+        availability: DerivedPhaseAvailability,
+    ) -> Self {
+        let mut indexes = Self::with_environment(environment, availability);
+        if availability.is_enabled() && stream.is_valid() {
+            indexes.build_from_stream(stream);
+            indexes.normalize_occurrences();
+        }
+        indexes
+    }
+
+    fn build_from_stream(&mut self, stream: &FactStream<Frozen>) {
+        let values = stream.values();
+        for fact in stream.facts() {
+            self.record_fact(fact, stream.names(), values);
+        }
+    }
+
     fn record_module_call(&mut self, key: ModuleExportKey, occurrence: Occurrence) {
         self.call_indexes
             .record_module_call(key.clone(), occurrence);
@@ -70,17 +95,6 @@ impl OccurrenceIndexes {
         self.members.normalize();
         self.constructions.normalize();
         self.literals.normalize();
-    }
-
-    pub(super) fn build_from_stream(&mut self, stream: &FactStream<Frozen>) {
-        #[cfg(test)]
-        {
-            self.test_names = stream.names().clone();
-        }
-        let values = stream.values();
-        for fact in stream.facts() {
-            self.record_fact(fact, stream.names(), values);
-        }
     }
 
     fn record_fact(

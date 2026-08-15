@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 #[cfg(test)]
-use glass_lint_datastructures::NamePath;
+use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::{
@@ -38,8 +38,6 @@ pub struct OccurrenceIndexes {
     members: indexes::MemberIndexes,
     constructions: indexes::ConstructionIndexes,
     literals: indexes::LiteralIndexes,
-    #[cfg(test)]
-    test_names: glass_lint_datastructures::NameTable,
 }
 
 type BorrowedModuleBuckets<'a> = BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>;
@@ -265,23 +263,6 @@ impl<'a> LinkedOccurrenceView<'a> {
 }
 
 impl OccurrenceIndexes {
-    /// Build a normalized occurrence index from one validated fact stream.
-    ///
-    /// Keeping collection and normalization together prevents callers from
-    /// observing the mutable projection between those phases.
-    pub(in crate::analysis) fn from_stream(
-        stream: &crate::analysis::facts::FactStream<crate::analysis::facts::Frozen>,
-        environment: &crate::Environment,
-        availability: DerivedPhaseAvailability,
-    ) -> Self {
-        let mut indexes = Self::with_environment(environment, availability);
-        if availability.is_enabled() && stream.is_valid() {
-            indexes.build_from_stream(stream);
-            indexes.normalize_occurrences();
-        }
-        indexes
-    }
-
     pub(in crate::analysis) fn with_environment(
         environment: &crate::Environment,
         availability: DerivedPhaseAvailability,
@@ -306,13 +287,8 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
-    fn test_name(&mut self, name: &str) -> glass_lint_datastructures::NameId {
-        self.test_names.intern(name).expect("test name bound")
-    }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
-        self.test_names
+    pub(in crate::analysis) fn has_call(&self, names: &NameTable, name: &str) -> bool {
+        names
             .lookup(name)
             .is_some_and(|id| self.call_indexes.calls().get(&id).is_some())
     }
@@ -349,17 +325,17 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn has_constructor(&self, name: &str) -> bool {
-        self.test_names
+    pub(in crate::analysis) fn has_constructor(&self, names: &NameTable, name: &str) -> bool {
+        names
             .lookup(name)
             .is_some_and(|id| self.constructions.constructors().get(&id).is_some())
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn has_member_call(&self, chain: &str) -> bool {
+    pub(in crate::analysis) fn has_member_call(&self, names: &NameTable, chain: &str) -> bool {
         let path = chain
             .split('.')
-            .filter_map(|segment| self.test_names.lookup(segment))
+            .filter_map(|segment| names.lookup(segment))
             .collect::<Vec<_>>();
         self.members
             .calls()

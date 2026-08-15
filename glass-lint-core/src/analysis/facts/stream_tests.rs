@@ -242,7 +242,10 @@ fn fact_driven_index_populates_expected_maps() {
         index.has_import("path"),
         "should have 'path' require import"
     );
-    assert!(index.has_call("greet"), "should have greet call");
+    assert!(
+        index.has_call(stream.names(), "greet"),
+        "should have greet call"
+    );
     assert!(
         index.has_string("world"),
         "should have 'world' string literal"
@@ -283,7 +286,7 @@ fn call_apply_unwrapping_populates_indexes() {
 
     // The unwrap should record 'fetch' as a member call.
     assert!(
-        index.has_member_call("fetch"),
+        index.has_member_call(stream.names(), "fetch"),
         "should have 'fetch' as member call from unwrapping"
     );
 }
