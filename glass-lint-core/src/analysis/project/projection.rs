@@ -26,7 +26,7 @@ use crate::{
             MatcherProjectOverlay,
         },
         model::flow::FlowLimits,
-        project::state::ExportLookupCache,
+        project::{model::MAX_EXPORT_LOOKUP_ENTRIES, state::ExportLookupCache},
         trace::TraceArena,
     },
     api::{
@@ -118,7 +118,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
             plan,
             flow_limits,
             arena,
-            linking: ExportLookupCache::new(project.export_lookup_capacity()),
+            linking: ExportLookupCache::new(MAX_EXPORT_LOOKUP_ENTRIES),
         }
     }
 

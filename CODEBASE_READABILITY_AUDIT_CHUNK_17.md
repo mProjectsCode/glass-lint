@@ -217,7 +217,7 @@ not-available case.
 
 **Fix Applied:** Collapsed the empty-flow, `None`-effects, and not-available guards in `project_facts` into one `effects.filter(is_available)` guard; the not-projectable short-circuit and the `record_effects` decision are unchanged.
 
-#### [ ] READ-007 — `ProjectSemanticModel` duplicates a constant as a field and carries a stale `#[allow(dead_code)]`
+#### [x] READ-007 — `ProjectSemanticModel` duplicates a constant as a field and carries a stale `#[allow(dead_code)]`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -243,7 +243,7 @@ where the lookup session is built (projection.rs:121), mirroring `into_linker`
 read at multiple phases (`outcome.rs`, `flow/cross/mod.rs`, `projection.rs`)
 — and keep the test-only `single_with_limits` constructor in sync.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the `export_lookup_capacity` field/getter and both constructor assignments; the lookup session now uses `MAX_EXPORT_LOOKUP_ENTRIES` directly, and the stale `#[allow(dead_code)]` on `trace_limit` was removed.
 
 ### Module-qualified ID newtypes (`analysis/project/model.rs`, `state.rs`)
 

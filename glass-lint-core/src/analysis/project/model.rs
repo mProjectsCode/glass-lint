@@ -235,7 +235,6 @@ pub struct ProjectSemanticModel {
     pub(super) flow_limit: usize,
     pub(super) effect_limit: usize,
     pub(super) trace_limit: usize,
-    pub(super) export_lookup_capacity: usize,
 }
 
 pub(super) struct LinkedProjectState {
@@ -255,7 +254,6 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
-            export_lookup_capacity: MAX_EXPORT_LOOKUP_ENTRIES,
         }
     }
 
@@ -287,7 +285,6 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
-            export_lookup_capacity: MAX_EXPORT_LOOKUP_ENTRIES,
         }
     }
 
@@ -436,11 +433,6 @@ impl ProjectSemanticModel {
         self.effect_limit
     }
 
-    pub(crate) fn export_lookup_capacity(&self) -> usize {
-        self.export_lookup_capacity
-    }
-
-    #[allow(dead_code)]
     pub(in crate::analysis) fn trace_limit(&self) -> usize {
         self.trace_limit
     }
