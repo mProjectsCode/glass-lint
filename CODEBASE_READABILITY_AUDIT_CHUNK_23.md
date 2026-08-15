@@ -187,7 +187,7 @@ and containment semantics.
 
 **Fix Applied:** Collapsed `FindingGroup` into `EvidenceRangeEntry` (the single `{ range, occurrences }` struct); `new`, `add_entry`, and `into_evidence` now live on `EvidenceRangeEntry`, and `into_groups` became `into_entries`. Occurrences stay copied in `add_entry` so overlapping retained ranges are not corrupted.
 
-#### [ ] READ-006 — Inline fallback occurrence step duplicates `EvidenceTraces::fallback`
+#### [x] READ-006 — Inline fallback occurrence step duplicates `EvidenceTraces::fallback`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -214,7 +214,7 @@ the merged `truncated` flag when wrapping the fallback trace
 still be preserved when a fallback trace is added next to real traces, and trace
 dedup/order determinism (`BTreeSet` insert, `evidence.rs:60-83`) must be kept.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EvidenceTrace::occurrence(location)` as the shared single-step Occurrence-trace constructor; `EvidenceTraces::fallback` and `into_evidence`'s fallback path both use it, while `into_evidence` keeps wrapping the merged `truncated` flag via `EvidenceTraces::with_truncation`.
 
 ### Batch options
 

@@ -77,6 +77,16 @@ impl EvidenceTrace {
         Ok(Self { steps })
     }
 
+    /// Build a single-step Occurrence trace at the given location.
+    pub(crate) fn occurrence(location: SourceLocation) -> Self {
+        Self::new(vec![EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            "evidence occurrence".into(),
+            location,
+        )])
+        .expect("an occurrence trace always contains one step")
+    }
+
     pub fn steps(&self) -> &[EvidenceStep] {
         &self.steps
     }
@@ -169,13 +179,9 @@ impl EvidenceTraces {
     /// given location. Used when an external path must produce a valid trace
     /// without explicit step data.
     pub fn fallback(location: SourceLocation) -> Self {
-        Self::from_state(EvidenceTraceState::Complete(vec![EvidenceTrace {
-            steps: vec![EvidenceStep::new(
-                EvidenceRole::Occurrence,
-                "evidence occurrence".into(),
-                location,
-            )],
-        }]))
+        Self::from_state(EvidenceTraceState::Complete(vec![
+            EvidenceTrace::occurrence(location),
+        ]))
         .expect("fallback evidence always contains one step")
     }
 }

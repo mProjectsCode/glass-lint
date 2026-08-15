@@ -76,14 +76,11 @@ impl EvidenceRangeEntry<'_> {
                 traces.insert(trace);
             }
         }
-        if traces.is_empty()
-            && let Ok(trace) = EvidenceTrace::new(vec![EvidenceStep::new(
-                EvidenceRole::Occurrence,
-                "evidence occurrence".into(),
-                SourceLocation::new(path.clone(), range.clone()),
-            )])
-        {
-            traces.insert(trace);
+        if traces.is_empty() {
+            traces.insert(EvidenceTrace::occurrence(SourceLocation::new(
+                path.clone(),
+                range.clone(),
+            )));
         }
         let evidence =
             EvidenceTraces::with_truncation(traces.into_iter().collect(), truncated).ok()?;
