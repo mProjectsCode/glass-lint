@@ -290,10 +290,6 @@ impl Visit for FeatureDetector {
         accessor.visit_children_with(self);
     }
 
-    fn visit_object_lit(&mut self, object: &swc_ecma_ast::ObjectLit) {
-        object.visit_children_with(self);
-    }
-
     fn visit_prop_or_spread(&mut self, property: &swc_ecma_ast::PropOrSpread) {
         if matches!(property, swc_ecma_ast::PropOrSpread::Spread(_)) {
             self.record(EcmaFeature::ObjectRestSpread);

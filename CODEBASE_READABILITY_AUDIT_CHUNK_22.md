@@ -54,7 +54,7 @@ part of the serialized report schema and must not change.
 
 ### [ecma_version / detector]
 
-#### [ ] READ-006 — `FeatureDetector::visit_object_lit` is a no-op override identical to the SWC default
+#### [x] READ-006 — `FeatureDetector::visit_object_lit` is a no-op override identical to the SWC default
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -74,7 +74,7 @@ the default visitor; the existing object-spread tests
 (`ecma_version/tests.rs:26-37`) guard the behavior. Guardrail: keep
 `visit_prop_or_spread` (the actual spread-recording hook) intact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the `visit_object_lit` override; object-literal traversal now uses the default `swc_ecma_visit` visitor while `visit_prop_or_spread` keeps recording `ObjectRestSpread`.
 
 #### [ ] READ-007 — `in_parameter_pattern` save/set/restore sequence is duplicated across the two function visitors
 
