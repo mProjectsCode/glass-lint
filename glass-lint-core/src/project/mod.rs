@@ -20,8 +20,8 @@ pub use types::{
     EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, LocalExecutionError,
     MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectError, ProjectExecutionError,
     ProjectInputError, ProjectPhaseError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
-    SourceText, is_internal_module_request,
+    ResolutionRequestKey, ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome, SourceFile,
+    SourceLocation, SourceText, is_internal_module_request,
 };
 pub(crate) use types::{LinkedModuleTarget, ModuleId};
 

@@ -61,7 +61,10 @@ fn session_rejects_resolution_for_an_unauthored_request() {
     session
         .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
-    let error = session.finish([(key("main.js"), ResolverOutcome::Missing)]);
+    let error = session.finish([(
+        key("main.js"),
+        ResolverOutcome::Target(ResolvedTargetKind::Missing),
+    )]);
     assert!(matches!(
         error,
         Err(ProjectError::Phase(ProjectPhaseError::UnknownRequest(_)))
@@ -228,9 +231,11 @@ fn outside_project_targets_accept_normalized_absolute_paths() {
     project.add_resolved(
         "main.js",
         "import value from './outside';",
-        [ResolverOutcome::OutsideProject {
-            path: NormalizedOutsidePath::new("/other/dependency.js").unwrap(),
-        }],
+        [ResolverOutcome::Target(
+            ResolvedTargetKind::OutsideProject {
+                path: NormalizedOutsidePath::new("/other/dependency.js").unwrap(),
+            },
+        )],
     );
     let report = project.finish();
     assert_eq!(

@@ -2,7 +2,7 @@ use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::project::{
     ProjectError, ProjectInputError, ProjectPhaseError, ResolutionRequestKey,
-    ResolutionRequestKind, ResolverOutcome, tests::*,
+    ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome, tests::*,
 };
 
 #[test]
@@ -104,7 +104,7 @@ fn staged_session_rejects_unknown_resolution_importers() {
             ResolutionRequestKind::StaticImport,
             SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap()).unwrap(),
         ),
-        ResolverOutcome::Missing,
+        ResolverOutcome::Target(ResolvedTargetKind::Missing),
     )]);
     assert!(result.is_err());
     assert!(matches!(

@@ -3,7 +3,8 @@ use glass_lint_core::{
     project::{
         BuiltinModuleName, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, Finding,
         MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectInputError,
-        ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, SourceLocation,
+        ProjectRelativePath, ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome,
+        SourceLocation,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -114,22 +115,32 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
                 path: ProjectRelativePath::new(path)
                     .map_err(AdapterConversionError::InvalidInternalPath)?,
             },
-            AdapterResolutionResult::External { package } => ResolverOutcome::External {
-                package: PackageSpecifier::new(package.clone())
-                    .map_err(AdapterConversionError::InvalidPackage)?,
-            },
-            AdapterResolutionResult::Builtin { name } => ResolverOutcome::Builtin {
-                name: BuiltinModuleName::new(name.clone())
-                    .map_err(AdapterConversionError::InvalidBuiltin)?,
-            },
-            AdapterResolutionResult::Missing => ResolverOutcome::Missing,
-            AdapterResolutionResult::OutsideProject { path } => ResolverOutcome::OutsideProject {
-                path: NormalizedOutsidePath::new(path.clone())
-                    .map_err(AdapterConversionError::InvalidOutsideProjectPath)?,
-            },
-            AdapterResolutionResult::Unsupported { reason } => ResolverOutcome::Unsupported {
-                reason: reason.clone(),
-            },
+            AdapterResolutionResult::External { package } => {
+                ResolverOutcome::Target(ResolvedTargetKind::External {
+                    package: PackageSpecifier::new(package.clone())
+                        .map_err(AdapterConversionError::InvalidPackage)?,
+                })
+            }
+            AdapterResolutionResult::Builtin { name } => {
+                ResolverOutcome::Target(ResolvedTargetKind::Builtin {
+                    name: BuiltinModuleName::new(name.clone())
+                        .map_err(AdapterConversionError::InvalidBuiltin)?,
+                })
+            }
+            AdapterResolutionResult::Missing => {
+                ResolverOutcome::Target(ResolvedTargetKind::Missing)
+            }
+            AdapterResolutionResult::OutsideProject { path } => {
+                ResolverOutcome::Target(ResolvedTargetKind::OutsideProject {
+                    path: NormalizedOutsidePath::new(path.clone())
+                        .map_err(AdapterConversionError::InvalidOutsideProjectPath)?,
+                })
+            }
+            AdapterResolutionResult::Unsupported { reason } => {
+                ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
+                    reason: reason.clone(),
+                })
+            }
         };
         Ok((kind, result))
     }

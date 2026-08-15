@@ -12,7 +12,8 @@ mod report;
 pub use input::{
     BuiltinModuleName, LocalExecutionError, NormalizedOutsidePath, PackageSpecifier, ProjectError,
     ProjectExecutionError, ProjectInputError, ProjectPhaseError, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
+    ResolutionRequestKey, ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome, SourceFile,
+    SourceText,
 };
 pub(crate) use input::{LinkedModuleTarget, ModuleId};
 pub use report::{

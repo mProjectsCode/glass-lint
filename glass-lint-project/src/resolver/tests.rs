@@ -1,4 +1,4 @@
-use glass_lint_core::project::{ProjectRelativePath, ResolutionRequestKey};
+use glass_lint_core::project::{ProjectRelativePath, ResolutionRequestKey, ResolvedTargetKind};
 use glass_lint_datastructures::{Position, SourceRange};
 
 use super::*;
@@ -47,9 +47,9 @@ fn delegates_builtin_detection_and_canonicalization_to_oxc() {
         ] {
             assert_eq!(
                 resolver.resolve(&request(specifier)).unwrap(),
-                ResolverOutcome::Builtin {
+                ResolverOutcome::Target(ResolvedTargetKind::Builtin {
                     name: BuiltinModuleName::new(expected).unwrap(),
-                },
+                }),
                 "specifier: {specifier}"
             );
         }
@@ -61,9 +61,9 @@ fn unresolved_bare_packages_remain_external() {
     with_resolver(|resolver| {
         assert_eq!(
             resolver.resolve(&request("not-a-node-builtin")).unwrap(),
-            ResolverOutcome::External {
+            ResolverOutcome::Target(ResolvedTargetKind::External {
                 package: PackageSpecifier::new("not-a-node-builtin").unwrap(),
-            }
+            })
         );
     });
 }
@@ -94,7 +94,7 @@ fn package_name_falls_back_on_empty() {
 fn miss_returns_missing_for_internal_looking_requests() {
     with_resolver(|resolver| {
         let result = resolver.resolve(&request("./nonexistent")).unwrap();
-        assert_eq!(result, ResolverOutcome::Missing);
+        assert_eq!(result, ResolverOutcome::Target(ResolvedTargetKind::Missing));
     });
 }
 
@@ -104,7 +104,10 @@ fn malformed_scoped_package_returns_unsupported_not_external() {
         for specifier in ["@", "@/", "@scope"] {
             let result = resolver.resolve(&request(specifier)).unwrap();
             assert!(
-                matches!(result, ResolverOutcome::Unsupported { .. }),
+                matches!(
+                    result,
+                    ResolverOutcome::Target(ResolvedTargetKind::Unsupported { .. })
+                ),
                 "specifier `{specifier}` should be Unsupported, got {result:?}"
             );
         }
@@ -116,7 +119,10 @@ fn empty_specifier_returns_unsupported() {
     with_resolver(|resolver| {
         let result = resolver.resolve(&request("")).unwrap();
         assert!(
-            matches!(result, ResolverOutcome::Unsupported { .. }),
+            matches!(
+                result,
+                ResolverOutcome::Target(ResolvedTargetKind::Unsupported { .. })
+            ),
             "empty specifier should be Unsupported, got {result:?}"
         );
     });
@@ -128,7 +134,10 @@ fn ordinary_absent_bare_package_stays_external() {
         for specifier in ["nonexistent-pkg", "@scope/pkg"] {
             let result = resolver.resolve(&request(specifier)).unwrap();
             assert!(
-                matches!(result, ResolverOutcome::External { .. }),
+                matches!(
+                    result,
+                    ResolverOutcome::Target(ResolvedTargetKind::External { .. })
+                ),
                 "specifier `{specifier}` should be External, got {result:?}"
             );
         }

@@ -15,7 +15,7 @@ use crate::{
             AnalysisComponent, AnalysisStatus, IncompleteReason, ResolutionKind, StatusScope,
         },
     },
-    project::is_internal_module_request,
+    project::{ResolvedTargetKind, is_internal_module_request},
 };
 
 pub(super) struct GraphBuild {
@@ -55,8 +55,10 @@ impl GraphBuild {
                     if edge_budget.try_push() {
                         graph.insert_edge(module.id(), *id);
                     }
-                } else if matches!(resolution, LinkedModuleTarget::Missing)
-                    && is_internal_module_request(request.specifier())
+                } else if matches!(
+                    resolution,
+                    LinkedModuleTarget::Target(ResolvedTargetKind::Missing)
+                ) && is_internal_module_request(request.specifier())
                 {
                     status.record(
                         StatusScope::File(module.path().clone()),
@@ -64,7 +66,10 @@ impl GraphBuild {
                             request: request.specifier().to_string(),
                         },
                     );
-                } else if matches!(resolution, LinkedModuleTarget::OutsideProject { .. }) {
+                } else if matches!(
+                    resolution,
+                    LinkedModuleTarget::Target(ResolvedTargetKind::OutsideProject { .. })
+                ) {
                     status.record(
                         StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
@@ -72,7 +77,10 @@ impl GraphBuild {
                             kind: ResolutionKind::OutsideProject,
                         },
                     );
-                } else if matches!(resolution, LinkedModuleTarget::Unsupported { .. }) {
+                } else if matches!(
+                    resolution,
+                    LinkedModuleTarget::Target(ResolvedTargetKind::Unsupported { .. })
+                ) {
                     status.record(
                         StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {

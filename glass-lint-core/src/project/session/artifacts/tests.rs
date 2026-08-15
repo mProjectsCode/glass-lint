@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     AnalysisLimits, Environment,
     analysis::SemanticAnalyzer,
-    project::{ResolutionRequestKind, SourceFile},
+    project::{ResolutionRequestKind, ResolvedTargetKind, SourceFile},
 };
 
 fn lower(path: &str, source: &str) -> (ProjectRelativePath, AnalyzedSource) {
@@ -101,7 +101,10 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
         );
         let key = requests[0].key().clone();
         artifacts
-            .into_link_input(&sources, [(key, ResolverOutcome::Missing)])
+            .into_link_input(
+                &sources,
+                [(key, ResolverOutcome::Target(ResolvedTargetKind::Missing))],
+            )
             .unwrap()
     };
     assert!(parse_diagnostics.is_empty());
@@ -120,6 +123,12 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
         ResolutionRequestKind::Require,
         unknown.range().clone(),
     );
-    let error = artifacts.into_link_input(&sources, [(unknown, ResolverOutcome::Missing)]);
+    let error = artifacts.into_link_input(
+        &sources,
+        [(
+            unknown,
+            ResolverOutcome::Target(ResolvedTargetKind::Missing),
+        )],
+    );
     assert!(matches!(error, Err(ProjectPhaseError::UnknownRequest(_))));
 }

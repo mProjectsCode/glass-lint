@@ -19,9 +19,9 @@ fn namespace_imports_follow_star_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "barrel.js",
@@ -65,9 +65,9 @@ fn static_dynamic_imports_follow_namespace_exports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "main.js",
@@ -107,9 +107,9 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = () => request();",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "main.js",
@@ -156,9 +156,9 @@ fn returned_callable_provenance_crosses_an_exported_function() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export function get() { return request; }",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "main.js",
@@ -205,9 +205,9 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request as send };",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "main.js",

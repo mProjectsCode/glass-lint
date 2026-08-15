@@ -50,7 +50,10 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
     assert_eq!(analysis.iter().len(), 1);
     let key = analysis.iter().next().unwrap().key().clone();
     let report = collection
-        .finish([(key, crate::project::ResolverOutcome::Missing)])
+        .finish([(
+            key,
+            crate::project::ResolverOutcome::Target(ResolvedTargetKind::Missing),
+        )])
         .unwrap()
         .into_report();
     assert_eq!(report.files().len(), 1);
@@ -92,8 +95,10 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         crate::project::ResolutionRequestKind::Require,
         unknown.range().clone(),
     );
-    let Err(error) = collection.finish([(unknown, crate::project::ResolverOutcome::Missing)])
-    else {
+    let Err(error) = collection.finish([(
+        unknown,
+        crate::project::ResolverOutcome::Target(ResolvedTargetKind::Missing),
+    )]) else {
         panic!("unknown requests must be rejected")
     };
     assert!(matches!(
@@ -110,8 +115,14 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         .unwrap();
     let key = analysis.iter().next().unwrap().key().clone();
     let Err(error) = collection.finish([
-        (key.clone(), crate::project::ResolverOutcome::Missing),
-        (key, crate::project::ResolverOutcome::Missing),
+        (
+            key.clone(),
+            crate::project::ResolverOutcome::Target(ResolvedTargetKind::Missing),
+        ),
+        (
+            key,
+            crate::project::ResolverOutcome::Target(ResolvedTargetKind::Missing),
+        ),
     ]) else {
         panic!("duplicate outcomes must be rejected")
     };

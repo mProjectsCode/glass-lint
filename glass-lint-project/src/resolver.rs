@@ -4,7 +4,7 @@ use std::path::Path;
 
 use glass_lint_core::project::{
     BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ResolutionRequest,
-    ResolutionRequestKind, ResolverOutcome, is_internal_module_request,
+    ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome, is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
@@ -79,24 +79,26 @@ impl<'a> ProjectResolver<'a> {
         };
         match resolver.resolve(directory, request.specifier()) {
             Ok(resolution) => self.classify(request.specifier(), resolution.path()),
-            Err(ResolveError::Builtin { resolved, .. }) => Ok(ResolverOutcome::Builtin {
-                name: BuiltinModuleName::new(resolved)?,
-            }),
+            Err(ResolveError::Builtin { resolved, .. }) => {
+                Ok(ResolverOutcome::Target(ResolvedTargetKind::Builtin {
+                    name: BuiltinModuleName::new(resolved)?,
+                }))
+            }
             // Deliberate not-found: bare packages remain external, internal
             // requests become missing.
             Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..))
                 if is_internal_module_request(request.specifier()) =>
             {
-                Ok(ResolverOutcome::Missing)
+                Ok(ResolverOutcome::Target(ResolvedTargetKind::Missing))
             }
             Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => Ok(
                 external_outcome(request.specifier(), " in not-found request"),
             ),
             // All other resolver errors (I/O, specifier, config, etc.) are
             // operational or invalid — fail closed as unsupported.
-            Err(other) => Ok(ResolverOutcome::Unsupported {
+            Err(other) => Ok(ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
                 reason: format!("resolution failed: {other}"),
-            }),
+            })),
         }
     }
 
@@ -106,27 +108,29 @@ impl<'a> ProjectResolver<'a> {
         Ok(match classification {
             PathClassification::Outside(path) => {
                 if internal {
-                    ResolverOutcome::OutsideProject {
+                    ResolverOutcome::Target(ResolvedTargetKind::OutsideProject {
                         path: NormalizedOutsidePath::new(
                             path.as_ref().to_string_lossy().into_owned(),
                         )?,
-                    }
+                    })
                 } else {
                     external_outcome(request, "")
                 }
             }
             PathClassification::Excluded(path) => {
                 if internal {
-                    ResolverOutcome::Unsupported {
+                    ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
                         reason: format!("excluded target `{}`", path.as_ref().display()),
-                    }
+                    })
                 } else {
                     external_outcome(request, "")
                 }
             }
-            PathClassification::Unsupported(path) => ResolverOutcome::Unsupported {
-                reason: format!("unsupported target `{}`", path.as_ref().display()),
-            },
+            PathClassification::Unsupported(path) => {
+                ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
+                    reason: format!("unsupported target `{}`", path.as_ref().display()),
+                })
+            }
             PathClassification::Accepted(accepted) => ResolverOutcome::Internal {
                 path: accepted.relative().clone(),
             },
@@ -136,10 +140,10 @@ impl<'a> ProjectResolver<'a> {
 
 fn external_outcome(request: &str, context: &str) -> ResolverOutcome {
     match PackageSpecifier::new(package_name(request)) {
-        Ok(package) => ResolverOutcome::External { package },
-        Err(error) => ResolverOutcome::Unsupported {
+        Ok(package) => ResolverOutcome::Target(ResolvedTargetKind::External { package }),
+        Err(error) => ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
             reason: format!("invalid package specifier{context}: {error}"),
-        },
+        }),
     }
 }
 

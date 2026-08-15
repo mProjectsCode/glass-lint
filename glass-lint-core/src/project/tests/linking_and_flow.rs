@@ -43,9 +43,9 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         [
             (
                 helper.iter().next().unwrap().key().clone(),
-                ResolverOutcome::External {
+                ResolverOutcome::Target(ResolvedTargetKind::External {
                     package: PackageSpecifier::new("web").unwrap(),
-                },
+                }),
             ),
             (
                 main.iter().next().unwrap().key().clone(),
@@ -310,9 +310,9 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         [
             (
                 helper.iter().next().unwrap().key().clone(),
-                ResolverOutcome::External {
+                ResolverOutcome::Target(ResolvedTargetKind::External {
                     package: PackageSpecifier::new("web").unwrap(),
-                },
+                }),
             ),
             (
                 main.iter().next().unwrap().key().clone(),
@@ -417,9 +417,9 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = request;",
-        [ResolverOutcome::External {
+        [ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("web").unwrap(),
-        }],
+        })],
     );
     project.add_resolved(
         "main.js",

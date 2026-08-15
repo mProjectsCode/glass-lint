@@ -80,9 +80,11 @@ impl ResolutionRequest {
     }
 }
 
+/// The classified target of a resolved module request that is not linked
+/// internally, shared by the authored-outcome and linked-target shapes so a
+/// new target kind is declared once.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ResolverOutcome {
-    Internal { path: ProjectRelativePath },
+pub enum ResolvedTargetKind {
     External { package: PackageSpecifier },
     Builtin { name: BuiltinModuleName },
     Missing,
@@ -90,14 +92,26 @@ pub enum ResolverOutcome {
     Unsupported { reason: String },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResolverOutcome {
+    Internal { path: ProjectRelativePath },
+    Target(ResolvedTargetKind),
+}
+
 impl ResolverOutcome {
     pub(crate) fn validate(self) -> Result<Self, ProjectPhaseError> {
-        if let Self::Unsupported { reason } = &self
+        if let Self::Target(ResolvedTargetKind::Unsupported { reason }) = &self
             && reason.trim().is_empty()
         {
             return Err(ProjectPhaseError::InvalidTarget(reason.clone()));
         }
         Ok(self)
+    }
+}
+
+impl From<ResolvedTargetKind> for ResolverOutcome {
+    fn from(target: ResolvedTargetKind) -> Self {
+        Self::Target(target)
     }
 }
 
@@ -114,9 +128,11 @@ impl ModuleId {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LinkedModuleTarget {
     Internal { id: ModuleId },
-    External { package: PackageSpecifier },
-    Builtin { name: BuiltinModuleName },
-    Missing,
-    OutsideProject { path: NormalizedOutsidePath },
-    Unsupported { reason: String },
+    Target(ResolvedTargetKind),
+}
+
+impl From<ResolvedTargetKind> for LinkedModuleTarget {
+    fn from(target: ResolvedTargetKind) -> Self {
+        Self::Target(target)
+    }
 }

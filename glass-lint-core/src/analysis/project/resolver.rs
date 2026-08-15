@@ -13,7 +13,7 @@ use crate::{
             state::{ExportLookupCache, ExportLookupCacheResult, ExportTable, QualifiedExportId},
         },
     },
-    project::is_internal_module_request as is_internal_request,
+    project::{ResolvedTargetKind, is_internal_module_request as is_internal_request},
 };
 
 /// Borrowed lookup view shared by transient linking and the final model.
@@ -288,20 +288,26 @@ pub(super) fn linked_target_to_export_resolution(
     export: &str,
 ) -> ExportResolution {
     match target {
-        LinkedModuleTarget::External { package } => ExportResolution::External {
-            module: package.to_smolstr(),
-            export: export.into(),
-        },
-        LinkedModuleTarget::Builtin { name } => ExportResolution::External {
-            module: name.to_smolstr(),
-            export: export.into(),
-        },
+        LinkedModuleTarget::Target(ResolvedTargetKind::External { package }) => {
+            ExportResolution::External {
+                module: package.to_smolstr(),
+                export: export.into(),
+            }
+        }
+        LinkedModuleTarget::Target(ResolvedTargetKind::Builtin { name }) => {
+            ExportResolution::External {
+                module: name.to_smolstr(),
+                export: export.into(),
+            }
+        }
         LinkedModuleTarget::Internal { id } => ExportResolution::Qualified {
             module: *id,
             export: export.into(),
         },
-        LinkedModuleTarget::Missing
-        | LinkedModuleTarget::OutsideProject { .. }
-        | LinkedModuleTarget::Unsupported { .. } => ExportResolution::Unknown,
+        LinkedModuleTarget::Target(
+            ResolvedTargetKind::Missing
+            | ResolvedTargetKind::OutsideProject { .. }
+            | ResolvedTargetKind::Unsupported { .. },
+        ) => ExportResolution::Unknown,
     }
 }

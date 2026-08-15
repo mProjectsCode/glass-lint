@@ -99,13 +99,15 @@ fn status_policy_matrix_has_expected_scope_and_completion() {
     );
     dynamic.add("dep.js", "module.exports = { value: 1, ...extra };");
     let dynamic = dynamic.finish();
-    let missing = request_report(ResolverOutcome::Missing);
-    let unsupported = request_report(ResolverOutcome::Unsupported {
+    let missing = request_report(ResolverOutcome::Target(ResolvedTargetKind::Missing));
+    let unsupported = request_report(ResolverOutcome::Target(ResolvedTargetKind::Unsupported {
         reason: "unsupported extension".into(),
-    });
-    let outside = request_report(ResolverOutcome::OutsideProject {
-        path: NormalizedOutsidePath::new("/other/dep.js").unwrap(),
-    });
+    }));
+    let outside = request_report(ResolverOutcome::Target(
+        ResolvedTargetKind::OutsideProject {
+            path: NormalizedOutsidePath::new("/other/dep.js").unwrap(),
+        },
+    ));
     let ambiguous = ambiguous_report();
 
     let rows = [
@@ -140,12 +142,12 @@ fn parse_status_and_structured_diagnostic_stay_consistent() {
 #[test]
 fn external_and_builtin_requests_are_complete() {
     for result in [
-        ResolverOutcome::External {
+        ResolverOutcome::Target(ResolvedTargetKind::External {
             package: PackageSpecifier::new("package").unwrap(),
-        },
-        ResolverOutcome::Builtin {
+        }),
+        ResolverOutcome::Target(ResolvedTargetKind::Builtin {
             name: BuiltinModuleName::new("node:fs").unwrap(),
-        },
+        }),
     ] {
         let report = request_report(result);
         assert_eq!(report.completion(), ReportCompletion::Complete);

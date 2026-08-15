@@ -67,7 +67,7 @@ convenience for tests and doctests (see READ-003).
 
 **Fix Applied:** Deleted `SourceFile::from_relative`, `SourceFile::into_path`, `SourceFile::into_source`, and `ResolutionRequest::range_owned`; deleted `ResolutionRequestKey::range_owned` and switched the two test callers to `range().clone()`.
 
-#### [ ] READ-002 — `ResolverOutcome` and `LinkedModuleTarget` are parallel enums joined by a mechanical passthrough
+#### [x] READ-002 — `ResolverOutcome` and `LinkedModuleTarget` are parallel enums joined by a mechanical passthrough
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -98,7 +98,7 @@ target kind is declared in one place. Update every consumer in the same change
 authored-input contract and must stay path-based; `LinkedModuleTarget` must stay
 id-based and internal (`pub(crate)`, `project/mod.rs:26`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted the five shared payload variants into `ResolvedTargetKind` beside `ResolverOutcome` in `resolution.rs`; both `ResolverOutcome` (`Internal { path }` + `Target`) and `LinkedModuleTarget` (`Internal { id }` + `Target`) embed it, with `From` conversions; reduced `resolve_record` to the `Internal` remap and updated every consumer in core, `glass-lint-project` (`resolver.rs`, `resolver/tests.rs`), and `glass-lint-harness` (`types/protocol.rs`).
 
 #### [ ] READ-003 — `SourceFile` exposes two JS-default constructor paths with no vocabulary difference
 

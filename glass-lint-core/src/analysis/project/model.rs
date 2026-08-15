@@ -209,20 +209,15 @@ fn resolve_record(
     result: ResolverOutcome,
     ids: &BTreeMap<ProjectRelativePath, ModuleId>,
 ) -> Result<LinkedModuleTarget, ProjectPhaseError> {
-    let resolved = match result {
+    match result {
         ResolverOutcome::Internal { path } => {
             let Some(id) = ids.get(&path).copied() else {
                 return Err(ProjectPhaseError::InvalidTarget(path.to_string()));
             };
-            LinkedModuleTarget::Internal { id }
+            Ok(LinkedModuleTarget::Internal { id })
         }
-        ResolverOutcome::External { package } => LinkedModuleTarget::External { package },
-        ResolverOutcome::Builtin { name } => LinkedModuleTarget::Builtin { name },
-        ResolverOutcome::Missing => LinkedModuleTarget::Missing,
-        ResolverOutcome::OutsideProject { path } => LinkedModuleTarget::OutsideProject { path },
-        ResolverOutcome::Unsupported { reason } => LinkedModuleTarget::Unsupported { reason },
-    };
-    Ok(resolved)
+        ResolverOutcome::Target(target) => Ok(target.into()),
+    }
 }
 
 // ---------------------------------------------------------------------------
