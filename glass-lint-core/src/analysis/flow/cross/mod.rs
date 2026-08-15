@@ -32,7 +32,7 @@ use crate::{
             effect::FunctionEffect,
             planning::{BoundFlowPlan, BoundLifecycleRoot},
         },
-        model::flow::{FlowId, FlowLimits},
+        model::flow::FlowId,
         project::state::LinkingSession,
         trace::TraceArena,
     },
@@ -260,7 +260,8 @@ pub(in crate::analysis) fn collect(
     }
 
     let call_graph = QualifiedCallGraph::build(project, session);
-    let operation_limit = FlowLimits::from_flow_operations(project.flow_limit()).operation_limit();
+    // Cross flow is bounded by the same operations budget as local flow.
+    let operation_limit = project.flow_limit();
     let mut source_budget = Budget::new(operation_limit);
     let (sources, source_completion) =
         FlowSources::collect(project, &flows, &call_graph, &mut source_budget);

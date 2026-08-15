@@ -188,7 +188,7 @@ candidate still seeds an `unknown` context so incomplete alternatives downgrade
 
 **Fix Applied:** `seed_from_calls` now computes the `present` flow set once per argument from the already-materialized candidate list and iterates `source_flows.difference(&present)` for the unknown-seed loop, dropping the per-flow candidate re-scan.
 
-#### [ ] READ-007 — `FlowLimits::from_flow_operations(x).operation_limit()` is an identity round-trip
+#### [x] READ-007 — `FlowLimits::from_flow_operations(x).operation_limit()` is an identity round-trip
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -210,7 +210,7 @@ bounded by the same operations budget as local flow", say so in a comment at
 the construction site. Guardrails: `operation_limit` must keep matching the
 value local flow charges against so a cross/local budget split cannot diverge.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `collect` now uses `project.flow_limit()` directly for `source_budget` and `step_budget` (with a comment noting cross is bounded by the same operations budget as local flow); deleted the `FlowLimits` import and the `from_flow_operations(...).operation_limit()` round-trip.
 
 #### [ ] READ-008 — `CallPropagation.module` always equals `context.module()`
 
