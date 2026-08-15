@@ -272,48 +272,6 @@ impl AnalysisLimits {
         assign(&mut self, limit);
         Ok(self)
     }
-
-    /// Test-only: set a field directly (caller must ensure positivity).
-    #[cfg(test)]
-    pub fn set_syntax_depth(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.syntax_depth = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_semantic_operations(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.semantic_operations = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_effect_operations(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.effect_operations = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_evidence_items(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.evidence_items = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_link_operations(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.link_operations = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_flow_operations(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.flow_operations = limit);
-    }
-
-    #[cfg(test)]
-    pub fn set_trace_nodes(&mut self, value: usize) {
-        self.set_limit(value, |this, limit| this.trace_nodes = limit);
-    }
-
-    #[cfg(test)]
-    fn set_limit(&mut self, value: usize, assign: impl FnOnce(&mut Self, PositiveLimit)) {
-        let limit = PositiveLimit::new(value).expect("test setter requires positive value");
-        assign(self, limit);
-    }
 }
 
 /// Manual deserializer that validates every field, rejecting zero.

@@ -175,7 +175,7 @@ fn proven_missing_export_is_diagnostic_but_complete() {
 
 fn assert_limit_triplet(
     configure: fn(AnalysisLimits) -> crate::Linter,
-    setter: fn(&mut AnalysisLimits, usize),
+    set_limits: impl Fn(AnalysisLimits, usize) -> AnalysisLimits,
     required: usize,
     code: &str,
     scope: Option<&str>,
@@ -187,8 +187,7 @@ fn assert_limit_triplet(
         (required, ReportCompletion::Complete),
         (required + 1, ReportCompletion::Complete),
     ] {
-        let mut limits = AnalysisLimits::default();
-        setter(&mut limits, limit);
+        let limits = set_limits(AnalysisLimits::default(), limit);
         let report = analyze(&configure(limits));
         assert_eq!(report.completion(), expected, "{code} limit={limit}");
         if expected == ReportCompletion::Partial {
@@ -210,7 +209,7 @@ fn assert_limit_triplet(
 
 fn assert_flow_limit_transition(
     configure: fn(AnalysisLimits) -> crate::Linter,
-    setter: fn(&mut AnalysisLimits, usize),
+    set_limits: impl Fn(AnalysisLimits, usize) -> AnalysisLimits,
     code: &str,
     analyze: impl Fn(&crate::Linter) -> AnalysisReport,
 ) {
@@ -220,8 +219,7 @@ fn assert_flow_limit_transition(
         (22, ReportCompletion::Complete, true),
         (23, ReportCompletion::Complete, true),
     ] {
-        let mut limits = AnalysisLimits::default();
-        setter(&mut limits, limit);
+        let limits = set_limits(AnalysisLimits::default(), limit);
         let report = analyze(&configure(limits));
         assert_eq!(report.completion(), expected, "{code} limit={limit}");
         assert_eq!(
@@ -246,7 +244,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_limit_triplet(
         configured_linter,
-        AnalysisLimits::set_semantic_operations,
+        |limits, limit| limits.with_semantic_operations(limit).unwrap(),
         22,
         "semantic_step_budget_exhausted",
         Some("main.js"),
@@ -257,7 +255,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         |linter: &crate::Linter| lint_one(linter, "main.js", "function f(value) { return value; }");
     assert_limit_triplet(
         configured_flow_linter,
-        AnalysisLimits::set_effect_operations,
+        |limits, limit| limits.with_effect_operations(limit).unwrap(),
         3,
         "effect_size_budget_exhausted",
         Some("main.js"),
@@ -278,7 +276,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_limit_triplet(
         configured_linter,
-        AnalysisLimits::set_link_operations,
+        |limits, limit| limits.with_link_operations(limit).unwrap(),
         2,
         "graph_link_budget_exhausted",
         None,
@@ -302,7 +300,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_flow_limit_transition(
         configured_flow_linter,
-        AnalysisLimits::set_flow_operations,
+        |limits, limit| limits.with_flow_operations(limit).unwrap(),
         "flow_link_budget_exhausted",
         flow,
     );

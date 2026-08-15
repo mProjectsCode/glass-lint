@@ -151,7 +151,7 @@ semantics (all-or-nothing on validation failure), asserted by
 
 ### [limits]
 
-#### [ ] READ-005 — Test-only `AnalysisLimits::set_*` mutation API contradicts the documented construction guarantee and panics instead of returning a typed error
+#### [x] READ-005 — Test-only `AnalysisLimits::set_*` mutation API contradicts the documented construction guarantee and panics instead of returning a typed error
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -179,7 +179,7 @@ construction path. Guardrail: production `with_*` behavior (rejecting zero with
 `AnalysisLimitError`) is unchanged; `Default::default()` and the serde
 deserializer must keep producing the same values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted all seven `#[cfg(test)] set_*` methods and `set_limit`. `assert_limit_triplet` and `assert_flow_limit_transition` in `status_policy.rs` now take `impl Fn(AnalysisLimits, usize) -> AnalysisLimits` closures built on the public `with_*` builders, keeping `Default` + named builders as the only construction path.
 
 ### [parse]
 
