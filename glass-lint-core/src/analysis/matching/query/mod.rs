@@ -165,12 +165,6 @@ impl OccurrenceIndexes {
             })
     }
 
-    // occurrences_for_clause, occurrences_for_subject, and
-    // occurrences_for_event were removed in Phase 7.
-    // The constrained evidence path now uses occurrences_for_indexed
-    // directly, and returned/instance subject lookups use
-    // occurrences_for_returned / occurrences_for_instance.
-
     fn build_event_view<'a>(&'a self, event: &'a EventSpec) -> EventIndexView<'a> {
         let env = &self.environment;
         match event {

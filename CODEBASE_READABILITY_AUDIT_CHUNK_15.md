@@ -199,7 +199,7 @@ index produced by `from_stream` when availability is disabled.
 
 **Fix Applied:** The `test_names` field and `test_name` helper were removed; `query::record` and the test-only `evidence_for` projection were deleted (the member-query test now parses real source and uses `from_stream` + `evidence_for_indexed_with_overlay`); name-keyed predicates `has_call`/`has_constructor`/`has_member_call` now take an explicit `NameTable`; `from_stream` moved into `build.rs` so `build_from_stream` is fully private while `normalize_occurrences` stays test-visible; distinct index families, their dedup policy, and the fail-closed empty index when availability is disabled are unchanged.
 
-#### [ ] READ-005 — Stale "Phase 7" comment references functions removed during refactoring
+#### [x] READ-005 — Stale "Phase 7" comment references functions removed during refactoring
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -223,7 +223,7 @@ three live functions. Guardrail: if the history matters, fold the routing
 summary into the module-level doc comment at `query/mod.rs` rather than
 preserving a phase label with no current meaning.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The obsolete "Phase 7" comment block was deleted; routing documentation remains on `occurrences_for_indexed`, `occurrences_for_returned`, and `occurrences_for_instance`.
 
 ### Matching / evidence accumulation
 
