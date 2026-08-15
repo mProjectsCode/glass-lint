@@ -34,6 +34,7 @@ pub(crate) enum IdentitySpec {
     PackageSpecifier {
         pattern: ModuleSpecifierPattern,
     },
+    PrivateNetworkAddress,
 }
 
 impl IdentitySpec {
@@ -45,11 +46,9 @@ impl IdentitySpec {
             Self::ModuleNamespace { module } => module.to_string(),
             Self::PackageModuleNamespace { module } => module.to_string(),
             Self::Rooted { path } => path.to_string(),
-            Self::LiteralString { predicate } if predicate == super::PRIVATE_NETWORK_LITERAL => {
-                super::PRIVATE_NETWORK_EVIDENCE_SYMBOL.to_owned()
-            }
             Self::LiteralString { predicate } => predicate.clone(),
             Self::PackageSpecifier { pattern } => pattern.to_string(),
+            Self::PrivateNetworkAddress => super::PRIVATE_NETWORK_EVIDENCE_SYMBOL.to_owned(),
         }
     }
 
@@ -64,6 +63,7 @@ impl IdentitySpec {
             Self::Rooted { .. } => "rooted",
             Self::LiteralString { .. } => "literal",
             Self::PackageSpecifier { .. } => "package_specifier",
+            Self::PrivateNetworkAddress => "private_network_address",
         }
     }
 }

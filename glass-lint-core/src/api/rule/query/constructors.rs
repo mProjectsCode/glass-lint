@@ -2,8 +2,8 @@
 
 use super::{
     ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec, IdentitySpec, ModuleSpecifierPattern,
-    PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl, ValueMatcher, checked_chain,
-    checked_module_export, checked_module_name, checked_name,
+    QueryBuildError, QueryDecl, ValueMatcher, checked_chain, checked_module_export,
+    checked_module_name, checked_name,
 };
 
 #[allow(clippy::cast_possible_truncation)]
@@ -193,9 +193,7 @@ impl EventQuery {
     pub fn string_private_network_address() -> Result<Self, QueryBuildError> {
         Ok(Self::from_parts(
             EventSpec::StringReference,
-            IdentitySpec::LiteralString {
-                predicate: PRIVATE_NETWORK_LITERAL.to_owned(),
-            },
+            IdentitySpec::PrivateNetworkAddress,
         ))
     }
 

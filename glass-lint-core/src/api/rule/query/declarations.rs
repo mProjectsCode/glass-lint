@@ -76,5 +76,4 @@ pub(crate) fn checked_chain(value: impl Into<String>) -> Result<MemberChain, Que
     MemberChain::parse(value)
 }
 
-pub(crate) const PRIVATE_NETWORK_LITERAL: &str = "__glass_lint_private_network_literal__";
 pub(crate) const PRIVATE_NETWORK_EVIDENCE_SYMBOL: &str = "private network address";

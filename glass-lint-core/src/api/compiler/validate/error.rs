@@ -263,6 +263,9 @@ pub(crate) fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSp
         ) | (
             IdentitySpec::LiteralString { .. } | IdentitySpec::PackageSpecifier { .. },
             EventSpec::Import | EventSpec::StringReference
+        ) | (
+            IdentitySpec::PrivateNetworkAddress,
+            EventSpec::StringReference
         )
     )
 }
@@ -393,6 +396,7 @@ pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
         IdentitySpec::Rooted { path } => path.is_empty(),
         IdentitySpec::LiteralString { predicate } => predicate.trim().is_empty(),
         IdentitySpec::PackageSpecifier { pattern } => pattern.as_str().trim().is_empty(),
+        IdentitySpec::PrivateNetworkAddress => false,
     }
 }
 

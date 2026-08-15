@@ -105,7 +105,7 @@ semantics and the behaviors asserted in `api/rule/tests.rs`.
 
 ### [api/rule/query/declarations.rs, constructors.rs, event.rs; analysis/matching]
 
-#### [ ] READ-003 — Private-network identity is erased into a magic-string sentinel that the matching and evidence layers re-detect by `==`
+#### [x] READ-003 — Private-network identity is erased into a magic-string sentinel that the matching and evidence layers re-detect by `==`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -143,7 +143,7 @@ the evidence symbol "private network address", and the `StringContains`
 evidence kind; an authored string equal to the old sentinel must no longer be
 reclassified.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `IdentitySpec::PrivateNetworkAddress` (and the parallel compiler `IdentityConstraint::PrivateNetworkAddress`), produced by `string_private_network_address`; `display_name` maps the variant to `PRIVATE_NETWORK_EVIDENCE_SYMBOL`, the matching layer selects `private_network_match` by variant, and `PRIVATE_NETWORK_LITERAL` was deleted. Validation and explanation layers gained the variant; evidence span logic still keys on the public evidence symbol. Added an integration regression proving an authored string equal to the old sentinel matches as plain literal text.
 
 ### [api/rule/query/value.rs, lifecycle/types.rs]
 

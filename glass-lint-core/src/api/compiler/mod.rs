@@ -97,6 +97,7 @@ pub(crate) enum IdentityConstraint {
     PackageSpecifier {
         pattern: ModuleSpecifierPattern,
     },
+    PrivateNetworkAddress,
 }
 
 impl IdentityConstraint {
@@ -112,6 +113,7 @@ impl IdentityConstraint {
             Self::Rooted { path } => path.is_empty(),
             Self::LiteralString { predicate } => predicate.is_empty(),
             Self::PackageSpecifier { pattern } => pattern.as_str().is_empty(),
+            Self::PrivateNetworkAddress => false,
         }
     }
 }
@@ -153,6 +155,7 @@ pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
         IdentitySpec::PackageSpecifier { pattern } => IdentityConstraint::PackageSpecifier {
             pattern: pattern.clone(),
         },
+        IdentitySpec::PrivateNetworkAddress => IdentityConstraint::PrivateNetworkAddress,
     }
 }
 

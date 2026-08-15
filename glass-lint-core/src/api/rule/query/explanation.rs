@@ -80,6 +80,7 @@ fn explain_identity(identity: &IdentitySpec) -> String {
         IdentitySpec::PackageSpecifier { pattern } => {
             format!("the package specifier `{pattern}`")
         }
+        IdentitySpec::PrivateNetworkAddress => "a private or special-use network address".into(),
     }
 }
 

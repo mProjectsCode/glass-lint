@@ -89,6 +89,7 @@ impl<'a> EventIndexView<'a> {
             IdentityConstraint::PackageSpecifier { pattern } => {
                 self.resolve_package_specifier(pattern)
             }
+            IdentityConstraint::PrivateNetworkAddress => self.resolve_private_network(),
         }
     }
 
@@ -268,11 +269,16 @@ impl<'a> EventIndexView<'a> {
                 .get(&SmolStr::new(predicate))
                 .map(OccurrenceSelection::indexed),
             EventIndexView::StringReference { literals } => {
-                if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
-                    literals.matching(|literal| private_network_match(literal).is_some())
-                } else {
-                    literals.matching(|literal| literal.contains(predicate))
-                }
+                literals.matching(|literal| literal.contains(predicate))
+            }
+            _ => None,
+        }
+    }
+
+    fn resolve_private_network(&self) -> Option<OccurrenceSelection<'a>> {
+        match self {
+            EventIndexView::StringReference { literals } => {
+                literals.matching(|literal| private_network_match(literal).is_some())
             }
             _ => None,
         }

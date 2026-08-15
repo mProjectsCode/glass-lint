@@ -90,6 +90,26 @@ fn string_query_findings_cover_only_the_matched_text() {
 }
 
 #[test]
+fn former_private_network_sentinel_is_plain_literal_text() {
+    let rule = rule("test.sentinel")
+        .query(EventQuery::string_contains(
+            "__glass_lint_private_network_literal__",
+        ))
+        .build()
+        .unwrap();
+    let report = support::lint_report(
+        r#"const endpoint = "http://192.168.1.2:8080";"#,
+        rule.clone(),
+    );
+    assert_eq!(report.files()[0].findings().len(), 0);
+    let report = support::lint_report(
+        r#"const value = "__glass_lint_private_network_literal__";"#,
+        rule,
+    );
+    assert_eq!(report.files()[0].findings().len(), 1);
+}
+
+#[test]
 fn string_query_aliases_keep_the_defining_literal_location() {
     let rule = rule("test.string-alias-location")
         .query(EventQuery::string_contains("localhost"))
