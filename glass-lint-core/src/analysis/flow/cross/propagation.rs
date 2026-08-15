@@ -12,8 +12,9 @@ use crate::{
                 state::{CallContext, CrossFlowState, EvidenceTransition},
             },
             effect::{EffectUse, FunctionEffect},
-            planning::{BoundFlowPlan, FlowMatchView},
+            planning::{BoundFlowPlan, FlowMatchView, PropertyRequirementMatch},
         },
+        model::flow::RequirementIndex,
         trace::QualifiedEvent,
     },
     api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
@@ -95,25 +96,19 @@ impl UsageProjector<'_, '_> {
                 let value = stream.property_write_value(event)?;
                 stream.values().static_string(value)
             });
-        let mut next = self.state.clone();
-        let readiness = self.flow.readiness();
-        let mut transition = next.requirement_transition(readiness);
-        for match_result in self.flow_plan.matching_property_requirements(
-            self.context.state().flow_id(),
-            property.map(SmolStr::as_str),
-            static_value,
-            value_is_precise,
-        ) {
-            if match_result.value_matches() {
-                transition = transition.merge(next.advance_requirement(
-                    match_result.index(),
-                    QualifiedEvent::new(self.context.module(), event),
-                    readiness,
-                ));
-            }
-        }
-        self.emit_requirements(&next, event, transition);
-        *self.state = next;
+        let matching = self
+            .flow_plan
+            .matching_property_requirements(
+                self.context.state().flow_id(),
+                property.map(SmolStr::as_str),
+                static_value,
+                value_is_precise,
+            )
+            .into_iter()
+            .filter(|match_result| match_result.value_matches())
+            .map(PropertyRequirementMatch::index)
+            .collect();
+        self.advance_requirements(event, matching);
     }
 
     fn apply_receiver(&mut self, event: FactId) {
@@ -132,15 +127,20 @@ impl UsageProjector<'_, '_> {
 
         let chain = shape.chain();
         let matcher = FlowMatchView::new(self.session.names, stream.values());
-        let mut next = self.state.clone();
-        let readiness = self.flow.readiness();
-        let mut transition = next.requirement_transition(readiness);
-        for index in self.flow_plan.matching_member_requirement_indices(
+        let matching = self.flow_plan.matching_member_requirement_indices(
             self.context.state().flow_id(),
             chain,
             call_args,
             &matcher,
-        ) {
+        );
+        self.advance_requirements(event, matching);
+    }
+
+    fn advance_requirements(&mut self, event: FactId, indices: Vec<RequirementIndex>) {
+        let mut next = self.state.clone();
+        let readiness = self.flow.readiness();
+        let mut transition = next.requirement_transition(readiness);
+        for index in indices {
             transition = transition.merge(next.advance_requirement(
                 index,
                 QualifiedEvent::new(self.context.module(), event),

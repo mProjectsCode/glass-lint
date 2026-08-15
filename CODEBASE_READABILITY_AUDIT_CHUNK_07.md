@@ -256,7 +256,7 @@ the owner.
 
 **Fix Applied:** `trace_heads` is now a private field on `ModuleEvidence` with `trace_heads()` and `record_trace_head(Option<TraceNodeId>)` (the `is_some` gate and `saturating_add` bound moved inside the owner). `emit` and `CrossWorklist::finish` use the methods.
 
-#### [ ] READ-010 — `apply_property` and `apply_receiver` share the same requirement-advance skeleton
+#### [x] READ-010 — `apply_property` and `apply_receiver` share the same requirement-advance skeleton
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -281,7 +281,7 @@ methods supply only their matching step. Guardrails: keep `emit_requirements`'s
 preserve the per-usage call-propagation ordering that `UsageProjector::project`
 already enforces.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `advance_requirements(event, Vec<RequirementIndex>)` as the shared advance/emit/commit phase; `apply_property` and `apply_receiver` now supply only their matching step. The `emit_requirements` `CompletionMode::Configuration` + `is_crossed` gating and the per-usage call-propagation ordering are unchanged.
 
 #### [ ] READ-011 — `ContextProjection` is a one-call-site borrow-packaging struct
 
