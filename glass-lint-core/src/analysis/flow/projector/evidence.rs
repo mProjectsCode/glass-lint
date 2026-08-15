@@ -69,14 +69,19 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
+        let Some(candidates) = self
+            .inputs
+            .plan
+            .sink_candidates_for_call(call)
+            .map(<[crate::analysis::flow::planning::BoundSink]>::to_vec)
+        else {
+            return;
+        };
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.object_for(argument.value) else {
                 continue;
             };
             let matches: SmallVec<[(FlowStateKey, FlowId, SmallVec<[_; 4]>); 8]> = {
-                let Some(candidates) = self.inputs.plan.sink_candidates_for_call(call) else {
-                    return;
-                };
                 self.flow_state
                     .states_for(object)
                     .filter_map(|(key, _)| {
@@ -93,13 +98,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     .collect()
             };
             for (key, flow_id, matching_sinks) in matches {
-                if !matching_sinks.is_empty() {
-                    for index in matching_sinks {
-                        self.flow_state
-                            .record_sink(key.object(), key.flow(), index, sink_fact);
-                    }
-                    self.emit_completed_sink(key.object(), flow_id, sink_fact);
+                for index in matching_sinks {
+                    self.flow_state
+                        .record_sink(key.object(), key.flow(), index, sink_fact);
                 }
+                self.emit_completed_sink(key.object(), flow_id, sink_fact);
             }
         }
     }

@@ -212,7 +212,7 @@ drain from the live frame). The frame stays on the stack through the fixed
 point; `pop_loop` no longer re-validates `body_start` (validated by the take)
 and still fails rather than panics on a wrong top frame. `loop_frame` is deleted.
 
-#### [ ] READ-005 — Redundant conditionals in the transfer/record paths
+#### [x] READ-005 — Redundant conditionals in the transfer/record paths
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -240,7 +240,11 @@ must still be invoked (rejection must keep being recorded), and the
 `StateAdmission`/`PathAdmission` variants used by joins and loops are
 unaffected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the `matches!` branch in `assign` (the call and
+`return` remain, so rejection is still recorded on the table). In `record_sinks`
+the single `sink_candidates_for_call` lookup is hoisted above the argument loop
+(owned copy so the loop can borrow `self` mutably) and the redundant emptiness
+check is removed.
 
 #### [ ] READ-007 — `finish_loop` clones the entrance paths and re-takes them from the frontier
 

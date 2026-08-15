@@ -1,4 +1,4 @@
-use super::*;
+use super::{tables::StateAdmission, *};
 use crate::{
     analysis::model::{
         fact::{ControlRegionId, FactId},

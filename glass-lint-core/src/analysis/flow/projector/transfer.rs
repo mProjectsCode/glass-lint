@@ -9,10 +9,7 @@ use smallvec::SmallVec;
 use crate::analysis::{
     flow::{
         effect::CallShape,
-        projector::{
-            CallArgInfo, FactId, FlowObjectId, FlowState, ObjectFlowProjector, ValueId,
-            state::StateAdmission,
-        },
+        projector::{CallArgInfo, FactId, FlowObjectId, FlowState, ObjectFlowProjector, ValueId},
     },
     model::flow::FlowId,
 };
@@ -30,12 +27,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     self.match_source(&shape, shape.effective_args(), fact_id)
             {
                 let aliases = self.value_aliases(target);
-                if matches!(
-                    self.flow_state.admit_object(&aliases, object, states),
-                    StateAdmission::Admitted
-                ) {
-                    return;
-                }
+                self.flow_state.admit_object(&aliases, object, states);
                 return;
             }
         }

@@ -21,7 +21,7 @@ mod tables;
 
 use tables::AliasTable;
 pub(super) use tables::{
-    FlowEnvironment, FlowSemanticSnapshot, FlowStateTable, PropertyWriteUpdate, StateAdmission,
+    FlowEnvironment, FlowSemanticSnapshot, FlowStateTable, PropertyWriteUpdate,
 };
 
 impl InverseDelta {
