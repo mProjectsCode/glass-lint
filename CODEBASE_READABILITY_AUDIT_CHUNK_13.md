@@ -155,7 +155,7 @@ is unchanged. The `archive_local` forwarder was deleted and the three call sites
 `ResolvedValue::local(id)` directly; `archive_unknown_with_reason` remains for cycle/unsupported
 reasons.
 
-#### [ ] READ-004 — Repeated evaluate + intern + archive sequence across three resolve entry points
+#### [x] READ-004 — Repeated evaluate + intern + archive sequence across three resolve entry points
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -176,6 +176,13 @@ ResolvedValue`, that performs evaluate + `intern_const_value(.., None)` + local 
 `resolve_template`, the Object/Bin arm of `resolve_expr`, and `resolve_binary` call it (with
 `resolve_expr`'s Bin arm delegating to `resolve_binary` or vice versa). Guardrail: preserve the
 evaluate/`Lookup` semantics exactly; do not change which expressions are admitted.
+
+**Fix Applied:** Added `Resolver::intern_evaluated(node: impl Into<EvalNode<'_>>) -> ResolvedValue`
+(pairing the existing `syntax_constant::evaluate` node form), which performs
+evaluate + `intern_const_value(.., None)` + `ResolvedValue::local`; `resolve_template`, the
+Object/Bin arm of `resolve_expr`, and `resolve_binary` now all call it. `EvalNode` is re-exported
+alongside the other `syntax::constant` evaluator types to name the helper parameter. Evaluate and
+admission semantics are unchanged.
 
 #### [ ] READ-005 — `MAX_CONST_DEPTH` duplicates the shared constant-tree depth limit
 

@@ -80,7 +80,16 @@ impl Resolver<'_> {
         &mut self,
         template: &swc_ecma_ast::Tpl,
     ) -> ResolvedValue {
-        let id = self.intern_const_value(syntax_constant::evaluate(template, self), None);
+        self.intern_evaluated(template)
+    }
+
+    /// Evaluate a node under the bounded constant evaluator, intern it with no
+    /// binding, and archive it as a plain local value.
+    fn intern_evaluated<'a>(
+        &mut self,
+        node: impl Into<syntax_constant::EvalNode<'a>>,
+    ) -> ResolvedValue {
+        let id = self.intern_const_value(syntax_constant::evaluate(node, self), None);
         ResolvedValue::local(id)
     }
 
@@ -269,10 +278,7 @@ impl Resolver<'_> {
                     .collect();
                 self.static_array(values)
             }
-            Expr::Object(_) | Expr::Bin(_) => {
-                let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
-                ResolvedValue::local(id)
-            }
+            Expr::Object(_) | Expr::Bin(_) => self.intern_evaluated(expr),
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::Await(await_expr) => self.resolve_expr(&await_expr.arg),
             Expr::TsAs(value) => self.resolve_expr(&value.expr),
@@ -288,9 +294,7 @@ impl Resolver<'_> {
         &mut self,
         binary: &swc_ecma_ast::BinExpr,
     ) -> ResolvedValue {
-        let value = syntax_constant::evaluate(binary, self);
-        let id = self.intern_const_value(value, None);
-        ResolvedValue::local(id)
+        self.intern_evaluated(binary)
     }
 
     fn resolve_seed<F>(
