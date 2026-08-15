@@ -6,7 +6,7 @@ use crate::api::{
     compiler::{
         normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot},
         object_flow::CompiledObjectFlow,
-        rule::{EvidenceDescriptor, lower_identity},
+        rule::{EvidenceDescriptor, IdentityConstraint},
     },
 };
 
@@ -72,13 +72,13 @@ fn plan_event(
         crate::api::compiler::validate::SubjectRelation::Direct { identity } => {
             if event.arguments().is_empty() {
                 Ok(PhysicalRoot::indexed_scan(
-                    lower_identity(identity),
+                    IdentityConstraint::from(identity),
                     event.event().clone(),
                     evidence,
                 ))
             } else {
                 Ok(PhysicalRoot::constrained_scan(
-                    lower_identity(identity),
+                    IdentityConstraint::from(identity),
                     event.event().clone(),
                     event.arguments().clone(),
                     evidence,
@@ -91,7 +91,7 @@ fn plan_event(
             member,
             event,
         } => PhysicalRoot::returned_subject(
-            lower_identity(producer),
+            IdentityConstraint::from(producer),
             object_slot,
             member.clone(),
             event.clone(),
@@ -102,7 +102,7 @@ fn plan_event(
             object_slot,
             member,
         } => PhysicalRoot::instance_subject(
-            lower_identity(constructor),
+            IdentityConstraint::from(constructor),
             object_slot,
             member.clone(),
             evidence,

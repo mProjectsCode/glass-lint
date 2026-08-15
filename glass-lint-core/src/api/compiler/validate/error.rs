@@ -381,7 +381,12 @@ pub(crate) fn classify_lifecycle_source<'a>(
     }
 }
 
-/// Check if an identity name or pattern is empty.
+/// Check if an identity name or pattern is empty after trimming whitespace.
+///
+/// This is the declaration-side emptiness policy; the compiler-IR counterpart
+/// [`crate::api::compiler::IdentityConstraint::is_empty`] applies the same
+/// trimmed policy, so the two cannot diverge. `Rooted` paths and
+/// `PrivateNetworkAddress` are never empty.
 pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
     match identity {
         IdentitySpec::Global { name } | IdentitySpec::Heuristic { name } => name.trim().is_empty(),

@@ -101,18 +101,24 @@ pub(crate) enum IdentityConstraint {
 }
 
 impl IdentityConstraint {
+    /// Whether the constraint's authored name or pattern is empty after
+    /// trimming whitespace, matching the declaration-side emptiness policy
+    /// in `validate::is_identity_empty`. `Rooted` paths and
+    /// `PrivateNetworkAddress` are never empty.
     pub(crate) fn is_empty(&self) -> bool {
         match self {
-            Self::Any { name, .. } | Self::Global { name, .. } => name.is_empty(),
-            Self::ModuleExport { module, export } => module.is_empty() || export.is_empty(),
-            Self::PackageModuleExport { module, export } => {
-                module.as_str().is_empty() || export.is_empty()
+            Self::Any { name } | Self::Global { name } => name.trim().is_empty(),
+            Self::ModuleExport { module, export } => {
+                module.trim().is_empty() || export.trim().is_empty()
             }
-            Self::ModuleNamespace { module } => module.is_empty(),
-            Self::PackageModuleNamespace { module } => module.as_str().is_empty(),
+            Self::PackageModuleExport { module, export } => {
+                module.as_str().trim().is_empty() || export.trim().is_empty()
+            }
+            Self::ModuleNamespace { module } => module.trim().is_empty(),
+            Self::PackageModuleNamespace { module } => module.as_str().trim().is_empty(),
             Self::Rooted { path } => path.is_empty(),
-            Self::LiteralString { predicate } => predicate.is_empty(),
-            Self::PackageSpecifier { pattern } => pattern.as_str().is_empty(),
+            Self::LiteralString { predicate } => predicate.trim().is_empty(),
+            Self::PackageSpecifier { pattern } => pattern.as_str().trim().is_empty(),
             Self::PrivateNetworkAddress => false,
         }
     }
@@ -126,36 +132,39 @@ pub(crate) struct EvidenceDescriptor {
 
 // ── Lowering: declaration types → compiler IR ────────────────────────────
 
-pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
-    match spec {
-        IdentitySpec::Global { name } => IdentityConstraint::Global { name: name.clone() },
-        IdentitySpec::Heuristic { name } => IdentityConstraint::Any { name: name.clone() },
-        IdentitySpec::ModuleExport { module, export } => IdentityConstraint::ModuleExport {
-            module: module.clone(),
-            export: export.clone(),
-        },
-        IdentitySpec::PackageModuleExport { module, export } => {
-            IdentityConstraint::PackageModuleExport {
+/// Lower a declaration [`IdentitySpec`] into its compiler-IR counterpart.
+///
+/// The `Heuristic` authoring vocabulary becomes the IR's `Any` vocabulary as
+/// an explicit lowering step; the two enums stay separate so authoring and IR
+/// vocabularies remain distinct.
+impl From<&IdentitySpec> for IdentityConstraint {
+    fn from(spec: &IdentitySpec) -> Self {
+        match spec {
+            IdentitySpec::Global { name } => Self::Global { name: name.clone() },
+            IdentitySpec::Heuristic { name } => Self::Any { name: name.clone() },
+            IdentitySpec::ModuleExport { module, export } => Self::ModuleExport {
                 module: module.clone(),
                 export: export.clone(),
-            }
-        }
-        IdentitySpec::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
-            module: module.clone(),
-        },
-        IdentitySpec::PackageModuleNamespace { module } => {
-            IdentityConstraint::PackageModuleNamespace {
+            },
+            IdentitySpec::PackageModuleExport { module, export } => Self::PackageModuleExport {
                 module: module.clone(),
-            }
+                export: export.clone(),
+            },
+            IdentitySpec::ModuleNamespace { module } => Self::ModuleNamespace {
+                module: module.clone(),
+            },
+            IdentitySpec::PackageModuleNamespace { module } => Self::PackageModuleNamespace {
+                module: module.clone(),
+            },
+            IdentitySpec::Rooted { path } => Self::Rooted { path: path.clone() },
+            IdentitySpec::LiteralString { predicate } => Self::LiteralString {
+                predicate: predicate.clone(),
+            },
+            IdentitySpec::PackageSpecifier { pattern } => Self::PackageSpecifier {
+                pattern: pattern.clone(),
+            },
+            IdentitySpec::PrivateNetworkAddress => Self::PrivateNetworkAddress,
         }
-        IdentitySpec::Rooted { path } => IdentityConstraint::Rooted { path: path.clone() },
-        IdentitySpec::LiteralString { predicate } => IdentityConstraint::LiteralString {
-            predicate: predicate.clone(),
-        },
-        IdentitySpec::PackageSpecifier { pattern } => IdentityConstraint::PackageSpecifier {
-            pattern: pattern.clone(),
-        },
-        IdentitySpec::PrivateNetworkAddress => IdentityConstraint::PrivateNetworkAddress,
     }
 }
 

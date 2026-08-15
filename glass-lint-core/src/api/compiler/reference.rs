@@ -20,7 +20,7 @@ use crate::api::{
         },
         object_flow::CompiledObjectFlow,
         physical::{PhysicalPlan, PhysicalRoot},
-        rule::{IdentityConstraint, lower_identity},
+        rule::IdentityConstraint,
     },
     rule::{
         ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
@@ -425,7 +425,7 @@ fn evaluate_scan(
     rows.iter()
         .filter(|row| {
             row.event_kind == *event
-                && lower_identity(&row.identity) == *identity
+                && IdentityConstraint::from(&row.identity) == *identity
                 && constraints
                     .is_none_or(|constraints| matches_arguments(constraints, &row.arguments))
         })

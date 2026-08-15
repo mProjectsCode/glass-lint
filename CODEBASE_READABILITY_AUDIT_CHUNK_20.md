@@ -131,7 +131,7 @@ the same change; keep the `#[cfg(test)] to_flat_vec` seam.
 
 ### [Compiler: identity model]
 
-#### [ ] READ-004 — Parallel identity model `IdentitySpec`/`IdentityConstraint` with duplicated, semantically-divergent emptiness checks
+#### [x] READ-004 — Parallel identity model `IdentitySpec`/`IdentityConstraint` with duplicated, semantically-divergent emptiness checks
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -162,7 +162,7 @@ authoring vocabulary and the IR vocabulary remain distinct; both types are
 `pub(crate)` with identical field types, so this is purely a boundary-of-record
 decision.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the free `lower_identity` function with `impl From<&IdentitySpec> for IdentityConstraint` (keeping the explicit `Heuristic`→`Any` rename) and migrated the planner, reference oracle, and `rule` re-export to it. Aligned `IdentityConstraint::is_empty` with the declaration-side `is_identity_empty` trimmed-whitespace policy and documented the shared policy on both checks, so they cannot diverge again.
 
 ### [Compiler: evidence descriptor]
 
