@@ -289,24 +289,19 @@ impl ScopePass for ScopeCollector<'_> {
     fn break_exit(&mut self) {
         if self.assignment.path.reachable {
             let checkpoint = self.checkpoint();
-            if let Some(frame) = self
-                .assignment
-                .path
-                .control_flow
-                .iter_mut()
-                .rev()
-                .find(|frame| {
-                    matches!(
-                        frame,
-                        ControlFlowFrame::Loop { .. } | ControlFlowFrame::Switch { .. }
-                    )
-                })
+            if let Some(breaks) =
+                self.assignment
+                    .path
+                    .control_flow
+                    .iter_mut()
+                    .rev()
+                    .find_map(|frame| match frame {
+                        ControlFlowFrame::Loop { breaks, .. }
+                        | ControlFlowFrame::Switch { breaks, .. } => Some(breaks),
+                        _ => None,
+                    })
             {
-                match frame {
-                    ControlFlowFrame::Loop { breaks, .. }
-                    | ControlFlowFrame::Switch { breaks, .. } => breaks.push(checkpoint),
-                    _ => unreachable!("breakable frame was checked above"),
-                }
+                breaks.push(checkpoint);
             }
         }
         self.assignment.path.reachable = false;

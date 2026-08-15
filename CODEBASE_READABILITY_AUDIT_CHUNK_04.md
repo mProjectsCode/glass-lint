@@ -340,7 +340,7 @@ names (`graph`, `issues`) stable for the destructure.
 
 ### Panic review
 
-#### [ ] READ-010 — Invariant `expect`/`unreachable!` panics on restore paths that already model failure
+#### [x] READ-010 — Invariant `expect`/`unreachable!` panics on restore paths that already model failure
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -371,7 +371,7 @@ delta log and live map must stay consistent under normal operation, and any
 change must keep the undo/redo LCA transition behavior (history.rs:7-10)
 byte-for-byte the same.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `apply_assignment_inverse` now signals the missing-scope case by returning `false` instead of panicking; `OwnedHistory::transition` accepts a `-> bool` closure, captures the flag, and returns a new `HistoryRestoreError::StateDesync` so a history/live-map desync degrades to the already-handled `InvalidCheckpoint` path (`apply_assignment_forward` and the write-delta apply functions return `true`). `break_exit` now uses `find_map` to bind the nearest `Loop`/`Switch` `breaks` slot directly, removing the `unreachable!` arm. The undo/redo LCA transition behavior in `ParentLinkedHistory` is byte-for-byte unchanged; added a focused `history/tests.rs` test asserting the missing-scope inverse fails closed instead of panicking.
 
 ## Systemic Themes
 

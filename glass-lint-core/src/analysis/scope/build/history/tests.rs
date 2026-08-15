@@ -1,7 +1,7 @@
 use glass_lint_datastructures::NameTable;
 
 use super::*;
-use crate::analysis::scope::BindingProvenance;
+use crate::analysis::scope::{BindingProvenance, ProvenanceAlternatives};
 
 #[test]
 fn assignment_checkpoints_still_restore_values() {
@@ -36,6 +36,21 @@ fn assignment_checkpoint_rejects_a_foreign_history() {
         second.restore(first.checkpoint()),
         Err(HistoryRestoreError::ForeignCheckpoint)
     );
+}
+
+#[test]
+fn assignment_inverse_with_missing_scope_fails_closed() {
+    let mut assignments = hashbrown::HashMap::new();
+    let mut names = NameTable::default();
+    let name = names.intern("value").unwrap();
+    let delta = AssignmentDelta {
+        scope: ScopeId::from_test(1),
+        name,
+        old: None,
+        new: ProvenanceAlternatives::unknown(),
+    };
+
+    assert!(!apply_assignment_inverse(&mut assignments, &delta));
 }
 
 #[test]

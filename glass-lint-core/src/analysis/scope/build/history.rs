@@ -35,6 +35,8 @@ impl HistoryOwner {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HistoryRestoreError {
     ForeignCheckpoint,
+    /// The delta log and the live state disagreed while applying a delta.
+    StateDesync,
 }
 
 /// A position in the assignment history.
@@ -77,10 +79,24 @@ impl<D> OwnedHistory<D> {
     fn transition(
         &mut self,
         target: HistoryCheckpoint,
-        apply: impl FnMut(HistoryTransition, &D),
+        mut apply: impl FnMut(HistoryTransition, &D) -> bool,
     ) -> Result<(), HistoryRestoreError> {
-        if target.owner != self.owner || !self.history.transition(target.position, apply) {
+        if target.owner != self.owner {
             return Err(HistoryRestoreError::ForeignCheckpoint);
+        }
+        let mut desync = false;
+        let reachable = self
+            .history
+            .transition(target.position, |direction, delta| {
+                if !apply(direction, delta) {
+                    desync = true;
+                }
+            });
+        if !reachable {
+            return Err(HistoryRestoreError::ForeignCheckpoint);
+        }
+        if desync {
+            return Err(HistoryRestoreError::StateDesync);
         }
         Ok(())
     }
@@ -176,34 +192,33 @@ impl AssignmentEnvironment {
 fn apply_assignment_inverse(
     assignments: &mut HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
     delta: &AssignmentDelta,
-) {
+) -> bool {
+    let Some(scope_map) = assignments.get_mut(&delta.scope) else {
+        return false;
+    };
     if let Some(old) = &delta.old {
-        assignments
-            .get_mut(&delta.scope)
-            .expect("assignment scope must exist while undoing")
-            .insert(delta.name, old.clone());
-    } else {
-        let empty = {
-            let scope_map = assignments
-                .get_mut(&delta.scope)
-                .expect("assignment scope must exist while undoing");
-            scope_map.remove(&delta.name);
-            scope_map.is_empty()
-        };
-        if empty {
-            assignments.remove(&delta.scope);
-        }
+        scope_map.insert(delta.name, old.clone());
+        return true;
     }
+    let empty = {
+        scope_map.remove(&delta.name);
+        scope_map.is_empty()
+    };
+    if empty {
+        assignments.remove(&delta.scope);
+    }
+    true
 }
 
 fn apply_assignment_forward(
     assignments: &mut HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
     delta: &AssignmentDelta,
-) {
+) -> bool {
     assignments
         .entry(delta.scope)
         .or_default()
         .insert(delta.name, delta.new.clone());
+    true
 }
 
 /// A checkpointed write set for one control-flow branch.
@@ -296,7 +311,7 @@ fn apply_write_inverse(
     entries: &mut HashMap<ScopedName, u64>,
     generation: &mut u64,
     delta: &WriteDelta,
-) {
+) -> bool {
     match delta {
         WriteDelta::Insert { key, old, .. } => {
             if let Some(old) = old {
@@ -307,19 +322,21 @@ fn apply_write_inverse(
         }
         WriteDelta::Generation { old, .. } => *generation = *old,
     }
+    true
 }
 
 fn apply_write_forward(
     entries: &mut HashMap<ScopedName, u64>,
     generation: &mut u64,
     delta: &WriteDelta,
-) {
+) -> bool {
     match delta {
         WriteDelta::Insert { key, new, .. } => {
             entries.insert(key.clone(), *new);
         }
         WriteDelta::Generation { new, .. } => *generation = *new,
     }
+    true
 }
 #[cfg(test)]
 mod tests;
