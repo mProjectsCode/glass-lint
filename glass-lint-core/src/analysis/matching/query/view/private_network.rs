@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
 
@@ -9,14 +9,20 @@ pub(in crate::analysis::matching) fn private_network_match(value: &str) -> Optio
         .or_else(|| contains_private_ipv6(value))
 }
 
+/// True when the byte is not a token character, so a candidate address is not
+/// glued to an adjacent token.
+fn is_boundary(byte: u8) -> bool {
+    !byte.is_ascii_alphanumeric() && byte != b'.'
+}
+
 fn contains_localhost(value: &str) -> Option<(usize, usize)> {
     let lowered = value.to_ascii_lowercase();
     let bytes = lowered.as_bytes();
     lowered.match_indices("localhost").find_map(|(index, _)| {
         let before = index.checked_sub(1).and_then(|i| bytes.get(i));
         let after = bytes.get(index + "localhost".len());
-        (before.is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'.')
-            && after.is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'.'))
+        (before.is_none_or(|byte| is_boundary(*byte))
+            && after.is_none_or(|byte| is_boundary(*byte)))
         .then_some((index, index + "localhost".len()))
     })
 }
@@ -36,19 +42,13 @@ fn contains_private_ipv4(value: &str) -> Option<(usize, usize)> {
             end += 1;
         }
         let candidate = &value[start..end];
-        let before_is_boundary = start == 0
-            || (!bytes[start - 1].is_ascii_alphanumeric()
-                && bytes[start - 1] != b'.'
-                && bytes[start - 1] != b'\\');
-        let boundary =
-            end == bytes.len() || (!bytes[end].is_ascii_alphanumeric() && bytes[end] != b'.');
+        let before_is_boundary =
+            start == 0 || (is_boundary(bytes[start - 1]) && bytes[start - 1] != b'\\');
+        let boundary = end == bytes.len() || is_boundary(bytes[end]);
         if candidate.matches('.').count() == 3
             && before_is_boundary
             && boundary
-            && IpAddr::from_str(candidate).is_ok_and(|ip| match ip {
-                IpAddr::V4(ip) => private_ipv4(ip),
-                IpAddr::V6(ip) => private_ipv6(ip),
-            })
+            && Ipv4Addr::from_str(candidate).is_ok_and(private_ipv4)
         {
             return Some((start, end));
         }

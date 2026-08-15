@@ -201,7 +201,7 @@ and the other model constants stay where they are.
 
 **Fix Applied:** Consolidated the marker on `crate::analysis::model::module::NAMESPACE_EXPORT`: `ModuleExportKey::wildcard` builds its key from it, `resolution/call.rs` uses it for the dynamic-import export, and `project/identities.rs` passes it to `target_to_export_resolution`. The `project/linker/export.rs` site already used the constant and was unchanged.
 
-#### [ ] READ-006 — Three private-network scanners each hand-roll a variant of the same token-boundary check, and the IPv4 parser match has a dead IPv6 arm
+#### [x] READ-006 — Three private-network scanners each hand-roll a variant of the same token-boundary check, and the IPv4 parser match has a dead IPv6 arm
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -233,7 +233,7 @@ merged; the `localhost` → IPv4 → IPv6 precedence in `private_network_match`
 (`private_network.rs:6-10`) and the regex non-match guarantees asserted in
 `query/view/tests.rs:3-15` must remain.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `contains_private_ipv4` now parses the dotted candidate directly as `Ipv4Addr` (removing the unreachable `IpAddr::V6` arm), and the alphanumeric/dot boundary predicate shared by `contains_localhost` (both sides) and the IPv4 after-check was extracted into a single `is_boundary(byte)` helper. The IPv4 before-check keeps its additional `\\` exclusion and the IPv6 tokenizer predicate is unchanged; `private_network_match` precedence and the regex non-match tests still pass.
 
 ## Systemic Themes
 
