@@ -20,7 +20,7 @@ empty). No lifecycle-collapsing or safety regressions were found.
 The main readability cost is an unusually large amount of mechanical
 duplication between parallel API surfaces:
 
-- `ScopeCollector` defines every control-flow/scope operation twice — once as
+- `ScopeCollector` defines most control-flow/scope operations twice — once as
   an inherent method and again as a `ScopePass` trait forwarder with the same
   signature (READ-001).
 - Declaration registration and binding-scope selection exist in near-identical
@@ -38,7 +38,7 @@ invariant panics on paths that already model failure with `Result`.
 
 ### Assignment and control-flow state
 
-#### [ ] READ-001 — `ScopePass for ScopeCollector` is a pure forwarding shim duplicating every inherent control-flow method
+#### [ ] READ-001 — `ScopePass for ScopeCollector` is a forwarding shim duplicating the inherent control-flow methods
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -46,26 +46,34 @@ invariant panics on paths that already model failure with `Result`.
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/scope/build/visitor.rs:32-118`
 
-`impl ScopePass for ScopeCollector` (visitor.rs:32-118) forwards 21 methods —
+`impl ScopePass for ScopeCollector` (visitor.rs:32-118) defines 21 methods —
 `push_scope`, `pop_scope`, `current_scope`, `enter_if`, `enter_else`,
 `exit_if`, `enter_loop`, `exit_loop`, `enter_switch`, `enter_switch_case`,
 `exit_switch_case`, `exit_switch`, `enter_try`, `enter_catch`, `exit_try`,
 `enter_function`, `exit_function`, `mark_unreachable`, `break_exit`,
-`continue_exit`, `is_budget_exhausted` — whose signatures are identical to the
-inherent methods in `control_flow.rs:6-291` and `collector.rs:50-54,
-176-207`. Each forwarder is `fn enter_if(&mut self) { self.enter_if(); }`,
-i.e. two definitions of the same operation with the same signature (the
-inherent method silently shadows the trait one). Any change to control-flow
-joining must now be written and maintained in two places, and the two sets can
+`continue_exit`, `is_budget_exhausted` — of which 19 are pure forwarding shims
+whose signatures are identical to the inherent methods in
+`assignments/control_flow.rs:6-291` and `collector.rs:50-54, 176-207`
+(each is `fn enter_if(&mut self) { self.enter_if(); }`, and the inherent method
+silently shadows the trait one). `pop_scope` is not a pure shim: it is an
+adapter that guards on `ScopeEntry::Entered` over a differently-typed inherent
+`pop_scope()` (collector.rs:200-207). `is_budget_exhausted` (visitor.rs:47) has
+no inherent counterpart at all — it reads `self.budget.exhausted()` directly and
+is not duplicated. Any change to control-flow joining must now be written and
+maintained in two places for the 19 duplicated methods, and the two sets can
 diverge silently. This is the single largest mechanical duplication in the
-chunk (~90 lines).
+chunk (~85 lines).
 
-**Recommendation:** Make the inherent definitions in `control_flow.rs` and
-`collector.rs` the trait implementation (move the bodies into
-`impl ScopePass for ScopeCollector`) and delete the forwarding block in
-visitor.rs, or keep the inherent set and implement the trait there. Update the
-few direct inherent calls in `tests.rs` / `tests_extended.rs` to go through
-the trait or `ScopeTraversal`. Guardrail: keep `ScopeEntry::Rejected`
+**Recommendation:** Make the inherent definitions the trait implementation —
+move the 19 duplicated bodies from `assignments/control_flow.rs` and
+`collector.rs` into `impl ScopePass for ScopeCollector` and delete the
+forwarding block in visitor.rs. Fold the inherent `pop_scope()` body
+(collector.rs:200-207) into the trait method behind the existing
+`ScopeEntry::Entered` guard, and leave `is_budget_exhausted` as-is (it is
+already direct). Update the direct inherent calls in `tests.rs` /
+`tests_extended.rs` (e.g. `collector.push_scope(...)`, `collector.pop_scope()`,
+`collector.current_scope()`) to go through the trait or `ScopeTraversal`.
+Guardrail: keep `ScopeEntry::Rejected`
 semantics, the `ScopeStackUnderflow` / `ShapeMismatch` issue recording, and
 the fail-closed `current_scope()` returning `None` after an issue; do not
 apply this consolidation to `ScopePlanner`, whose trait methods are genuine
@@ -83,21 +91,28 @@ adapters over differently-typed inherent methods (plan.rs:148-167).
 
 `ScopePlanner::insert` / `insert_local` / `insert_import` / `insert_pat_locals`
 (plan.rs:93-117) and `ScopeCollector::register_binding` / `register_local` /
-`register_pat_locals` / `update_binding` / `reset_pat_locals`
-(collector.rs:66-174) re-implement the same sequence — charge the semantic
-budget, intern (or look up) the name, set `name_exhausted` on failure, then
-`LexicalScopes::get_mut(scope).insert_binding(...)` — on the same underlying
-types. `binding_scope` is likewise duplicated (plan.rs:119-124 vs
-collector.rs:56-64) with subtly different behavior: the planner version does
-not guard on collected issues. The exhausted-flag convention is re-encoded in
-each function, so a change to budget/exhaustion handling must touch both
-passes.
+`register_pat_locals` (collector.rs:66-82, 162-168) re-implement the same
+sequence — charge the semantic budget, intern (or look up) the name, set
+`name_exhausted` on failure, then `LexicalScopes::get_mut(scope)
+.insert_binding(...)` — on the same underlying types. `update_binding`
+(collector.rs:84-99) is *not* part of that sequence: it does not charge the
+budget for the name, resolves with the non-interning `name_id`, and calls the
+scope's `update_binding`, so `reset_pat_locals` (collector.rs:170-174) stays
+with it. `binding_scope` still differs (plan.rs:119-124 vs collector.rs:56-64)
+only in that the collector variant guards on collected issues; the
+`VarDeclKind::Var` hoisting rule itself is already centralized in
+`var_binding_scope` (bindings.rs:73-84), which both passes call. The
+exhausted-flag convention is re-encoded in each function, so a change to
+budget/exhaustion handling must touch both passes.
 
-**Recommendation:** Extract one shared declaration-registration helper over the
-owning state (`&mut LexicalScopes`, `&mut NameTable`, `&mut bool
-name_exhausted`, `&SemanticBudget`) that both passes call, and centralize the
-`binding_scope` `VarDeclKind::Var` rule next to the existing
-`var_binding_scope` in `bindings.rs`. Guardrail: the collector variant must
+**Recommendation:** Extract one shared declaration-registration helper in
+`bindings.rs` — charge, intern-or-lookup, fail-close on exhaustion, then
+`insert_binding` — over the owning state (`&mut LexicalScopes`, `&mut
+NameTable`, `&mut bool name_exhausted`, `&SemanticBudget`), called by the
+planner's `insert` and the collector's `register_binding`. Keep
+`intern_provenance_strings`, `update_binding`, and `reset_pat_locals` in the
+collector, and leave the `binding_scope` methods as thin branches over the
+already-centralized `var_binding_scope`. Guardrail: the collector variant must
 keep interning provenance strings (`intern_provenance_strings`) and must
 return `None` when `artifacts.has_issues()` so invalid collection fails
 closed; the planner variant must not gain that guard.
@@ -123,9 +138,11 @@ callers of the former (classification.rs:151, 196) could call the latter
 directly with the policy argument.
 
 **Recommendation:** Delete `interned_name` and route visitor.rs:336 through
-`name_id`. Either inline `require_module_expr_name` into its two call sites
-with the explicit `ModuleRequestPolicy::alias()`, or give the module-request
-helper a single well-documented entry point. Guardrail: keep
+`name_id`. Delete the one-line wrapper `require_module_expr_name` (widening
+`module_request_name` to `pub(super)`) and call
+`module_request_name(expr, ModuleRequestPolicy::alias())` directly at its two
+call sites (classification.rs:151, 196), keeping the policy-parameterized
+`module_request_name` as the single entry point. Guardrail: keep
 `lookup_or_intern_name` (which interns) distinct from `name_id` (which does
 not) — that difference is real and load-bearing for budget accounting.
 
@@ -146,14 +163,24 @@ environment-write kind differs (`record_known` vs
 `record_alternatives`/`record_unknown`) and the constructor
 (`AliasAssignment::single` vs `::joined`, model/scope/provenance.rs:226-258).
 The join variant also re-implements the `has_complete_witness` decision that
-`record_alternatives`/`record_unknown` are already about. Both are called from
-the same join path (assignments.rs:279-281), so the shared tail is genuinely
-common, not coincidental.
+`record_alternatives`/`record_unknown` are already about. Note the two are not
+called from one shared site: `record_assignment_value` is the general
+single-write path (via `record_assignment`, assignments.rs:99), while
+`record_join_assignment` is reached only from the join loop (assignments.rs:280).
+The overlap is structural — both end in version-bump + environment write +
+push — not a duplicated call site.
 
-**Recommendation:** Extract a private tail such as
-`push_assignment(span, scope, name, version, alternatives)` that owns
-`next_assignment_version` + environment write + `assignments.push`, and have
-both callers pass the concrete `ProvenanceAlternatives` they already compute.
+**Recommendation:** Extract a private tail such as `push_assignment(span,
+scope, name, alternatives: ProvenanceAlternatives)` that owns
+`next_assignment_version` + the gated environment write + `assignments.push`,
+writing `record_alternatives` when the alternatives have a complete witness and
+`record_unknown` otherwise. Have `record_assignment_value` pass
+`ProvenanceAlternatives::single(provenance)` (semantically identical to its
+current `record_known` write) and `record_join_assignment` pass
+`value.alternatives()`. This requires a private `AliasAssignment` constructor
+over `ProvenanceAlternatives`, since the existing `single` / `joined` take
+`BindingProvenance` / `ProvenanceJoin` respectively and cannot build one
+variant from the other's input.
 Guardrail: keep the exact environment-write order — the join must write
 `record_unknown` (not empty) when no complete witness exists so unknown stays
 distinct from successful-empty, and the versions must remain strictly
@@ -207,7 +234,7 @@ must stay a silent no-op while `Exhausted` must set `name_exhausted`.
 and insert a `FunctionBinding` into `function_scopes`, then pop
 `inline_parameters` and `record_assignment` each installed parameter. The only
 difference is the parameter-compaction source
-(`Self::function_parameters(&function.function)` vs `Self::arrow_parameters`)
+(`Self::function_parameters(function)` vs `Self::arrow_parameters(arrow)`)
 (collector.rs:209-219). The same near-identical pair exists on the planner side
 (`after_function` / `after_arrow`, plan.rs:226-236), which both just loop
 `insert_pat_locals`. Future changes to callback-parameter handling must be
@@ -272,8 +299,11 @@ plain `if` through the `.then(...).flatten()` idiom: `current_scope`
 (classification.rs:205-211), obscuring the materially different
 unknown/returned outcomes.
 
-**Recommendation:** Pass `&*pattern` (or change `collect_assignment_aliases` to
-take `&AssignTargetPat`) and delete the clone. Rewrite both
+**Recommendation:** Delete the clone by changing `collect_assignment_aliases`
+to accept `&AssignTargetPat` and projecting the borrowed pattern — swc exposes
+no `&AssignTargetPat` → `&Pat` coercion (only a by-value `From<AssignTargetPat>
+for Pat`), so the borrowing must be threaded through the projection entry
+(`project_destructuring`), not done at the call site. Rewrite both
 `.then(...).flatten()` sites as explicit `if` expressions. Guardrail: preserve
 the exact gating — `current_scope` must return `None` (not an empty stack
 fallback) once issues exist, and the `ReturnedObject` candidate must skip the
@@ -297,13 +327,14 @@ hand-written `Debug` impl that exactly mirrors what
 `#[derive(Debug)]` would emit (every member — `String`, `SmolStr`,
 `BindingProvenance`, `NamePath` — already derives `Debug`).
 
-**Recommendation:** Narrow the `ScopedProgram` fields to
-`pub(in crate::analysis)` (or keep the struct private to `build` and expose
-accessors) so consumers use `graph`/`issues` through the owning module.
-Replace the manual `Debug` on `DeclarationClassification` with a derive.
-Guardrail: `ScopedProgram` is destructured at scope/mod.rs:59 and freeze.rs:54
-— keep those call sites working via the same visibility the struct uses, and
-keep the field names (`graph`, `issues`) stable for the destructure.
+**Recommendation:** Narrow the `ScopedProgram` fields from `pub(crate)` to
+`pub(in crate::analysis)` (matching the struct's own visibility) so
+`graph` / `issues` are only reachable inside `analysis`. Replace the manual
+`Debug` on `DeclarationClassification` with a derive.
+Guardrail: the struct is destructured at scope/mod.rs:59, constructed at
+freeze.rs:54, and read at build/tests.rs:248-249 — all within `crate::analysis`,
+so the narrowed visibility keeps every call site working, and keep the field
+names (`graph`, `issues`) stable for the destructure.
 
 **Fix Applied:** None so far.
 
@@ -320,17 +351,22 @@ keep the field names (`graph`, `issues`) stable for the destructure.
 `apply_assignment_inverse` panics with `expect("assignment scope must exist
 while undoing")` at history.rs:192 and 197 when the delta log and the live
 `HashMap` disagree, and `break_exit` uses `unreachable!("breakable frame was
-checked above")` at control_flow.rs:240. The surrounding design already models
-restore failure as `HistoryRestoreError` (history.rs:36-38) and converts it
-into an `InvalidCheckpoint` issue (assignments.rs:240-244); these panics are
-the only places where a desync aborts the process instead of producing an
-issue. AGENTS.md requires expected errors to be modeled, not panicked.
+checked above")` at assignments/control_flow.rs:240. The surrounding design
+already models restore failure as `HistoryRestoreError` (history.rs:35-38) and
+converts it into an `InvalidCheckpoint` issue (assignments.rs:240-244); these
+panics are the only places where a desync aborts the process instead of
+producing an issue. AGENTS.md requires expected errors to be modeled, not
+panicked.
 
-**Recommendation:** Either route the delta-application failures through the
-existing `HistoryRestoreError` channel (return `false` from the apply closure)
-so a history/live-map desync degrades to the already-handled
-`InvalidCheckpoint` path, or document these as deliberate internal invariants
-with an explicit comment. Guardrail: do not relax the invariant itself — the
+**Recommendation:** Either surface the delta-application failure through the
+existing `HistoryRestoreError` channel — have `apply_assignment_inverse` signal
+the missing-scope case via a flag captured by the `restore` closure (the
+`ParentLinkedHistory::transition` closure returns `()`, so it cannot `return
+false` directly) and convert that flag into a restore error in
+`OwnedHistory::transition`, so a history/live-map desync degrades to the
+already-handled `InvalidCheckpoint` path — or document these as deliberate
+internal invariants with an explicit comment. Guardrail: do not relax the
+invariant itself — the
 delta log and live map must stay consistent under normal operation, and any
 change must keep the undo/redo LCA transition behavior (history.rs:7-10)
 byte-for-byte the same.
@@ -342,7 +378,9 @@ byte-for-byte the same.
 - **Charge-then-intern-then-record-exhaustion** is the repeated unit across the
   chunk: `budget.try_charge()`, `names.intern/lookup`, `name_exhausted = true`
   on failure, then a `LexicalScopes` write. It appears in `plan.rs::insert`,
-  `collector.rs::register_binding`/`update_binding`, `visitor.rs`
+  `collector.rs::register_binding` (and `update_binding`'s provenance-string
+  interning — though `update_binding` itself resolves the name with the
+  non-interning `name_id`), `visitor.rs`
   (`record_pending_function_name`, `record_function_call`, `after_fn_decl`),
   and `plan.rs::visit_ident`/`visit_member_expr`/`visit_prop_name` — a
   candidate for one helper plus one search signal (`name_exhausted = true`).
@@ -357,24 +395,31 @@ byte-for-byte the same.
 
 ## Open Questions
 
-- **`OwnedHistory<D>` vs flow `MutationLog`:** `build/history.rs:53-87`
+- **`OwnedHistory<D>` vs flow `MutationLog`:** `build/history.rs:52-87`
   acknowledges it uses the same parent-linked-history approach as
   `flow/projector/history.rs:35-88`. The two add different guardrails (owner
   tagging + generic deltas vs internal budget bounds), so a shared helper is
   plausible but speculative; a consolidation would cross subsystem boundaries
-  and must preserve each invariant. Left open rather than reported.
+  and must preserve each invariant. Not resolvable from code alone; left open
+  rather than reported.
 - **`BindingFreezeInput`** (binding_index.rs:35-41) is constructed once
-  (freeze.rs:31) and consumed once (`BindingIndex::from_freeze_input`). It is a
-  genuine cross-module freeze bundle, but it may be more ceremony than a
-  signature with five arguments would be; whether it earns its own type is a
-  judgment call that depends on future freeze inputs.
-- **`FrozenScopeCollectionArtifacts`** (build/mod.rs:105-115) is produced by
-  `seal()` and immediately destructured by `freeze()`; it adds naming but no
-  invariant. Low-value cleanup only if the seal/destructure split is removed.
+  (freeze.rs:31-37) and consumed once (`BindingIndex::from_freeze_input`,
+  binding_index.rs:60). Resolved: keep the bundle. It is `pub(super)`, consumed
+  atomically by one constructor, and matches the freeze-bundle convention the
+  codebase already uses (`ScopePlan`, `FrozenScopeCollectionArtifacts`); a
+  five-argument signature would not remove real ceremony.
+- **`FrozenScopeCollectionArtifacts`** (build/mod.rs:105-109) is produced by
+  `seal()` and immediately destructured by `freeze()`. Resolved: keep it. The
+  seal/destructure split is the consuming-bundle pattern, and the nested
+  `FrozenPropertyArtifacts` is a real cross-module boundary value consumed by
+  `ScopeGraph::finish_collected_properties` (graph.rs:176-180); collapsing the
+  outer bundle would only push the destructure into `freeze()`.
 - **`collect_compact_binding_names` (callbacks.rs:268-281) vs
   `for_each_pat_binding` (bindings.rs:91-97) vs `project_destructuring`
-  (projection.rs:37-76):** three pattern walkers with different outputs; each
-  appears justified, but they should be kept distinct rather than merged.
+  (projection.rs:37-76):** Resolved: keep them distinct. They walk different
+  inputs (`CompactPat` vs `Pat`) for different outputs (deduplicated binding
+  names vs projected `(name, NamePath)` pairs), and `project_destructuring`
+  alone threads `append_segment` plus the `is_assignment` flag.
 
 ## Coverage
 

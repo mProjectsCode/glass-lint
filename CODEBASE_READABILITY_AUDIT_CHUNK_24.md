@@ -20,8 +20,9 @@ enum hierarchy is staged by phase). The strongest issues are API-surface debt �
 public accessors with no production callers (`SourceFile::from_relative`,
 `SourceFile::into_path`, `SourceFile::into_source`,
 `ResolutionRequest::range_owned`) — plus a public `SourceTable::insert` that
-duplicates `admit_all` with fabricated limit values and is exercised only by
-tests. Secondary issues are parallel enum vocabulary
+duplicates `admit_all` with fabricated limit values and is exercised only via
+`admit_all`'s internal staging and tests. Secondary issues are parallel enum
+vocabulary
 (`ResolverOutcome`/`LinkedModuleTarget`), a sort that re-implements the key's
 derived `Ord`, a garbled module doc comment, an overloaded `InvalidPath` error
 used for missing-source lookups, a `cfg(test)` fingerprint seam duplicating
@@ -56,10 +57,13 @@ range via `range().clone()` since `SourceRange: Clone`.
 **Recommendation:** Delete `SourceFile::from_relative`, `SourceFile::into_path`,
 `SourceFile::into_source`, and `ResolutionRequest::range_owned`; move
 `ResolutionRequestKey::range_owned` under `#[cfg(test)]` or delete it and let
-tests clone via `range().clone()`. Guardrail: keep `SourceFile::new`,
-`with_language`, `from_relative_with_language`, and the `path()`/`language()`/
-`source()` accessors, which have production callers (e.g.
-`glass-lint-project/src/boundary.rs:241`, `glass-lint-cli/src/lint.rs:107`).
+tests clone via `range().clone()` (callers at `artifacts/tests.rs:121` and
+`project/tests/mod.rs:93`). Guardrail: keep `with_language` and
+`from_relative_with_language` (production callers at
+`glass-lint-project/src/boundary.rs:241`, `glass-lint-cli/src/lint.rs:107`,
+`glass-lint-harness/src/adapters.rs:81, 116`) and the `path()`/`language()`/
+`source()` accessors; retain `SourceFile::new` only as the documented JS-default
+convenience for tests and doctests (see READ-003).
 
 **Fix Applied:** None so far.
 
@@ -81,14 +85,18 @@ enums and the mapping, and the two shapes invite drift in provider/phase code
 that matches on either.
 
 **Recommendation:** Keep the phase boundary (authored path before linking vs.
-assigned `ModuleId` after) — do not collapse the two lifecycles. Consolidate
-the mechanical vocabulary, for example by having `LinkedModuleTarget` reuse a
-single shared "target kind" that carries either the authored path or the linked
-id, or by documenting the passthrough contract on both enums and deriving the
-conversion so a new variant requires only one source of truth. Guardrail:
-`ResolverOutcome` is the public authored-input contract and must stay
-path-based; `LinkedModuleTarget` must stay id-based and internal
-(`pub(crate)`, `project/mod.rs:26`).
+assigned `ModuleId` after) — do not collapse the two lifecycles. Extract the
+five shared payload variants (`External`, `Builtin`, `Missing`,
+`OutsideProject`, `Unsupported`) into a single `ResolvedTargetKind` enum beside
+`ResolverOutcome` in `resolution.rs`, embed it in both `ResolverOutcome`
+(`Internal { path }` + passthrough target) and `LinkedModuleTarget`
+(`Internal { id }` + passthrough target), and reduce `resolve_record`
+(model.rs:206-224) to the `Internal` remap plus a `From` conversion, so a new
+target kind is declared in one place. Update every consumer in the same change
+(`glass-lint-project/src/resolver.rs`, `loader_phases.rs`, and core
+`analysis/project/linker/*`). Guardrail: `ResolverOutcome` is the public
+authored-input contract and must stay path-based; `LinkedModuleTarget` must stay
+id-based and internal (`pub(crate)`, `project/mod.rs:26`).
 
 **Fix Applied:** None so far.
 
@@ -119,7 +127,7 @@ constructor with a production caller.
 
 ### Project session (`project/session/mod.rs`, `project/tables.rs`)
 
-#### [ ] READ-004 — `SourceTable::insert` duplicates `admit_all` with fabricated limits and is used only by tests
+#### [ ] READ-004 — `SourceTable::insert` duplicates `admit_all` with fabricated limits and is exposed publicly
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -131,17 +139,21 @@ constructor with a production caller.
 checked byte-accounting of `admit_all` (tables.rs:39-85) but hardcodes
 `limit: usize::MAX` and fabricates `attempted: usize::MAX` in its overflow
 branch, so it never enforces a real limit and reports nonsense values if it ever
-fires. Its only callers are tests (`artifacts/tests.rs:43, 59, 92`); the
-production path is `admit_all` via `ProjectSession::accept_sources`
-(`session/mod.rs:225`). The byte-accounting invariant (admitted bytes
-tracked alongside the map) therefore lives in two places, one of which is not
-exercised with real limits.
+fires. Its only production role is `admit_all`'s staging loop (`staged.insert`
+at tables.rs:51), where the duplicate check can never fire (the staged table
+starts empty) and the overflow values are unreachable; its remaining direct
+callers are tests (`artifacts/tests.rs:43, 59, 92`). The byte-accounting
+invariant (admitted bytes tracked alongside the map) is duplicated between the
+public `insert` and `admit_all`'s own limit checks (tables.rs:64-82), so the
+`insert` half is never exercised against real limits.
 
-**Recommendation:** Rewrite the three tests to call
-`admit_all([source], usize::MAX, usize::MAX)` and delete `insert`, or gate it
-with `#[cfg(test)]`. Guardrail: preserve atomic admission and the
-duplicate-rejection behavior of `admit_all`; keep `source_bytes` accounting
-exactly as is so deterministic admission limits do not change.
+**Recommendation:** Make `insert` private — a staging helper used only by
+`admit_all` (or inline its two accounting lines into `admit_all`'s loop) — and
+rewrite the three tests to admit through `admit_all([source], usize::MAX,
+usize::MAX)`, leaving one public admission path that enforces real limits.
+Guardrail: preserve atomic admission and the duplicate-rejection behavior of
+`admit_all`; keep `source_bytes` accounting exactly as is so deterministic
+admission limits do not change.
 
 **Fix Applied:** None so far.
 
@@ -187,11 +199,14 @@ That variant elsewhere means "malformed project path" (`project/input.rs:37, 44,
 admitted immediately beforehand, so the surface is also misleading about what
 can actually fail.
 
-**Recommendation:** Either return a phase error (e.g. reuse
-`ProjectPhaseError::UnknownImporter`-style vocabulary) or restrict the missing
-lookup to a distinct outcome instead of reusing `InvalidPath`. Guardrail: the
-public `analyze_source`/`analyze_sources` signatures and `ProjectError`
-boundary must not change; `InvalidPath` must keep rejecting malformed paths.
+**Recommendation:** Report the missing lookup as the phase error
+`ProjectPhaseError::UnknownImporter(path)` — whose `Display` already reads
+"resolution importer is not a source" — instead of `InvalidPath`, changing the
+internal `analyze_source_at_path*` return types and their callers
+(`session/mod.rs:233, 236, 246, 278, 287`; `tests/cache_and_session.rs:190`) in
+the same change. Guardrail: the public `analyze_source`/`analyze_sources`
+signatures and the `ProjectError` boundary must not change; `InvalidPath` must
+keep rejecting malformed paths.
 
 **Fix Applied:** None so far.
 
@@ -213,11 +228,16 @@ session/mod.rs:417-425) and are used by `tests/cache_and_session.rs:316, 322`.
 Any change to production cache-key construction must be mirrored in the test
 body, and the struct layout changes between test and non-test builds.
 
-**Recommendation:** Remove the override branches from `SessionState` and inject
-the test override through the existing `SessionState::new` seam (or a small
-test-only wrapper) so production has one fingerprint path. Guardrail: do not
-change `ArtifactCacheKey` semantics, the parse-once invariant, or the 
-cache-hit/miss behavior observed by tests.
+**Recommendation:** Collapse the two `artifact_fingerprint` bodies
+(session/mod.rs:73-108) into one function used by all builds: the production
+`ArtifactCacheKey::new(source, environment, limits)` call becomes the fall-through,
+and the two `#[cfg(test)]` override branches (`ArtifactCacheKey::for_engine_version`,
+`for_test_inputs`) become early returns compiled only under `cfg(test)`. Production
+cache-key construction then exists exactly once instead of being mirrored by the
+test fast path. Keep the existing `cfg(test)` fields and setters
+(session/mod.rs:417-425) as the injection point. Guardrail: do not change
+`ArtifactCacheKey` semantics, the parse-once invariant, or the
+cache-hit/miss behavior observed by tests (`tests/cache_and_session.rs:316, 322`).
 
 **Fix Applied:** None so far.
 
@@ -257,7 +277,7 @@ check order so combine stays lossless and deterministic.
 - **Location:** `glass-lint-core/src/project/session/artifacts/tests.rs:8-14, 77-80, 98-100, 113-116, 117-122`; `glass-lint-core/src/project/tests/mod.rs:89-94`
 
 `artifacts/tests.rs` builds a `SemanticAnalyzer` with default environment and
-limits and calls `analyze_source` inline four times (lines 77-80, 98-100,
+limits and calls `analyze_source` inline three times (lines 77-80, 98-100,
 113-116) even though the module already defines a `lower` helper (lines 8-14)
 that does exactly that and returns the analyzed artifact. The "make a request
 unknown" rebuild — clone `importer()`, switch kind to `Require`, reuse
@@ -300,8 +320,10 @@ current visibility and error vocabulary.
 - **Public API surface runs ahead of real callers.** Several exported input
   types carry accessors and constructors that only tests (or nobody) call —
   `SourceFile::from_relative`/`into_path`/`into_source`,
-  `ResolutionRequest::range_owned`, `ResolutionRequestKey::range_owned`,
-  `SourceTable::insert`. The `project/mod.rs:17-25` re-export list is large and
+  `ResolutionRequest::range_owned`, `ResolutionRequestKey::range_owned`.
+  `SourceTable::insert` is public but serves only `admit_all`'s internal
+  staging (tables.rs:51) and test callers, with fabricated limit values that
+  can never fire. The `project/mod.rs:17-25` re-export list is large and
   should be reconciled against `glass-lint-project` and harness callers.
 - **Parallel vocabularies across the resolution/linking boundary.** The
   authored-outcome enum (`ResolverOutcome`) and the linked-target enum
@@ -320,16 +342,23 @@ current visibility and error vocabulary.
 
 ## Open Questions
 
-- Is the JS-default `SourceFile::new` constructor a deliberate public
-  convenience (kept for doctests and harness ergonomics) or leftover from a
-  single-source API? This decides whether READ-001/READ-003 should delete it
-  or keep it as documented surface. Uncertainty is low-risk either way because
-  production always passes an explicit language.
-- Whether `LinkedModuleTarget` should eventually be derived from a shared
-  "target kind" vocabulary with `ResolverOutcome` (READ-002) is a design choice
-  that crosses into the linker/identity code owned by other chunks; the
-  passthrough duplication is real, but the consolidation shape should be
-  decided with the linking owners.
+- Resolved: `SourceFile::new` is the JS-default entry point used by unit tests,
+  integration tests, and doctests only (`lint/linter.rs:228`,
+  `project/report/mod.rs:53-54`); `rg` finds no production caller in any crate,
+  and production always passes an explicit language via `with_language` or
+  `from_relative_with_language`. It is therefore a deliberate test/doctest
+  convenience, not leftover API: keep it as documented surface (per READ-003)
+  and let READ-001 delete only the truly dead `from_relative`/`into_path`/
+  `into_source`/`range_owned`.
+- Resolved: consolidating `LinkedModuleTarget` with `ResolverOutcome` over a
+  shared `ResolvedTargetKind` (README-002) is feasible in one coordinated
+  change: `ResolverOutcome` is consumed in `glass-lint-project`
+  (`resolver.rs`, `loader_phases.rs`) and `LinkedModuleTarget` is consumed only
+  within this crate (`analysis/project/model.rs`, `linker/*`, `identities.rs`).
+  The shared enum keeps the phase split intact — `ResolverOutcome` stays
+  path-based and `LinkedModuleTarget` stays id-based — so no contract decision
+  is deferred to the linking owners; the only requirement is updating every
+  consumer in the same change.
 
 ## Coverage
 
@@ -349,11 +378,13 @@ external contract and not audited except for `AnalysisReport::combine`'s use of
 `schema_version`/`tool_version`/`files`/`merge`/`finalize`.
 
 Representative call sites verified: `SourceFile::with_language`
-(`glass-lint-project/src/boundary.rs:241`, `glass-lint-cli/src/lint.rs:107`,
-`glass-lint-harness/src/adapters.rs:81, 116`); `ProjectSession::analyze_sources`/
+(`glass-lint-cli/src/lint.rs:107`, `glass-lint-harness/src/adapters.rs:81, 116`);
+`SourceFile::from_relative_with_language` (`glass-lint-project/src/boundary.rs:241`);
+`ProjectSession::analyze_sources`/
 `finish` (`glass-lint-project/src/loader.rs:355, 415`); `AuthoredRequests::len`
 (`glass-lint-project/src/loader.rs:289`); `ResolverOutcome` construction and
 consumption (`glass-lint-project/src/resolver.rs`, `analysis/project/model.rs:206`);
 `ResolutionRequestKey::new` production path
-(`analysis/model/module.rs:418-421`); `SourceTable::insert` test-only callers
-(`project/session/artifacts/tests.rs:43, 59, 92`).
+(`analysis/model/module.rs:418-421`); `SourceTable::insert` callers
+(`tables.rs:51` staging inside `admit_all`; test callers
+`project/session/artifacts/tests.rs:43, 59, 92`).

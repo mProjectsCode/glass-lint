@@ -90,7 +90,14 @@ the body, then restore the saved value. The two copies differ only in the node
 field names. This is subtle stateful-visitor logic; having it in two places
 makes it easy to fix one and forget the other when the flag semantics evolve.
 
-**Recommendation:** Extract a small private helper (e.g. `visit_under_parameter_pattern`) that runs a closure with the flag set and always restores it, and call it from both visitors. Guardrail: the "set false before body" then "restore outer value" ordering must be preserved so nested functions inside default parameter values keep the correct context.
+**Recommendation:** Extract one private helper that runs the params visit with
+the flag set and the body visit with it cleared, then restores the saved outer
+value (e.g. `fn visit_under_parameter_pattern(&mut self, visit_params:
+impl FnOnce(&mut Self), visit_body: impl FnOnce(&mut Self))`), and call it from
+both visitors. Guardrail: the ordering must stay exactly "set true — visit
+params — set false — visit body — restore", so nested functions inside default
+parameter values keep the correct context while destructuring assignments in
+the body are not misdetected as default parameters.
 
 **Fix Applied:** None so far.
 
@@ -144,7 +151,7 @@ semantics (all-or-nothing on validation failure), asserted by
 
 ### [limits]
 
-#### [ ] READ-005 — Test-only `AnalysisLimits::set_*` mutation API bypasses the documented positive invariant and panics
+#### [ ] READ-005 — Test-only `AnalysisLimits::set_*` mutation API contradicts the documented construction guarantee and panics instead of returning a typed error
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -155,12 +162,14 @@ semantics (all-or-nothing on validation failure), asserted by
 `AnalysisLimits` documents "Every field is guaranteed positive. The only way to
 obtain a value is through `Default` and the named builder methods, all of which
 reject zero." The seven `#[cfg(test)] set_*` methods (via `set_limit`, line
-313-316) break that guarantee in every test build: they write a field directly
-and `expect("test setter requires positive value")` (line 314) instead of
-returning `Result`, so a zero value produces a panic rather than the typed
-`AnalysisLimitError` every production path returns. The surface exists so the
-limit matrix in `status_policy.rs` can pass a `fn(AnalysisLimits, usize) ->
-AnalysisLimits` pointer, which the `Result`-returning `with_*` builders cannot
+313-316) contradict that documented construction surface in every test build:
+they write a field directly and `expect("test setter requires positive value")`
+(line 314) instead of returning `Result`, so a zero value produces a panic
+rather than the typed `AnalysisLimitError` every production path returns. The
+surface exists so the limit matrix in `status_policy.rs` can pass a
+`fn(&mut AnalysisLimits, usize)` setter pointer (the `setter` parameter of
+`assert_limit_triplet` at status_policy.rs:178 and `assert_flow_limit_transition`
+at :213), which the by-value `Result`-returning `with_*` builders cannot
 satisfy.
 
 **Recommendation:** Remove the seven public `set_*` methods and express the test
@@ -193,12 +202,12 @@ separately in `syntax_depth_diagnostic`. Inside `DepthScanner`, `observe`/
 make the bounded-depth path read as flag-driven rather than outcome-driven.
 
 **Recommendation:** Have `DepthScanner::observe`/`push_delimiter` and the
-guard's `check_before_parse`/`check_after_parse` return a plain bool (or
-`SyntaxDepthOutcome`) and delete `SyntaxDepthError`, keeping
-`SyntaxDepthOutcome::WithinLimit(maximum)` for the test helper
-(`parse.rs:257-259`, `syntax_depth_for_test`). Guardrail: the early-abort
-behavior on exceeding `max_depth` (before SWC recursion) and the pre/post-parse
-phase selection in `SyntaxDepthGuard::new` (parse.rs:345-352) must be preserved.
+guard's `check_before_parse`/`check_after_parse` return a plain bool and delete
+`SyntaxDepthError`, keeping `SyntaxDepthOutcome::WithinLimit(maximum)` for the
+test helper (`parse.rs:257-259`, `syntax_depth_for_test`). Guardrail: the
+early-abort behavior on exceeding `max_depth` (before SWC recursion) and the
+pre/post-parse phase selection in `SyntaxDepthGuard::new` (parse.rs:345-352)
+must be preserved.
 
 **Fix Applied:** None so far.
 
@@ -250,13 +259,20 @@ parens) exactly aligned with whatever bound is used.
 
 - `SourceLineIndex::new(&str)` vs `SourceLineIndex::from_text(SourceText)`
   (diagnostic.rs:122-133) are deliberately parallel constructors, and
-  `diagnostic/tests.rs:61-80` asserts they agree. Both are used in production
-  paths. Is the borrowed constructor worth keeping, or should the public
-  surface offer only the owned `from_text`?
+  `diagnostic/tests.rs:61-80` asserts they agree. Resolved: `new` has no
+  production callers — every production construction site uses `from_text`
+  (parse.rs:213, parse.rs:311, analysis/local.rs:106,
+  analysis/semantic/mod.rs:66), while `new` is exercised only by tests and the
+  doc example. Keeping the borrowed constructor is a low-cost test/doc
+  convenience, not a correctness concern; dropping it would leave `from_text`
+  as the sole public constructor.
 - `analyze_ecma_version` (ecma_version.rs:204-206) is an immediately-consumed
   wrapper over `analyze_ecma_version_with_limits` with `AnalysisLimits::default()`.
-  It adds convenience vocabulary for the standalone public API; whether that
-  wrapper earns its place is a judgment call left open.
+  Resolved: it is the re-exported public entry point (lib.rs:31), exercised by
+  the public-surface integration test (public_surface.rs:40) and the unit
+  tests; dropping it would push default-limits construction onto every
+  external caller. It earns its place as the convenience vocabulary for the
+  standalone public API.
 - `AnalysisLimits` (Clone, `Default` + per-field builders, manual serde) and
   `ProjectAdmissionLimits` (Copy, `new` + two `with_*` builders, no serde) are
   parallel validated-limit types in one module with different construction
@@ -264,9 +280,9 @@ parens) exactly aligned with whatever bound is used.
   consumers), but a shared shape was not pursued.
 - `SourceLineIndex` retains a full copy of the source text for char-counting
   and `source_slice`, which is re-cloned at multiple construction sites
-  (parse.rs:213, parse.rs:311, analysis/semantic/mod.rs:66). This is a cost
-  question (source is held in several copies during analysis), not a
-  correctness issue, and is left for the owner to weigh.
+  (parse.rs:213, parse.rs:311, analysis/local.rs:106, analysis/semantic/mod.rs:66).
+  This is a cost question (source is held in several copies during analysis),
+  not a correctness issue, and is left for the owner to weigh.
 
 ## Coverage
 

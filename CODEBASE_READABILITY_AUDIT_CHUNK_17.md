@@ -95,23 +95,30 @@ The sequence "look up the resolution for a request key, map `Internal` to a
 recursive `lookup_export(...).unwrap_or(Unknown)`, map other targets through a
 target→resolution conversion" appears in `ExportResolver::resolve_imported_identity`
 (resolver.rs:130-135) and `ProjectLinker::resolve_request_export`
-(export.rs:324-329); the namespace flavor (export name `"*"` /
-`NAMESPACE_EXPORT`) repeats it in `resolve_namespace_export` (export.rs:289-291)
-and `ProjectSemanticModel::resolve_namespace` (identities.rs:234-235). The two
+(export.rs:324-329); the namespace flavor repeats only the conversion — no
+recursion, any target including `Internal` maps to a `Qualified` `"*"`
+identity — in `resolve_namespace_export` (export.rs:289-291) and
+`ProjectSemanticModel::resolve_namespace` (identities.rs:234-235). The two
 conversion helpers already drifted: `resolve_request_export` applies
 `linked_target_to_export_resolution` and treats `None` separately, while
 `resolve_imported_identity` uses `target_to_export_resolution` (which folds the
 `None` case through the authored specifier). identities.rs:235 also uses the
 bare literal `"*"` where export.rs uses `NAMESPACE_EXPORT`.
 
-**Recommendation:** Add one `ExportResolver` method that owns the target match
-plus the internal recursive lookup (e.g. `resolve_named_request(module,
-request, exported) -> ExportResolution`) and route the four call sites through
-it; use `NAMESPACE_EXPORT` at identities.rs:235. Guardrails: keep
-`target_to_export_resolution` and `linked_target_to_export_resolution` as
-separate conversions (the authored-specifier fallback is a distinct
-contract), and preserve the fail-closed `Unknown` for unsupported/missing
-targets.
+**Recommendation:** Extract one `ExportResolver` helper that owns the shared
+target match plus the `Internal` recursive lookup (e.g.
+`resolve_request_target(module, request, exported) -> Option<ExportResolution>`,
+returning `None` when no resolution is recorded) and route
+`resolve_imported_identity` and `resolve_request_export` through it while each
+call site keeps its own `None` fallback (authored-specifier fold vs `Unknown`).
+Do not route the namespace sites through it: `resolve_namespace_export` and
+`resolve_namespace` deliberately resolve any target — including `Internal` —
+to a `Qualified` `"*"` identity without walking, so a recursive helper would
+change their behavior; just replace the bare literal `"*"` at identities.rs:235
+with `NAMESPACE_EXPORT`. Guardrails: keep `target_to_export_resolution` and
+`linked_target_to_export_resolution` as separate conversions (the
+authored-specifier fallback is a distinct contract), and preserve the
+fail-closed `Unknown` for unsupported/missing targets.
 
 **Fix Applied:** None so far.
 
@@ -138,8 +145,9 @@ linking and matching, not a "linking" session.
 real owner) directly, or rename it (e.g. `ExportLookupSession`) and hide the
 cache behind a narrow `cache_mut()` accessor so the vocabulary becomes real.
 Guardrails: keep one cache per pass — the linker pass and the projection pass
-must not share a cache — and keep the `ExportLookupCache` capacity bound
-intact.
+must not share a cache — keep the `ExportLookupCache` capacity bound intact,
+and update the `assert_send::<LinkingSession>()` check (model/tests.rs:14-16)
+to whichever type survives the change.
 
 **Fix Applied:** None so far.
 
@@ -161,13 +169,17 @@ is another Option-like: `Pending` exists only as the initial value and inside
 `&mut self` methods, then is re-installed as `Ready` (export.rs:61). Only
 `Rejected` vs `Ready` is ever observable after construction.
 
-**Recommendation:** Store `NormalizedModuleGraph` directly and replace
-`SccPartitionState` with `Option<SccPartition>` where `None` means the
-partition was rejected; this removes the `mem::replace`/restore dance and the
-dead `Option`. Guardrails: keep the `is_ready()` gate that skips
-`resolve_export_table`/`validate_imported_exports` on a rejected partition
-(fail-closed), and keep the budget-exhaustion diagnostics for the rejected
-case in `collect_graph_edges`.
+**Recommendation:** Store `NormalizedModuleGraph` directly — `collect_graph_edges`
+always sets it before the sole `finish` path, so the `Option` is dead — and
+replace `SccPartitionState` with `Option<SccPartition>` (`None` = not yet
+partitioned or rejected), turning the `Pending` placeholder in
+`resolve_export_table` into a standard `take()`/restore. The take/restore swap
+itself is inherent — the partition must move out of `self` to call the
+`&mut self` resolution methods — so it survives the change; what is removed is
+the bespoke three-state enum and the dead `Option`. Guardrails: keep the
+`is_ready()` gate that skips `resolve_export_table`/`validate_imported_exports`
+on a rejected partition (fail-closed), and keep the budget-exhaustion
+diagnostics for the rejected case in `collect_graph_edges`.
 
 **Fix Applied:** None so far.
 
@@ -190,9 +202,14 @@ caller `project_modules` repeats the availability decision when calling
 `outcome.record_effects` (:175-177) with the same `effects.is_available()`
 guard, so the availability check exists twice.
 
-**Recommendation:** Collapse the three flow/effects guards into a single
-combined guard in `project_facts`, and share one `effects.is_available()`
-decision with `project_modules` (or let `record_effects` own it once).
+**Recommendation:** Collapse the three flow/effects early returns in
+`project_facts` (projection.rs:275, :278, :281) into one combined guard:
+`effects` is `Some` exactly when `plan.flow_matchers` is non-empty
+(projection.rs:174), so the empty-list and `None` checks are the same
+condition, and the `is_available()` check can ride on the same guard. Leave
+`project_modules`'s `record_effects` guard alone — it is a separate
+outcome-recording decision (availability plus `completion().is_incomplete()`),
+so sharing one `is_available()` decision there would couple unrelated phases.
 Guardrails: keep the not-projectable short-circuit distinct — it must also
 skip constrained matching, not just flow — and keep the
 `effects.completion().is_incomplete()` record distinct from the
@@ -217,10 +234,11 @@ and getter duplicate a constant. Separately, `trace_limit` carries
 paths `project_for_classification` (projection.rs:52) and the `cfg(test)`
 `project` method (projection.rs:380), so the allowance is stale.
 
-**Recommendation:** Drop the `export_lookup_capacity` field and getter and call
-`MAX_EXPORT_LOOKUP_ENTRIES` at the two construction sites (or thread the value
-through `ResolvedLinkInput` if configurability is actually planned), and remove
-the obsolete `#[allow(dead_code)]`. Guardrails: keep `flow_limit`,
+**Recommendation:** Drop the `export_lookup_capacity` field and getter
+(model.rs:238, :258, :290, :439-441) and call `MAX_EXPORT_LOOKUP_ENTRIES`
+where the lookup session is built (projection.rs:121), mirroring `into_linker`
+(model.rs:196), which already passes the constant; remove the obsolete
+`#[allow(dead_code)]` on `trace_limit`. Guardrails: keep `flow_limit`,
 `effect_limit`, and `trace_limit` as stored configuration copies — they are
 read at multiple phases (`outcome.rs`, `flow/cross/mod.rs`, `projection.rs`)
 — and keep the test-only `single_with_limits` constructor in sync.
@@ -245,11 +263,14 @@ not a correctness issue, but the surface is inconsistent across three types
 that the codebase presents as one family (same placement in the chunk,
 identical shape, `ModuleId` + a module-local ID).
 
-**Recommendation:** Add `module()`/`request()` accessors to
-`QualifiedRequestId` for symmetry with its siblings (its `module` half is the
-natural lookup key for `resolution_for` at model.rs:320-325 and
-`request_target` at resolver.rs:42-51), or document the key-only contract on
-the type. Guardrails: keep the fields private and the accessors read-only; do
+**Recommendation:** Document the key-only contract on `QualifiedRequestId`:
+its fields are never decomposed anywhere, and it exists as a public map-key
+token for the resolutions table (lookups pass the whole key to `resolution_for`
+at model.rs:320-325, and `request_target` at resolver.rs:42-51 builds the key
+from separate `module`/`request` values). Adding `module()`/`request()`
+accessors purely for family symmetry would create unused public API, which the
+workspace conventions discourage; if symmetry is still wanted, add read-only
+accessors without touching the fields. Guardrails: keep the fields private; do
 not expose `ModuleRequestId` beyond `pub(in crate::analysis)`.
 
 **Fix Applied:** None so far.
@@ -270,19 +291,24 @@ identities.rs:192-206), which marks differing star-sourced identities
 `Ambiguous` and lets direct exports win (`add_direct`/`finish_into`,
 identity_map.rs:62-73). The single-export resolver `walk_star_exports`
 re-encodes the same rule inline (resolver.rs:235-247): a second differing
-`candidate` returns `Ambiguous`, matching values are kept. Both encode the
-identical "multiple star paths disagree ⇒ Ambiguous; direct/named wins"
-contract, in different modules and data shapes, so a change to the policy
-must be applied in two places.
+`candidate` returns `Ambiguous`, matching values are kept. Both share the
+"multiple star paths disagree ⇒ Ambiguous; direct/named wins" core, in
+different modules and data shapes, but they handle unresolved paths
+differently — the overlay leaves absent entries unset (or inserts `Unknown`),
+while the resolver folds any unresolved star path into an unknown result — so
+a change to the disagreement policy must still be applied in two places.
 
-**Recommendation:** Extract the disagreement rule as one shared helper (a
-compare-and-mark-ambiguous merge) or a single documented constant-policy
-comment referenced by both paths, with one owner (e.g.
-`matching::ModuleIdentityContributions`). Guardrails: do not merge the two
-traversals themselves — they produce different outputs (an overlay map vs a
-single `ExportResolution` with `None`-means-unknown semantics) in different
-phases — and preserve the direct-wins-over-star precedence and the cycle
-bounds.
+**Recommendation:** Make the disagreement policy a single source of truth:
+either a documented constant-policy comment referenced by both paths, or — if
+shared code is wanted — extract only the compare-and-mark-ambiguous core as
+one small helper that merges a new definite value into an existing candidate
+and returns `Ambiguous` on disagreement, owned in one place (e.g. `matching`).
+Guardrails: do not merge the two traversals — they produce different outputs
+(an overlay map vs a single `ExportResolution` with `None`-means-unknown
+semantics) in different phases — preserve each path's distinct
+unresolved-handling (overlay: absent entries unset or `Unknown` inserted;
+resolver: unresolved star path ⇒ unknown result), and keep the
+direct-wins-over-star precedence and the cycle bounds.
 
 **Fix Applied:** None so far.
 
@@ -307,20 +333,32 @@ bounds.
 
 ## Open Questions
 
-- Whether the redundant memo re-check in `lookup_export_body`
-  (resolver.rs:189-191) is a deliberate defensive re-read kept in anticipation
-  of memoizing into `ExportTable` during future recursion — READ-002 assumes it
-  is not currently reachable.
-- Whether `LinkingSession::lookup_cache` being discarded at
-  `ProjectLinker::finish` is intended: after linking, the fully resolved
-  `ExportTable` makes the cache redundant, but the warm cache is still dropped
-  without being reusable by projection.
-- Whether `QualifiedRequestId` intentionally stays key-only (never decomposed)
-  — READ-008 only flags the surface inconsistency, not a functional gap.
-- Whether `SccPartitionState::Pending` needs to be observable at all, or only
-  `Ready`/`Rejected` — READ-005 assumes it does not.
-- Whether the `#`-suffixed literal `"*"` in identities.rs:235 (vs
-  `NAMESPACE_EXPORT`) is an oversight or a deliberate separate constant.
+- Resolved: the redundant memo re-check in `lookup_export_body`
+  (resolver.rs:189-191) is dead. Nothing in `walk_star_exports` writes to
+  `self.exports` — recursion only reads the export table and writes the
+  separate `ExportLookupCache` (`self.cache.insert`, resolver.rs:193) — so no
+  current path can make the post-walk check hit. READ-002's assumption holds;
+  keep the guardrail note in case memoization into `ExportTable` is ever added.
+- Resolved: dropping `LinkingSession::lookup_cache` at `ProjectLinker::finish`
+  is intentional per-phase isolation — each pass constructs its own cache and
+  `ProjectSemanticModel` owns no lookup-cache state (READ-004's one-cache-per-
+  pass rule). The stated rationale is only half right, though: the fully
+  resolved `ExportTable` covers direct/named exports only, while star-exported
+  names are still walked per lookup, so a warm cache would be reusable by
+  projection. The drop is deliberate; the "redundant" premise is not.
+- Resolved: `QualifiedRequestId` is intentionally key-only. Its fields are
+  never decomposed anywhere; every use passes the whole value as a map key
+  (`resolution_for`, `request_target`, `finish`), and the type is `pub` purely
+  as a public key token. READ-008's flag is surface-only, as stated.
+- Resolved: `SccPartitionState::Pending` is never observable as a meaningful
+  state. It is only the initial value and the `mem::replace`/`take` placeholder
+  during `resolve_export_table`; after `collect_graph_edges` the field is
+  `Ready` or `Rejected`, and `is_ready()` matches only `Ready`. READ-005's
+  assumption holds; `Option<SccPartition>` covers both the transient holder and
+  the rejected case.
+- Resolved: the bare literal `"*"` at identities.rs:235 is an oversight, not a
+  separate constant — `NAMESPACE_EXPORT` (model/module.rs:14) is defined as
+  exactly `"*"`. Replace the literal with the constant.
 
 ## Coverage
 

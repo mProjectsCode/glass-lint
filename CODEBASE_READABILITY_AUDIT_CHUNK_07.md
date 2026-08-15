@@ -48,8 +48,9 @@ this one site. The local projector builds the *same* plan shape per module over
 all roots with `BoundFlowPlan::new(rules, names)` (`projector/mod.rs:129`), so
 for a module reached by `F` flows the cross pass constructs the plan-binding
 indexes (`BoundTargetIndex` for sources/sinks, requirement member paths)
-`F` times and one extra time redundantly versus the local pass. Every cross
-query already filters by the context's `flow_id` (`matching_property_requirements`,
+`F` times instead of once, replicating what the local pass already builds
+once per module. Every cross query already filters by the context's `flow_id`
+(`matching_property_requirements`,
 `matching_member_requirement_indices` in `planning.rs`, and the
 `sink.flow_id() == self.context.state().flow_id()` filter in
 `propagation.rs:173`), so a single all-flows plan per module yields identical
@@ -72,7 +73,7 @@ cross sink selection so all-flow plans do not change certainty or evidence.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/flow/cross/sources.rs:166-168,183-185`, `glass-lint-core/src/analysis/flow/cross/worklist.rs:225-227`, `glass-lint-core/src/analysis/flow/cross/state.rs:319`
+- **Location:** `glass-lint-core/src/analysis/flow/cross/sources.rs:165-167,182-184`, `glass-lint-core/src/analysis/flow/cross/worklist.rs:224-226`, `glass-lint-core/src/analysis/flow/cross/state.rs:319`
 
 Four sites repeat the same lookup-and-fallback sequence:
 `effect.value_root(v).unwrap_or_else(|| v)` (sources.rs twice,
@@ -107,10 +108,11 @@ methods all discard `push`'s return); only `cross/tests.rs` asserts against
 lock-step with the first.
 
 **Recommendation:** Delete `ContextAdmission`; have `ContextWorklist::push`
-return `BoundedFifo`'s `FifoAdmission` directly (or return `()` and assert the
-bound separately in tests). Guardrails: keep the `Duplicate` vs `Full`
-distinction available to tests, since the doc comment explicitly distinguishes
-deduplication from a rejected new context at the retained bound.
+return `BoundedFifo`'s `FifoAdmission` directly. Guardrails: keep the
+`Duplicate` vs `Full` distinction — the `push` doc comment explicitly
+distinguishes deduplication from a rejected new context at the retained bound,
+and `cross/tests.rs` asserts on it; `FifoAdmission` already provides both
+variants. Production callers discard the result, so no other call site changes.
 
 **Fix Applied:** None so far.
 
@@ -129,13 +131,12 @@ destructured at the top of `emit` (`evidence.rs:204-208`). It forwards exactly
 the wrapped fields with no added invariant or vocabulary, and exists only to
 shrink `emit`'s parameter list.
 
-**Recommendation:** Pass `&mut CrossProjectionSession` to `emit` (a child
-module can already name `super::CrossProjectionSession`) and read
+**Recommendation:** Pass `&mut CrossProjectionSession` to `emit` and read
 `session.project`/`session.evidence`/`session.arena`, deleting `EmissionContext`;
-alternatively, derive the context from the session with one method so the two
-call sites stop hand-building it. Guardrails: `emit` must not reach into the
-session's `call_graph`, `worklist`, or `names`; evidence emission stays a
-separate phase from worklist mutation.
+`propagation.rs` already names `super::CrossProjectionSession`, so no new
+visibility is needed. Guardrails: `emit` must not reach into the session's
+`call_graph`, `worklist`, or `names`; evidence emission stays a separate phase
+from worklist mutation.
 
 **Fix Applied:** None so far.
 
@@ -147,8 +148,8 @@ separate phase from worklist mutation.
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/flow/cross/evidence.rs:45-50,160-169,213-217`
 
-Both `mark_nonmatching` (`evidence.rs:162-167`) and `emit`
-(`evidence.rs:212-217`) hand-build the same key literal —
+Both `mark_nonmatching` (`evidence.rs:163-167`) and `emit`
+(`evidence.rs:213-217`) hand-build the same key literal —
 `kind: MatchKind::CallArgument`, `symbol: flow.evidence_symbol().as_str().to_owned()`,
 `fact: event` — and the test module does too (`evidence/tests.rs:48-52`). The
 invariant "every cross-flow evidence key is a `CallArgument` key of the flow's
@@ -174,9 +175,9 @@ same rule can share a symbol), but stop letting callers choose them freely.
 For every root call argument, `seed_from_calls` materializes
 `sources.candidates(&source_key)` into a `Vec` and then, inside the per-flow
 loop, calls `sources.candidates(&source_key).any(|item| item.flow_id() == flow)`
-again for every flow in `source_flows` (`worklist.rs:250-253`). This is
+again for every flow in `source_flows` (`worklist.rs:250-252`). This is
 O(calls × flows × candidates-per-key) repeated lookup over a collection that
-was just materialized two lines above.
+was just materialized above at `worklist.rs:228`.
 
 **Recommendation:** Compute the set of flows present at `source_key` once per
 argument (or add `FlowSources::candidate_flows(&key)`), then iterate
@@ -301,10 +302,11 @@ distinct invariant or vocabulary beyond "one context projection".
 **Recommendation:** Inline the two-phase sequence into `project_context`
 (keeping `project_usage` before `propagate_calls`), or — if the struct is
 retained as the work-item bundle — document the ownership rule it enforces
-(session is exclusive, state is clone-on-enter/commit-on-exit). Guardrails:
-preserve the ordering contract and the per-context `state.clone()` + commit,
-and the `through = None` propagation (versus the per-usage `Some(event)`
-variant in `UsageProjector`).
+(session is exclusive; state is cloned on entry and written back in place
+before call propagation reads it). Guardrails: preserve the ordering contract,
+the per-context `state.clone()` and its in-place write-back, and the
+`through = None` propagation (versus the per-usage `Some(event)` variant in
+`UsageProjector`).
 
 **Fix Applied:** None so far.
 
@@ -313,7 +315,8 @@ variant in `UsageProjector`).
 - **One borrow-packaging struct per pass:** `CrossProjectionSession`,
   `ContextProjection`, `UsageProjector`, `CallPropagation`, and
   `EmissionContext` each wrap `&mut` borrows of shared session state and are
-  created at a single call site. This is a consistent, documented pattern that
+  created at a single call site (two, for `CallPropagation`). This is a
+  consistent, documented pattern that
   manages the borrow checker, but it layers three levels of delegation between
   a worklist item and the actual projection/emission, and it is where most of
   READ-004/008/011 land. A deliberate pass to flatten one layer (pass the
@@ -338,17 +341,21 @@ variant in `UsageProjector`).
 
 - **`FlowCompletionReason` headroom:** `FlowCompletion` stores a `u16` bitmask
   and `mark` does `1 << reason as u8` (`flow/mod.rs:54`). The `repr(u8)` enum
-  currently has 15 variants (max index 14), so this is safe today, but the
-  16-bit ceiling is an implicit, unenforced constraint: adding a 16th variant
-  would shift past the mask width. A `u16::from(...)`/const-assert or a
-  compile-time count check would make the bound explicit. Not reported as a
-  finding because the constraint is currently satisfied.
-- **Cross/local budget relationship:** READ-007 shows the cross pass derives
-  `operation_limit` from the same flow budget as local flow, and
-  `CrossProjectionOutcome.operations` is summed into `ProjectionOutcome`
-  (`projection/outcome.rs:164`). Whether the two budgets should be one shared
-  `Budget` or two deliberately independent limits is a policy decision the
-  chunk documents only indirectly.
+  currently has 14 variants (max index 13), leaving indices 14–15 unassigned,
+  so the mask is safe today; a 17th variant (index 16) would shift past the
+  mask width. That 16-bit ceiling is an implicit, unenforced constraint. A
+  `u16::from(...)`/const-assert or a compile-time count check would make the
+  bound explicit. Not reported as a finding because the constraint is currently
+  satisfied.
+- **Cross/local budget relationship:** the cross pass creates two independent
+  `Budget`s (`source_budget`, `step_budget`) each sized to
+  `project.flow_limit()` (`mod.rs:271-276`), local flow charges a per-module
+  `operation_budget` of the same size (`projector/mod.rs:477`), and every
+  count is summed into the single `flow_operations` reported against
+  `project.flow_limit()` (`projection/outcome.rs:143,164`). Whether cross
+  should keep independent budgets or charge one shared limit is a policy
+  decision the chunk documents only indirectly; it cannot be resolved from the
+  code alone.
 
 ## Coverage
 

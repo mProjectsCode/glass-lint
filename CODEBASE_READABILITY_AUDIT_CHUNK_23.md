@@ -14,10 +14,10 @@ fail-closed completeness tracking.
 The concrete problems are concentrated in the *public API surface* and in small
 internal duplication. Several public symbols are exported but never consumed
 (`LinterConfig::selection()`, `RuleSelection::validate`, and a `selection`
-field that exists only to feed them); `ProjectReportAssembler` is exported yet
-uncallable from outside the crate because its parameters reference types behind
-private modules. `LintConfigError` merges two error domains and contains an
-unreachable, misleading error mapping. The report/batch internals repeat a few
+field that exists only to feed them); `ProjectReportAssembler` is declared `pub`
+yet never re-exported at the crate root (only `ProjectAnalysis` and its timings
+leave the crate). `LintConfigError` merges two error domains and contains two
+unreachable, misleading error mappings. The report/batch internals repeat a few
 small shapes (parallel evidence-group structs, identical worker-panic error
 construction, a duplicated fallback evidence step).
 
@@ -37,7 +37,7 @@ construction, a duplicated fallback evidence step).
 in the workspace; its only internal reference is `PreparedRuleSelection::selection()`
 (`selection.rs:273-275`), which reads the `selection` field
 (`selection.rs:269`) that `PreparedRuleSelection` otherwise drops in
-`into_parts()` (`selection.rs:277-280`). `RuleSelection::validate()`
+`into_parts()` (`selection.rs:277-279`). `RuleSelection::validate()`
 (`selection.rs:311-313`) is likewise public with no callers; `prepare()` and the
 `pub(crate)` `resolve()` are the used entry points. This is three symbols (one
 field + two methods) of exported API and stored state that nothing exercises,
@@ -54,7 +54,7 @@ the CLI already clones `PreparedRuleSelection` into its own `PreparedConfig`
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `ProjectReportAssembler` is exported publicly but uncallable outside the crate
+#### [ ] READ-002 — `ProjectReportAssembler` is declared `pub` but never exported from the crate
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -62,28 +62,31 @@ the CLI already clones `PreparedRuleSelection` into its own `PreparedConfig`
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/lint/report/mod.rs:135-186`, `glass-lint-core/src/lint/mod.rs:16`, `glass-lint-core/src/lib.rs:40-41`
 
-`ProjectReportAssembler` is re-exported from `lib.rs:40-41` and `lint/mod.rs:16`,
-but its constructor `link()` takes `ResolvedLinkInput` and returns via
+`ProjectReportAssembler` is declared `pub` and re-exported from
+`lint/mod.rs:16`, but `mod lint` is private (`lib.rs:22`) and the crate-root
+re-export (`lib.rs:38-43`) omits the type, so it is never part of the public
+API at all. Its constructor `link()` takes `ResolvedLinkInput` and returns via
 `ProjectSemanticModel` (`analysis/project/model.rs:132,233`) — types behind the
 private `mod analysis` (`lib.rs:15`) — and `assemble()` takes `&[RuleIndex]`
-(`api/classification.rs`), also behind the private `mod api` (`lib.rs:16`).
-External crates therefore cannot name the parameter types, and no external
-caller exists (the only caller is `ProjectSession::finish` at
-`glass-lint-core/src/project/session/mod.rs:438-448`). The chunk contract lists
-`ProjectReportAssembler` as a public type, but as exported it is unusable dead
-surface; only `ProjectAnalysis`/`ProjectAnalysisTimings` are consumed outside
-the crate (`glass-lint-project/src/loader.rs:415`).
+(`api/classification.rs:15`), also behind the private `mod api` (`lib.rs:16`),
+so external crates could not name these parameters even if the type were
+exported. The only caller is `ProjectSession::finish` at
+`glass-lint-core/src/project/session/mod.rs:438-448`; only
+`ProjectAnalysis`/`ProjectAnalysisTimings` are consumed outside the crate
+(`glass-lint-project/src/loader.rs:415`). The `pub` visibility is thus dead
+surface inside a crate-private module.
 
-**Recommendation:** Make `ProjectReportAssembler` `pub(crate)` (its `assemble`
-return type `ProjectAnalysis` stays public), so report-phase types live behind
-the owning module boundary. Guardrails: `ProjectSession::finish` must keep
-returning `ProjectAnalysis`; the link → assemble phase machine and its
+**Recommendation:** Make `ProjectReportAssembler` `pub(crate)` and narrow the
+`pub use` in `lint/mod.rs:16` to `pub(crate) use` accordingly (its `assemble`
+return type `ProjectAnalysis` stays public at the crate root), so report-phase
+types live behind the owning module boundary. Guardrails: `ProjectSession::finish`
+must keep returning `ProjectAnalysis`; the link → assemble phase machine and its
 `ProjectReportSession` state holder must not be collapsed, since they mark a
 real lifecycle transition.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — `LintConfigError` mixes catalog and selection error domains; the `InvalidRuleId` mapping arm is unreachable and misleading
+#### [ ] READ-003 — `LintConfigError` mixes catalog and selection error domains; two of the `Linter::new` mapping arms are unreachable and misleading
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -94,24 +97,29 @@ real lifecycle transition.
 `LintConfigError` (documented as "configuration failure when selecting rules",
 `selection.rs:387`) carries both selection-domain variants (`UnknownRule`,
 `InvalidSelector`, produced only at `selection.rs:69,75,201,206,373-379`) and
-catalog-domain variants (`DuplicateRule`, `InvalidRule`) that are produced only
-by the `ProviderCatalogError → LintConfigError` conversion in `Linter::new`
-(`linter.rs:163-165`). The fourth mapping arm,
-`ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id)`
-(`linter.rs:166`), is unreachable — `combine` (`catalog.rs:132-147`) can only
-yield `DuplicateRule`, while `InvalidRuleId` is produced only by
-`RuleCatalog::new` (`catalog.rs:105-107`) — and even if reached it would label a
-catalog/provider-naming failure as a selector failure. One error type thus
-collapses two distinct failure domains and one mapping silently mislabels a
-never-occurring case.
+catalog-domain variants (`DuplicateRule`, `InvalidRule`) mapped from the
+`ProviderCatalogError → LintConfigError` conversion in `Linter::new`
+(`linter.rs:161-167`). That conversion is largely dead: `combine`
+(`catalog.rs:132-147`) can only yield `DuplicateRule`, so both the
+`InvalidRule` arm (`linter.rs:162-164`) and the `InvalidRuleId` arm
+(`linter.rs:166`) are unreachable — `InvalidRule` is produced only by
+`RuleCatalog::new`'s `compile_records` (`catalog.rs:118`) and `InvalidRuleId`
+only by its provider-prefix check (`catalog.rs:105-107`), never by `combine`.
+The `InvalidRuleId` arm would also mislabel a catalog/provider-naming failure as
+a selector failure. One error type thus collapses two distinct failure domains
+and two mapping arms silently handle never-occurring cases.
 
-**Recommendation:** Have `Linter::new` return a composed or two-domain error, or
-remove the unreachable `InvalidRuleId` arm (and document why catalog errors are
-re-hosted). Guardrails: CLI surfaces the error through
-`anyhow::anyhow!(error)` (`glass-lint-cli/src/config.rs:389`) and tests match
-`LintConfigError::UnknownRule` (`lint/linter/tests.rs:97`); those display and
-match behavior must be preserved, and provider-boundary validation must stay out
-of core rule policy.
+**Recommendation:** Remove the two unreachable mapping arms in `Linter::new`
+(`InvalidRule` at `linter.rs:162-164`, `InvalidRuleId` at `linter.rs:166`),
+leaving only the `DuplicateRule` case, since `RuleCatalog::combine` can only
+yield `DuplicateRule`. Document why the surviving catalog error is re-hosted
+into `LintConfigError`: catalog composition runs during linter construction, so
+a single error type for the whole construction surface is intended. Do not
+introduce a composed/two-domain error type. Guardrails: CLI surfaces the error
+through `anyhow::anyhow!(error)` (`glass-lint-cli/src/config.rs:389`) and tests
+match `LintConfigError::UnknownRule` (`lint/linter/tests.rs:97`); those display
+and match behavior must be preserved, and provider-boundary validation must stay
+out of core rule policy.
 
 **Fix Applied:** None so far.
 
@@ -136,13 +144,15 @@ differs (fail_protocol replaces all results, synthesize fills only missing
 ones). A single named constructor would keep the failure vocabulary in one
 place and remove the risk of the four sites drifting.
 
-**Recommendation:** Add a small `worker_panic()` helper (or a constructor on the
-local execution error) and use it at all four sites; keep `fail_protocol` and
-`synthesize_missing` as separate methods because their overwrite semantics are
-genuinely different (a broken protocol invalidates received results, a closed
-channel does not). Guardrails: the distinct outcomes (all-failed vs only-missing
-failed) must remain distinct, and the input-order guarantee of `take_ready` must
-not change.
+**Recommendation:** Add a small batch-local `worker_panic()` helper that builds
+the `ProjectError::Execution(…WorkerPanic)` value, and use it at all three
+production sites and in `batch/tests.rs`; do not add a constructor to
+`LocalExecutionError`, which is a project-level type that must not know about
+the `ProjectError` wrapper. Keep `fail_protocol` and `synthesize_missing` as
+separate methods because their overwrite semantics are genuinely different (a
+broken protocol invalidates received results, a closed channel does not).
+Guardrails: the distinct outcomes (all-failed vs only-missing failed) must
+remain distinct, and the input-order guarantee of `take_ready` must not change.
 
 **Fix Applied:** None so far.
 
@@ -165,12 +175,15 @@ declared twice and the same data is copied once more. The two types are at
 different lifecycle stages (sorted leaf entries vs. merged finding ranges), but
 the parallel fields and the copy bridge add no new vocabulary.
 
-**Recommendation:** Collapse the two into one range+occurrences struct used by
-both stages, or make `into_groups` move `EvidenceRangeEntry` values into group
-occurrences so no field set is declared twice. Guardrails: the retained-range
-selection performed by `retained_indices` (`evidence.rs:323-348`) and the
-range-containment merge rule (`FindingGroup::add_entry`, `evidence.rs:49-52`)
-must keep their exact ordering and containment semantics.
+**Recommendation:** Collapse the two types into one `{ range, occurrences }`
+struct used by both lifecycle stages (sorted leaf entries and merged finding
+ranges). The occurrences must stay copied, not moved: `into_groups`
+(`evidence.rs:297-320`) scans overlapping retained ranges, so an entry can be
+contained in more than one retained range, and moving its occurrences out would
+corrupt later groups. Guardrails: the retained-range selection performed by
+`retained_indices` (`evidence.rs:323-348`) and the range-containment merge rule
+(`FindingGroup::add_entry`, `evidence.rs:49-52`) must keep their exact ordering
+and containment semantics.
 
 **Fix Applied:** None so far.
 
@@ -184,17 +197,22 @@ must keep their exact ordering and containment semantics.
 
 When no resolved traces remain, `FindingGroup::into_evidence` synthesizes a
 single-step trace with role `EvidenceRole::Occurrence` and message
-`"evidence occurrence"` (`evidence.rs:85-93`) — the exact step that
-`EvidenceTraces::fallback` already builds (`evidence.rs:171-180`, same role and
-message). The report layer re-implements a vocabulary the owning type already
-owns, so the fallback step's shape and message text now live in two places.
+`"evidence occurrence"` (`lint/report/evidence.rs:85-93`) — the exact step that
+`EvidenceTraces::fallback` already builds
+(`project/types/report/evidence.rs:171-180`, same role and message). The report
+layer re-implements a vocabulary the owning type already owns, so the fallback
+step's shape and message text now live in two places.
 
 **Recommendation:** Extract the single-step occurrence-trace construction to one
-owner (e.g., reuse `EvidenceTraces::fallback` when no truncation flag needs to
-be preserved, or a shared one-step `EvidenceTrace` constructor) and call it from
-`into_evidence`. Guardrails: the merged `truncated` flag must still be preserved
-when a fallback trace is added next to real traces, and trace dedup/order
-determinism (`BTreeSet` insert, `evidence.rs:60-83`) must be kept.
+owner on the owning type — e.g., a shared one-step constructor such as
+`EvidenceTrace::occurrence(location)` — and use it both in
+`EvidenceTraces::fallback` (`project/types/report/evidence.rs:171-180`) and in
+`into_evidence`. Do not reuse `EvidenceTraces::fallback` directly: it returns a
+complete (non-truncated) `EvidenceTraces`, while `into_evidence` must preserve
+the merged `truncated` flag when wrapping the fallback trace
+(`lint/report/evidence.rs:95`). Guardrails: the merged `truncated` flag must
+still be preserved when a fallback trace is added next to real traces, and trace
+dedup/order determinism (`BTreeSet` insert, `evidence.rs:60-83`) must be kept.
 
 **Fix Applied:** None so far.
 
@@ -215,12 +233,13 @@ query is only meaningful when a caller explicitly set `workers()` above the
 machine's parallelism. The duplicate system call is unnecessary work on every
 default batch.
 
-**Recommendation:** Resolve the clamp once — e.g., resolve the effective worker
-count inside `BatchOptions` (or accept the availability once and thread it into
-`lint_batch`) so `available_parallelism` is queried at most once per batch.
-Guardrails: the clamping rule (workers ≤ available, ≤ max_in_flight, ≥ 1) and
-the dedicated-per-batch Rayon pool semantics in `lint_batch`
-(`linter.rs:257-268`) must be preserved.
+**Recommendation:** Resolve the clamp once: query `available_parallelism` inside
+`BatchOptions` when the effective worker count is fixed (at construction), and
+have `lint_batch` drop its own query, clamping only against `max_in_flight` and
+a floor of 1. This keeps the availability value in one place and queries the
+system at most once per batch. Guardrails: the clamping rule (workers ≤
+available, ≤ max_in_flight, ≥ 1) and the dedicated-per-batch Rayon pool
+semantics in `lint_batch` (`linter.rs:257-268`) must be preserved.
 
 **Fix Applied:** None so far.
 
@@ -232,9 +251,9 @@ the dedicated-per-batch Rayon pool semantics in `lint_batch`
   this chunk should be audited so that "exported" implies "consumable and
   consumed" (READ-001, READ-002).
 - **Error-domain merging across the catalog/selection boundary.** `LintConfigError`
-  re-hosts catalog-composition failures, and one conversion arm mislabels an
-  unreachable case; the two providers of error variants should stay distinct or
-  the merge should be explicit and total (READ-003).
+  re-hosts catalog-composition failures, and two of the three conversion arms in
+  `Linter::new` map never-occurring cases; only `DuplicateRule` legitimately
+  crosses the boundary, and the dead arms should be removed (READ-003).
 - **Small shape repetition in internal report/batch state.** Parallel
   evidence-group structs, repeated worker-panic error construction, and a
   duplicated fallback step show the same root cause: internal helpers rebuild
@@ -242,16 +261,19 @@ the dedicated-per-batch Rayon pool semantics in `lint_batch`
 
 ## Open Questions
 
-- `ProjectReportAssembler` is exported publicly but unusable externally — was it
-  exported for a planned harness/profiling consumer? If so, that consumer should
-  be added or the export narrowed to `pub(crate)` (READ-002).
-- `RuleSelection::validate` (public) and `resolve` (`pub(crate)`) both evaluate
-  a selection; if `validate` was intended as the public dry-run API, the
-  `pub(crate)` `resolve` in `Linter::new` (`linter.rs:168`) may instead be the
-  one to remove (READ-001).
-- `LinterConfig::selection()` was possibly intended for future CLI/output
-  introspection; no current consumer exists, so its deletion is only safe if no
-  such consumer is planned.
+- Resolved: `ProjectReportAssembler` was not exported for a planned
+  harness/profiling consumer — no references exist in `glass-lint-harness`, and
+  the crate-root re-export (`lib.rs:38-43`) omits the type entirely. Narrowing
+  it (and the `lint/mod.rs:16` re-export) to `pub(crate)` is safe (READ-002).
+- Resolved: `resolve` is the live entry point, not `validate`. `Linter::new`
+  (`linter.rs:168`) needs the resolved indexes without cloning the catalog,
+  which `prepare` would do; `validate` has no callers anywhere. READ-001's
+  deletion of `validate` is the correct choice (READ-001).
+- `LinterConfig::selection()` has no current consumer, and the CLI already keeps
+  its own `PreparedConfig.selection` copy (`glass-lint-cli/src/config.rs:146`)
+  for introspection. Whether a consumer is *planned* is not answerable from the
+  code; if the maintainers intend one, it should be added in the same change
+  that deletes the accessor.
 
 ## Coverage
 

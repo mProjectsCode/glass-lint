@@ -88,13 +88,18 @@ primary API gets a compile error, and the same-named methods are an easy
 trap. All provider crates happen to use `catalog_builder`, so the collision is
 latent today, but the documented contract is wrong.
 
-**Recommendation:** Either change `RuleBuilder::query` to accept
-`impl IntoQueryDecl` (and keep `try_query` as the immediate-propagating
-variant), or fix the module doc to name `try_query`/`catalog_builder` and
-drop the "pass directly" claim. Guardrails: keep the deferred-vs-immediate
-error semantics and the behaviors asserted in `api/rule/tests.rs`; provider
-crates only use `catalog_builder`, so changing `RuleBuilder::query`'s
-signature is low-risk.
+**Recommendation:** Fix the docs to match the code. Reword the query module
+doc (query/mod.rs:7-11) to name the actual fallible-input entry points —
+`CatalogRuleBuilder::query` for declarative catalogs and
+`RuleBuilder::try_query` for immediate propagation — and correct the
+`RuleBuilder::try_query` doc comment (rule/mod.rs:156-161), which claims
+`RuleBuilder::query` "reports the first fallible-input error from build()".
+Do not change `RuleBuilder::query`'s signature: making it accept
+`impl IntoQueryDecl` would require adding deferred-error storage to
+`RuleBuilder`, duplicating `CatalogRuleBuilder`'s role (or, without storage,
+silently discarding errors), which moves the deferred-error problem instead of
+fixing the doc mismatch. Guardrails: keep the deferred-vs-immediate error
+semantics and the behaviors asserted in `api/rule/tests.rs`.
 
 **Fix Applied:** None so far.
 
@@ -125,11 +130,18 @@ also be misclassified.
 
 **Recommendation:** Add a dedicated `IdentitySpec::PrivateNetworkAddress`
 variant produced by `string_private_network_address`, keeping `LiteralString`
-for genuine substring predicates, and delete the marker comparisons in
-event.rs, view.rs, and evidence.rs (which then match on the variant).
-Guardrails: preserve fail-closed boundary-aware private-network matching
-(`literals.matching(private_network_match)`), the evidence symbol "private
-network address", and the `StringContains` evidence kind.
+for genuine substring predicates. `display_name` (event.rs) then maps the
+variant directly to `PRIVATE_NETWORK_EVIDENCE_SYMBOL` and the matching layer
+(view.rs) selects `private_network_match` by matching the variant, deleting
+both sentinel comparisons. The evidence span logic (evidence.rs) stays keyed
+on the public evidence symbol — the display layer receives only a symbol
+string, so it cannot "match on the variant" and needs no change as long as
+`display_name` still emits that symbol. Guardrails: preserve fail-closed
+boundary-aware private-network matching
+(`literals.matching(|literal| private_network_match(literal).is_some())`),
+the evidence symbol "private network address", and the `StringContains`
+evidence kind; an authored string equal to the old sentinel must no longer be
+reclassified.
 
 **Fix Applied:** None so far.
 
@@ -192,12 +204,19 @@ and wraps a plain `LifecycleQuery` in `Ok(...)` for
 `.condition(...)`. Rule authors must learn per-method which shape is
 accepted, and no-op `Ok` wrappers hide the real error flow.
 
-**Recommendation:** Standardize on the adapter pattern across the boundary:
-have `QueryDecl::lifecycle` (and `QueryDecl::any`/`all`) accept plain-or-
-`Result` inputs so callers never write `Ok(...)`, and align the
-plain-only builder methods on the same adapters. Guardrails: keep `Result`
-inputs working at the deferred catalog boundary, keep the sealed traits (no
-blanket impls on foreign types), and preserve `QueryBuildError` mapping.
+**Recommendation:** Add a plain-or-`Result` sealed adapter for `LifecycleQuery`
+(mirroring the existing `define_lifecycle_adapter!` family) so
+`QueryDecl::lifecycle` accepts a `LifecycleQuery` or
+`Result<LifecycleQuery, QueryBuildError>` and callers stop writing
+`Ok(lifecycle)` (query_declarations.rs:95, 117). Update the example to drop
+the no-op `Ok(...)` wrappers around already-validated sources
+(query_declarations.rs:74, 101 — `.source(event)` already works because
+`IntoLifecycleSource` accepts plain values). Leave the plain-only immediate
+builder methods (`RuleBuilder::query`, `LifecycleQueryBuilder::condition`) and
+the `Result`-item `QueryDecl::any`/`all` as-is: their deferred/immediate
+design is deliberate (see READ-002). Guardrails: keep `Result` inputs working
+at the deferred catalog boundary, keep the sealed traits (no blanket impls on
+foreign types), and preserve `QueryBuildError` mapping.
 
 **Fix Applied:** None so far.
 
@@ -213,20 +232,23 @@ blanket impls on foreign types), and preserve `QueryBuildError` mapping.
 
 On the public `EventQuery`, `constraints()` returns the raw `&[ArgumentConstraint]`
 storage slice, while the sibling accessors `var()`, `event()`, and `identity()`
-(lines 162-172) are `pub(crate)`. Every consumer is internal to the crate — the
-compiler (`api/compiler/normalize_all.rs:171`, `validate/pass1_3.rs:26`,
-`validate/pass4_10.rs:77`, `normalize.rs:471`) and tests; no provider crate,
-harness, or example reads it. The accessor's ordering/boundedness invariant
-(the vec is kept sorted by `ArgumentIndex` via `push_argument_constraint`) is
-not documented, so an external reader cannot rely on it. This widens the
-public surface against the AGENTS.md rule "Do not expose internal storage for
+(lines 162-172) are `pub(crate)`. Every production consumer is internal to the
+crate — the compiler (`api/compiler/normalize_all.rs:171`, `validate/pass1_3.rs:26`,
+`validate/pass4_10.rs:77`, `normalize.rs:471`) and crate-internal unit tests —
+and the only external reader is one integration test
+(`tests/integration/query/composition.rs:447`); no provider crate, harness, or
+example reads it. The accessor's ordering/boundedness invariant (the vec is
+kept sorted by `ArgumentIndex` via `push_argument_constraint`) is not
+documented, so an external reader cannot rely on it. This widens the public
+surface against the AGENTS.md rule "Do not expose internal storage for
 caller convenience."
 
 **Recommendation:** Make `constraints()` `pub(crate)` to match the sibling
-accessors, or if a provider need genuinely exists, expose a narrow derived
-operation instead of the raw slice. Guardrails: the compiler and tests keep
-full access; do not change the sorted ordering or the per-argument/predicate
-bounds.
+accessors, and give the one external reader (`tests/integration/query/
+composition.rs:447`, which asserts only a count) a narrow public derived
+operation such as `constraint_count()` instead of the raw slice. Guardrails:
+the compiler and crate-internal tests keep full access via the raw slice; do
+not change the sorted ordering or the per-argument/predicate bounds.
 
 **Fix Applied:** None so far.
 
@@ -313,9 +335,10 @@ hypothetical future.
 **Recommendation:** Collapse to `ModuleSpecifierPattern { package:
 PackageSpecifier }` (or a tuple struct) unless an exact-module variant is
 actively being added; if the variant is retained, document the planned
-extension point. Guardrails: keep the boundary-aware `matches` semantics
-(root or `/subpath`) and the `MatcherBuildError::InvalidModuleSpecifier`
-conversion used by `checked_package` (constructors.rs:354-357).
+extension point. Guardrails: keep the boundary-aware `matches` semantics (root or `/subpath`)
+and the `MatcherBuildError::InvalidModuleSpecifier` conversion inside
+`ModuleSpecifierPattern::package` (module.rs:20-28), which `checked_package`
+(constructors.rs:354-357) maps to `QueryBuildError::InvalidScopePackage`.
 
 **Fix Applied:** None so far.
 
@@ -349,17 +372,30 @@ conversion used by `checked_package` (constructors.rs:354-357).
 
 - **`RuleBuilder` / `LifecycleQueryBuilder` (immediate builders) have no
   production callers** — only unit tests exercise them, while all provider
-  crates and integration tests use `catalog_builder`. Is the immediate builder
-  an intentional public surface for non-catalog rule authors, or legacy that
-  should be removed (which would also shrink the READ-002/READ-007 surface)?
-- **`IdentitySpec`, `EventSpec`, and `EmissionDecl`'s fields stay
-  `pub(crate)` while the enclosing types are public.** Is this deliberate to
-  keep the compiler's view internal, or is external introspection of event
-  shape an intended future provider capability?
+  crates and integration tests use `catalog_builder`. `Rule` values ultimately
+  flow into `RuleCatalog` (`lint/catalog.rs`), so the immediate builders are
+  not dead API, but their intent is unclear: are they the deliberate public
+  surface for non-catalog rule authors (their doc comments present `try_query`
+  as the preferred non-catalog API), or legacy that should be removed (which
+  would also shrink the READ-002/READ-007 surface)? Not resolvable from code
+  alone.
+- **Resolved:** `IdentitySpec`, `EventSpec`, and `EmissionDecl`'s fields stay
+  `pub(crate)` while the compiler consumes the same types internally. This is
+  deliberate: `IdentitySpec` and `EventSpec` are themselves `pub(crate)` enums
+  (event.rs:7, 72) — not public enclosing types — and `EventQuery`'s `var()`,
+  `event()`, and `identity()` accessors are `pub(crate)` (mod.rs:162-172).
+  `EmissionDecl` is public but exposes only the report-relevant `kind()` and
+  `symbol()` accessors (mod.rs:365-371) while `primary_var` stays
+  `pub(crate)`. External introspection of event shape is therefore impossible
+  by construction today; the visibility split keeps the rule-authoring surface
+  small and the compiler's view internal.
 - **`PatternValue` (module.rs:13) and `EventRequirementKind` (query/mod.rs:386)
-  are single-variant enums.** The architecture text hints that exact-module
-  patterns may be added; until that lands, READ-009's recommendation applies
-  only if no variant is planned.
+  are single-variant enums.** `glass-lint-core/ARCHITECTURE.md:39-40`
+  explicitly keeps "exact module identities" distinct from "package-root
+  patterns", and `import_exact` (constructors.rs:153-154) models exact module
+  specifiers as `LiteralString` today — so a `PatternValue::ExactModule`
+  variant is plausibly planned and READ-009's collapse should wait for that
+  decision. Not resolvable from code alone.
 
 ## Coverage
 

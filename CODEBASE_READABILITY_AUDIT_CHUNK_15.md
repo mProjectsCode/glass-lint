@@ -53,9 +53,10 @@ project identities reach the evaluator must be mirrored in both types.
 `MatcherEvaluator::new` (or `EffectiveIdentityResolver`) accept a
 `MatcherProjectOverlay` and destructure once internally, or implement
 `From<MatcherProjectOverlay<'a>> for EffectiveIdentityResolver<'a>`; delete the
-now-redundant destructure at `arguments/mod.rs:350-353`. Guardrails: both
-structs are `Copy` borrow-only bundles with no owned state, so collapsing them
-merges no ownership domain; the resolver's documented precedence
+now-redundant destructure at `arguments/mod.rs:350-353`. Guardrails:
+`MatcherProjectOverlay` is `Copy`, and `EffectiveIdentityResolver` holds the
+same two borrow-only fields with no owned state, so collapsing them merges no
+ownership domain; the resolver's documented precedence
 (call-result identity, then module identity, then local value) in
 `EffectiveIdentityResolver::effective_identity`/`static_string`
 (`evaluator.rs:128-149`) must be preserved exactly, and `MatcherProjectOverlay`
@@ -113,16 +114,18 @@ to enable restoring state on the error path. `mark_fallback` and
 prior phase, no-op outside `Fallback`) rather than making the transitions
 explicit.
 
-**Recommendation:** Make the fallback path a separate, explicit flow: keep
-`PreparedConstrainedRoot` for indexed publication and hold the recorded
-fallback occurrences in a dedicated list (or `Option<Vec<Occurrence>>` that
-only exists during the fallback pass), so `publish_fallback` can move
-occurrences instead of cloning and error recovery does not require restoring a
-replaced phase. Guardrails: preserve the distinct outcomes — an indexed root
-that finds zero candidates is published with no evidence and is never rescanned
-(`mod.rs:382-409`), a root that cannot use an index is scanned only in the
-bounded linear pass (`mod.rs:414-443`), and a `RuleEvidenceError` from
-publication must leave the recorded occurrences recoverable (fail-closed).
+**Recommendation:** Drop the state-restore and the clone in `publish_fallback`:
+extract the occurrences by moving them out (`mem::replace(..., Published)`),
+publish them by value, and on error return without restoring the phase. A
+`RuleEvidenceError` aborts the whole constrained evaluation
+(`compute_constrained_inner`), after which the prepared root is dropped and
+never observed, so restoring the replaced phase is dead work — the clone exists
+only to support it. Guardrails: preserve the distinct outcomes — an indexed
+root that finds zero candidates is published with no evidence and is never
+rescanned (`mod.rs:382-409`), a root that cannot use an index is scanned only
+in the bounded linear pass (`mod.rs:414-443`), and a `RuleEvidenceError` from
+publication still propagates fail-closed (no evidence recorded for the failing
+root).
 
 **Fix Applied:** None so far.
 
@@ -146,12 +149,15 @@ test helper already demonstrates the reference form works
 (`tests.rs:98` constructs `&MatcherArtifact::from_parts_with_overlay(...)`).
 
 **Recommendation:** Drop the `Borrow` bound and take `&MatcherArtifact<'artifact>`;
-have tests pass `&MatcherLocalInput::from_parts(...)` exactly as `run_with_ops`
-already does, and delete the `MatcherLocalInput` alias and the owned-passing
-convention in `tests.rs`/`tests/extended.rs`. Guardrail: the `'artifact` inner
-lifetime stays tied to the borrowed `FactStream`/`OccurrenceIndexes`, so the
-alias removal must not decouple the stream and index borrows that
-`MatcherArtifact` intentionally groups.
+have tests pass `&MatcherArtifact::from_parts(...)` exactly as `run_with_ops`
+already passes `&MatcherArtifact::from_parts_with_overlay(...)` at
+`tests.rs:98`, update the `#[cfg(test)]` wrapper `compute_constrained_evidence`
+(`mod.rs:326-335`) to take a reference as well, and delete the
+`MatcherLocalInput` alias and the owned-passing convention in
+`tests.rs`/`tests/extended.rs`. Guardrail: the `'artifact` inner lifetime stays
+tied to the borrowed `FactStream`/`OccurrenceIndexes`, so the alias removal
+must not decouple the stream and index borrows that `MatcherArtifact`
+intentionally groups.
 
 **Fix Applied:** None so far.
 
@@ -206,7 +212,8 @@ occurrences_for_subject, and occurrences_for_event were removed in Phase 7. The
 constrained evidence path now uses occurrences_for_indexed directly, and
 returned/instance subject lookups use occurrences_for_returned /
 occurrences_for_instance." The "Phase 7" label appears nowhere else in the
-workspace, and the surrounding code already documents `occurrences_for_indexed`
+source (only in the sibling chunk-16 audit's cross-reference), and the
+surrounding code already documents `occurrences_for_indexed`
 (`query/mod.rs:123-124`), `occurrences_for_returned` (`:136`), and
 `occurrences_for_instance` (`:163`), so the comment only re-states current
 routing under an obsolete migration label.
@@ -239,13 +246,16 @@ by `EvidenceGroup`, so the remaining helper bodies are parallel push wrappers
 with different table types and iterator inputs (`OccurrenceSelection` vs
 `impl IntoIterator<Item = Occurrence>`).
 
-**Recommendation:** Since `EvidenceGroup` is already the narrow owner of the
-conversion, either have both call sites inline `EvidenceGroup::from_occurrences`
-and push/record directly, or keep a single helper that returns the optional
-`ClassificationEvidence` and let each caller record it. Guardrails: keep the
-`RuleEvidenceTable::record` fallible path (capacity errors must stay typed) and
-keep the `Definite` certainty and `into_ordered`/iterator differences that the
-two inputs legitimately require.
+**Recommendation:** Extract the shared conversion into one helper that maps
+`(kind, symbol, occurrences)` to `Option<ClassificationEvidence>` (wrapping
+`EvidenceGroup::from_occurrences` + `into_classification`), and have
+`push_owned_evidence` and `push_owned_rule_evidence` both delegate to it before
+pushing or recording. The destinations (plain `Vec` vs fallible
+`RuleEvidenceTable` with a `RuleIndex`) and iterator inputs
+(`OccurrenceSelection` via `into_ordered()` vs `Vec<Occurrence>`) legitimately
+differ, so only the conversion should be shared — do not inline it at the four
+call sites. Guardrails: keep the `RuleEvidenceTable::record` fallible path
+(capacity errors must stay typed) and the `Definite` certainty.
 
 **Fix Applied:** None so far.
 
@@ -279,22 +289,31 @@ two inputs legitimately require.
 
 - `query/mod.rs:116` uses `unreachable!("indexed root iterator yielded a
   non-indexed root")` in production for `PhysicalRoot::ConstrainedScan` /
-  `PhysicalRoot::Lifecycle`. The invariant is sound (`IndexedRootIter` only
-  yields the three indexed variants, `query/mod.rs:36-49`), but it is a panic
-  path in a `pub(in crate::analysis)` surface; is a fail-fast panic preferred
-  over silently skipping non-indexed roots if the iterator contract ever
-  changes?
+  `PhysicalRoot::Lifecycle`. Resolved: keep the fail-fast panic.
+  `IndexedRootIter::next` filters a local plan-root slice to exactly the three
+  indexed variants (`query/mod.rs:39-48`), so a non-indexed root reaching
+  `evidence_for_indexed_with_overlay` is an internal invariant break, not user
+  input; silently skipping it would drop evidence without a signal and
+  contradict the deterministic-output contract. AGENTS.md's no-panic rule
+  targets unsupported input and resource exhaustion, not invariant checks.
 - In `MatcherArtifact::from_facts` (`arguments/mod.rs:167-180`), three distinct
   "no overlay" causes — policy `Disabled`, index unavailable, and missing
-  `identities` — all collapse to `(None, 0)`. This is correct today; would any
-  future operation-count or coverage verification need to distinguish
-  "overlay intentionally disabled" from "projection data absent"?
+  `identities` — all collapse to `(None, 0)`, and the operation count is 0 in
+  every case. Whether a future operation-count or coverage verification would
+  need to distinguish "overlay intentionally disabled" from "projection data
+  absent" is not answerable from the current code.
 - `module_identities` / `collect_exported_identities` in
   `project/identities.rs:109-220` build `ModuleIdentityMap` mostly through raw
   `insert` calls while `ModuleIdentityContributions` (`identity_map.rs:51-74`)
-  exists to separate direct/star precedence. The split is coherent, but the
-  direct-vs-star distinction is enforced only by caller discipline — would the
-  contribution type be a better owner for `module_identities`'s insert loop too?
+  exists to separate direct/star precedence. Resolved: no.
+  `module_identities` inserts per-import-binding identities that are direct by
+  construction — each binding resolves to one identity, keys are per
+  specifier-and-export, and the namespace wildcard is a single value — so there
+  is no star-vs-direct conflict to arbitrate. `ModuleIdentityContributions` is
+  already the owner of exactly the case that needs it: star-export chains in
+  `collect_exported_identities` (`identities.rs:192-217`). Routing
+  `module_identities`' inserts through the contributions type would add
+  machinery without changing precedence.
 
 ## Coverage
 

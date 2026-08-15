@@ -44,13 +44,17 @@ private wrapper that only forwards to `binding_version` (graph.rs:168) and
 has no caller besides `binding_key_for_name`. The same lexical-key
 construction now lives in two phases and must be kept in sync by hand.
 
-**Recommendation:** Extract one helper on the shared owner — `BindingIndex`
-or a free `lexical_key_for(scope, name, span)` — that both phases call, and
-delete `ScopeGraph::binding_version_at` by having `binding_key_for_name`
-call `binding_version` directly. Guardrails: both phases must keep the exact
-fallback order (position-versioned lexical key when a binding exists,
-`BindingKey::global` when unbound) and must not change the version-at
-`BindingVersion::new(0)` default.
+**Recommendation:** Extract one helper on the generic read view shared by
+both phases — `ScopeReadView` (storage.rs:55-58) already exposes `scope_at`,
+`nearest_binding_at`, `enclosing_function_at`, `binding_id_at`, and
+`binding_version` — e.g. `binding_key_for_name(name, span)`, and have both
+`ScopeGraph::binding_key_for_name` (graph.rs:260) and the frozen-phase
+method (query/bindings.rs:144) delegate to it (hoisting the frozen method
+into graph.rs so `read_view` is reachable), and delete
+`ScopeGraph::binding_version_at` (graph.rs:271). Guardrails: both phases
+must keep the exact fallback order (position-versioned lexical key when a
+binding exists, `BindingKey::global` when unbound) and must not change the
+version-at `BindingVersion::new(0)` default.
 
 **Fix Applied:** None so far.
 
@@ -104,14 +108,15 @@ projections on one joined-binding result), which is legitimate, but the
 rules now exist twice: a change to scope-kind checks or assignment
 resolution updates one path and silently leaves the other.
 
-**Recommendation:** Extract a private `NameId`-based core used by both —
-e.g. `resolve_binding(name: NameId, use_scope: ScopeId, span) ->
-(scope, BindingResolution, Option<BindingKey>)` — then have
-`binding_resolution_at` and `ident_binding_seed` derive from it, keeping
-the seed's single-resolution guarantee. Guardrails: preserve the seed's
-`dynamic_lookup: true` when `scope_at` yields nothing and the identical
-`BindingResolutionStatus` results; do not add extra scope/assignment
-searches to the hot seed path.
+**Recommendation:** Extract a shared `NameId`-based core on
+`FrozenScopeGraph`, e.g. `resolve_binding(name: NameId, use_scope: ScopeId,
+span) -> (ScopeId, BindingResolution<'_>)`, that `binding_resolution_at`
+and `ident_binding_seed` both derive from, keeping the seed's
+single-resolution guarantee; `ident_binding_seed` derives its `BindingKey`
+from the returned scope via index lookups only. Guardrails: preserve the
+seed's `dynamic_lookup: true` when `scope_at` yields nothing and the
+identical `BindingResolutionStatus` results; do not add extra
+scope/assignment searches to the hot seed path.
 
 **Fix Applied:** None so far.
 
@@ -173,22 +178,28 @@ resolution semantics unchanged.
 
 `rooted_ident_chain` (rooted.rs:28-48), `resolve_provenance_alternatives`
 (chain.rs:142-167), and `callable_member_chain_from_resolution`
-(callable.rs:220-239) each iterate `for_each_witness` and match the same
-`ValueAlias`/`BoundCallable` target and `ReturnedObject` source variants,
-but they disagree: rooted.rs overwrites `rooted` per witness (last rooted
-witness wins, no `rooted_path_available` gate), chain.rs keeps the first via
+(callable.rs:220-239) each match the same `ValueAlias`/`BoundCallable`
+target and `ReturnedObject` source variants — the first two over
+`for_each_witness`, the third over `preferred_witness` — but they disagree:
+rooted.rs overwrites `rooted` per witness (last rooted witness wins, no
+`rooted_path_available` gate), chain.rs keeps the first via
 `resolved.is_none()` and requires `rooted_path_available` (chain.rs:160),
-and callable.rs requires `rooted_path_available` per variant. For a joined
-assignment carrying several rooted alternatives, sibling query paths can
-return different chains, and one may return a chain the others reject —
-a latent behavioral divergence for the same binding.
+and callable.rs requires `rooted_path_available` per variant on a single
+witness. For a joined assignment carrying several rooted alternatives,
+sibling query paths can return different chains, and one may return a chain
+the others reject — a latent behavioral divergence for the same binding.
 
 **Recommendation:** Extract one helper on `FrozenScopeGraph`, e.g.
-`fn witness_rooted_path(&self, provenance) -> Option<SymbolPath>`, applying
-a single rootedness rule and a single witness-selection rule; the three
-callers then differ only in the suffix/appending step. Guardrails: keep the
-global-absent fallback in rooted.rs (status `Absent` + `is_global`), which
-is not a witness path, and preserve the write-occurrence behavior of
+`fn rooted_witness_path(&self, resolution) -> Option<SymbolPath>`, that
+iterates the complete witnesses in order, matches the three rooted variants,
+requires `rooted_path_available`, resolves `symbol_path`, and keeps the
+first rooted-available path — matching chain.rs and the `preferred_witness`
+order, and intentionally making rooted.rs (unrooted interned targets,
+last-wins) and callable.rs (single `preferred_witness`) agree with it. The
+three callers then keep only their per-caller post-processing (suffix
+appending, `without_bind_suffix`, global-absent fallback). Guardrails: keep
+the global-absent fallback in rooted.rs (status `Absent` + `is_global`),
+which is not a witness path, and preserve the write-occurrence behavior of
 `rooted_write_member_chain` (chain.rs:54-65), which intentionally bypasses
 the read resolver.
 
@@ -207,16 +218,18 @@ adapter with "parenthesized expressions and the final value of a sequence
 [as] transparent" (expression.rs:34-36), yet the sibling query paths
 re-implement wrapper handling: `expression_key` unwraps `Paren` and `Seq`
 (bindings.rs:97-101), while `rooted_expr_chain_with` unwraps `Paren` but
-not `Seq` (rooted.rs:84). The same expression `(a, b.c)` therefore resolves
-to a member chain in the bindings/object paths but to nothing in the rooted
-path, and the divergence is not documented as intentional.
+not `Seq` (rooted.rs:84). The resolution-layer rooted resolver also unwraps
+`Seq` (static_values.rs:51-54), so the scope-query rooted path is the
+outlier: the same expression `(a, b.c)` resolves to a member chain in the
+bindings/object paths but to nothing in the rooted path.
 
 **Recommendation:** Route the transparent-wrapper handling (Paren/Seq)
 through `normalize_scope_expression`/its unwrap logic in both query paths,
 or extend the canonical adapter so coverage cannot drift. Guardrails: the
 rooted path legitimately handles `Call`/`OptChain`/`This` and rejects
-`Await` — keep those distinctions; decide the `Seq` case deliberately
-(fail-closed is safe in either direction).
+`Await` — keep those distinctions; the shared convention makes the final
+`Seq` value transparent (expression.rs:34-36, static_values.rs:51-54), so
+unwrap `Seq` in the rooted path rather than failing closed.
 
 **Fix Applied:** None so far.
 
@@ -276,8 +289,11 @@ assembly plumbing, not an independent lifecycle owner.
 ## Systemic Themes
 
 - **Loose field visibility on internal wrappers:** `NameEnvironment`'s
-  fields (name_env.rs:8-10) and `ScopeData`'s fields (storage.rs:14-17) are
-  `pub(super)` but only ever accessed through methods; the module-boundary
+  fields (name_env.rs:8-9) and `ScopeData`'s fields (storage.rs:14-17) are
+  `pub(super)`. `NameEnvironment`'s are only touched inside its own methods;
+  `ScopeData`'s `names` and `mutations` fields are also read directly by
+  `FrozenScopeGraph`'s delegation layer (graph.rs:295-323, 200-226) and
+  destructured by `freeze` (graph.rs:111-116). The module-boundary
   convention here is looser than the surrounding code (most storage types
   keep fields private). Low-value cleanup if the crate is ever split.
 - **`ScopeExpression` stores redundant projections:** the `Member` variant
@@ -303,16 +319,20 @@ assembly plumbing, not an independent lifecycle owner.
 
 ## Open Questions
 
-- Which `Seq`-wrapped behavior is intended for rooted chains? READ-006
-  asserts the coverage divergence; the *intended* behavior for
-  `(a, b.c)` under `rooted_expr_chain_with` is not documented anywhere.
-- For joined assignments with several rooted alternatives, is the intended
-  witness the first or the last retained one? READ-005 documents the
-  divergence; the spec for multi-witness rooted identity is not explicit in
-  the chunk's docs.
+- Resolved: the shared convention for rooted chains is `Seq`-transparent —
+  documented by the canonical adapter (expression.rs:34-36) and implemented
+  by `expression_key` (bindings.rs:98-101) and the resolution-layer rooted
+  resolver (static_values.rs:51-54). READ-006 should align
+  `rooted_expr_chain_with` with it by unwrapping `Seq`.
+- Resolved: witness order is first-wins — `preferred_witness` is documented
+  as "the first non-local alternative" retained after a join
+  (provenance.rs:161-173) and chain.rs already keeps the first rooted-
+  available witness. READ-005 should standardize on first-rooted-available-
+  wins and drop rooted.rs's last-wins overwrite.
 - Is the single-entry `Cell`-based `last_scope_query` cache in
   `LexicalScopeIndex` (scope_index.rs:14,49-61) worth its interior-mutability
-  and per-span equality cost if callers query alternating spans?
+  and per-span equality cost if callers query alternating spans? Not
+  answerable from code alone; needs call-site span-locality profiling.
 
 ## Coverage
 
@@ -330,7 +350,7 @@ Reviewed (definitions plus traced callers):
 - Representative external callers: `analysis/resolution/{mod,expression}.rs`,
   `analysis/semantic/mod.rs`, `analysis/facts/{interface/exports,calls/callee}.rs`
 - Tests: `scope/tests.rs`, `frozen_assignments/tests.rs`, `model/scope/tests.rs`,
-  and integration `glass-lint-core/tests/{matching/scope.rs,query/*,public_surface.rs}`
+  and integration `glass-lint-core/tests/integration/{matching/scope.rs,query/*,public_surface.rs}`
 
 No `unwrap`/`expect`/`panic` hazards found beyond test-only `.expect` on
 parsing and the justified `scope_index.rs:21` "scope index is allocated"

@@ -60,15 +60,16 @@ chain source, so for a wrapper call whose chain comes from `unwrap.chain_path`
 the flag may disagree with the path used for lookup, which the caller of
 `candidates_for_call` must reconcile by hand.
 
-**Recommendation:** Make `CallShape` (or `CallEffectRef`) own one canonical
-member-path accessor plus a single provenance indicator computed from the same
-source, and expose the global/provenance identity separately with documented
-resolution order. Route both the local `transfer_call` and the cross
-`apply_receiver` requirement matching through that single accessor so alias
-calls resolve identically in both phases. Guardrail: do not collapse the
-distinct `rooted` (proven-root identity) and `syntactic` (pure syntax) notions
-into one flag, and keep the existing precedence (wrapper chain → rooted →
-syntactic → callee-name fallback) exactly once, inside the view.
+**Recommendation:** Make `CallShape` own the member-path resolution in one
+accessor whose precedence (wrapper `chain_path` → `rooted_chain` →
+`syntactic_path` → `callee_name` fallback) is defined exactly once, inside the
+view, and keep `rooted()` and `global_name()` as distinct semantic flags.
+Route both the local `transfer_call` and the cross `apply_receiver` requirement
+matching through that accessor so alias calls resolve identically in both
+phases. Guardrail: do not collapse the distinct `rooted` (proven-root identity)
+and `syntactic` (pure syntax) notions into one flag, and keep the existing
+precedence (wrapper chain → rooted → syntactic → callee-name fallback) exactly
+once, inside the view.
 
 **Fix Applied:** None so far.
 
@@ -94,12 +95,11 @@ two-variant surface for what is a single "member chain for requirement
 matching" value.
 
 **Recommendation:** Fold the callee-name fallback into the canonical accessor
-from READ-001 so one owned-or-borrowed resolution path exists, or have
-`transfer_call` resolve the `NamePath` directly from `names` and return a
-plain `Option<&NamePath>`, deleting the `Cow`/`SymbolPath` bridge. Guardrail:
-keep the fallback resolution bounded and deterministic, and keep the
-fail-closed behavior where an unresolvable call yields no configuration
-requirements rather than an invented path.
+from READ-001 so one owned-or-borrowed resolution path exists and the
+`Cow`/`SymbolPath` bridge disappears. Guardrail: keep the fallback resolution
+bounded and deterministic, and keep the fail-closed behavior where an
+unresolvable call yields no configuration requirements rather than an invented
+path.
 
 **Fix Applied:** None so far.
 
@@ -118,20 +118,21 @@ with methods that are pure forwarding into `ArgumentMatcher::matches`. It adds
 no invariant, no vocabulary change, and no storage, yet every consumer
 reconstructs it identically in per-fact hot loops
 (`FlowMatchView::new(self.inputs.names, self.inputs.stream.values())` /
-`new(names, stream.values())` at four verified sites, plus
-`planning.rs:273`). The names/values pair is already co-located on
+`new(names, stream.values())` at four verified sites). The names/values pair
+is already co-located on
 `FactStream<Frozen>`, so the view is a convenience tuple whose construction is
 repeated instead of hoisted, and any future consumer must learn to build it
 again before it can call `BoundSource::matches_call` or the requirement
 matchers.
 
 **Recommendation:** Build the view once per phase boundary (for example in
-`ProjectionInputs::new`/the cross session alongside `plan`, or make
-`BoundFlowPlan` own the name/value table pair) and pass `&FlowMatchView` into
-`matches_call`, `matching_member_requirement_indices`, and the record sinks
-paths, deleting the four construction sites. Guardrail: keep the view borrowed
-and immutable; do not store `ValueTable` inside a plan that outlives the
-module's value arena.
+`ProjectionInputs::new` for the local projector, once per module in the cross
+source collector, and once per `UsageProjector`) and reuse that `&FlowMatchView`
+for `matches_call`, `matching_member_requirement_indices`, and the record-sinks
+paths, deleting the four construction sites; the consuming methods already
+accept `&FlowMatchView`, so only the construction moves. Guardrail: keep the
+view borrowed and immutable; do not store a `ValueTable` inside a plan that
+outlives the module's value arena.
 
 **Fix Applied:** None so far.
 
@@ -168,22 +169,24 @@ deterministic candidate ordering relies on.
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/flow/planning.rs:155-170,302-306`; `cross/sources.rs:219-223`
 
-The same `build_source_index` sequence — resolve `LifecycleCallTarget` to
-`BoundLifecycleCallTarget`, insert `BoundSource::new(id,
-source.argument_constraints().clone())`, `normalize()` — is executed in two
-places: `BoundFlowPlan::new` (`planning.rs:302-306`) builds it for the local
-phase and `FlowSources::collect_candidates` (`cross/sources.rs:219-223`)
-rebuilds an identical per-module index over the same compiled flows for the
-cross phase. The `BoundSource::new(…, source.argument_constraints().clone())`
-value lambda is duplicated verbatim, and the two phases can silently diverge if
-only one site is updated when the bindings or normalization change.
+`build_source_index` (`planning.rs:155-170`) already owns the shared sequence —
+resolve `LifecycleCallTarget` to `BoundLifecycleCallTarget`, insert, `normalize()`
+— and both `BoundFlowPlan::new` (`planning.rs:302-306`) and
+`FlowSources::collect_candidates` (`cross/sources.rs:219-223`) call it. The
+residual duplication is the value closure
+`BoundSource::new(id, source.argument_constraints().clone())`, passed verbatim
+at both sites, so the `BoundSource` construction rule still lives in two
+callers and can silently diverge if only one is updated when the bindings or
+normalization change.
 
-**Recommendation:** Give the planning boundary a single "build source index
-from compiled flows + names" entry that both `BoundFlowPlan::new` and the cross
-source collector call, so the target-binding and normalization rule has one
-owner. Guardrail: the cross phase deliberately re-indexes per module and per
-run with its own budget; keep that phase-local rebuild but make it share the
-construction/validation helper instead of its own copy of the closure.
+**Recommendation:** Hoist the duplicated `BoundSource` value closure into one
+planning-boundary helper (for example a thin wrapper over `build_source_index`
+that supplies the `BoundSource::new(id, source.argument_constraints().clone())`
+binding) so both `BoundFlowPlan::new` and the cross source collector call it and
+the target-binding/normalization rule has one owner. Guardrail: the cross phase
+deliberately re-indexes per module and per run with its own budget; keep that
+phase-local rebuild but make it call the shared helper instead of passing its
+own copy of the closure.
 
 **Fix Applied:** None so far.
 
@@ -228,26 +231,29 @@ availability without allocating flow state.
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/flow/effect/mod.rs:35-36,59-79,131-133,215-237`
 
-`FunctionEffect` maintains two `HashMap` indexes over the same value/root
-relation: `value_roots: HashMap<ValueId, ValueId>` and
+`FunctionEffect` keeps the value/root relation across two `HashMap`s:
+`value_roots: HashMap<ValueId, ValueId>` and
 `parameter_index: HashMap<ValueId, ParameterRef>`, seeded together in
-`with_parameters` (`mod.rs:59-79`) and later mutated together by `record_copy`
-(`:219-229`), `record_reference` (`:239-249`), and `record_return`
-(`:251-279`). The invariant tying them (every `parameter_index` key is also a
-`value_roots` entry pointing at itself, and `parameter_for` depends on both
-maps staying consistent: `:231-237`) is not owned by either map; a future
-edits to one record path can silently desynchronize them. The `unwrap_or(value)`
-fallback in `parameter_for` and the root-copy logic in `copy_root` re-derive
-the same "follow the root, then ask if it is a parameter" rule.
+`with_parameters` (`mod.rs:59-79`). `parameter_index` is never written again;
+`value_roots` is the only map mutated afterward, by `record_copy`/`copy_root`
+(`:219-229`) and `record_reference` (`:239-249`) — `record_return` (`:251-279`)
+mutates neither. The coupling is that parameter lookup walks `value_roots` to a
+root and then asks `parameter_index` (`parameter_for`, `:231-237`), and the
+`unwrap_or(value)` fallback means a root entry erased by `copy_root` (for
+example a parameter's self-root) is silently treated as the value itself, so
+correctness depends on convention rather than on one owned invariant. The same
+"follow the root, then ask if it is a parameter" step is re-derived in
+`parameter_for` and in `copy_root`'s root resolution.
 
-**Recommendation:** Consolidate the two maps into one semantic structure on
-`FunctionEffect` that owns the parameter-root relation (for example a
-`parameter_index` plus a root-following accessor that walks `value_roots` once
-with the UNKNOWN sentinel handled internally), so the copy/reference/return
-record paths mutate a single invariant. Guardrail: preserve the fail-closed
-rules — UNKNOWN sources erase roots (`:223-224`), returning an unrooted local
-value marks the effect invalid (`:258-264`), and an invalid summary must not
-propagate qualified flow.
+**Recommendation:** Keep the two maps (they answer different queries —
+`value_root` feeds the cross phase, `parameter_for` feeds the record paths) but
+own the coupling in one place: extract the shared root-following step into one
+private `root_of` helper used by both `parameter_for` and `copy_root`, and
+preserve the parameter self-root invariant when `copy_root` would erase it, so
+the copy/reference/return record paths cannot silently diverge. Guardrail:
+preserve the fail-closed rules — UNKNOWN sources erase non-parameter roots
+(`:223-224`), returning an unrooted local value marks the effect invalid
+(`:258-264`), and an invalid summary must not propagate qualified flow.
 
 **Fix Applied:** None so far.
 
@@ -275,16 +281,29 @@ propagate qualified flow.
 
 ## Open Questions
 
-- `CallShape::rooted()` only reflects `rooted_chain`, while `chain()` can come
-  from `unwrap.chain_path` or `syntactic_path`. Is a wrapper call
-  (`foo.bar.call(...)`) ever supposed to be a *member* candidate in
-  `candidates_for_call` even though `rooted()` is false? The intent is not
-  documented and the two accessors can disagree; the tests only cover the
-  agreeing cases (`effect/tests.rs:38-39,81`).
-- `FlowSources::collect_candidates` rebuilds a per-module source index on every
-  cross run while `BoundFlowPlan` already carries one. Whether the cross index
-  is intentionally isolated (budgeting, per-run flows) or could share the plan's
-  index is unclear from the code alone.
+- Resolved: no. Member candidacy is intentionally gated on `rooted()`: the
+  precedence comment on `BoundFlowPlan::source_candidates_for_call`
+  (`planning.rs:343-344`) documents "a global target first, then a rooted
+  member target", and `LifecycleCallTarget::RootedMember` binds only when
+  `names.lookup_path` resolves it (`planning.rs:79`). A wrapper call's
+  `chain()` comes from `unwrap.chain_path`, which
+  `try_emit_callable_wrapper_common` derives from the *target* object
+  (`foo.bar`) of `.call`/`.apply` (`facts/calls/wrapper.rs:27-32`), so the
+  chain and `rooted()` describe the same target; `rooted()` is false exactly
+  when that target is not provably rooted, in which case it must not be a
+  member candidate. The tests only cover the agreeing cases
+  (`effect/tests.rs:38-39,81`); the disagreeing case (chain present, rooted
+  false) is the intended "syntactic path without a proven root" outcome and is
+  the asymmetry that READ-001 targets.
+- Resolved: the per-module cross index is intentionally isolated and cannot
+  share a `BoundFlowPlan` index. Name resolution is module-local: the index is
+  built with each module's own name table (`cross/sources.rs:214-219`), while a
+  `BoundFlowPlan` is built per flow and per module with that module's names
+  (`cross/mod.rs:182-188`). Granularity also differs: `collect_candidates`
+  indexes *all* flows for candidate discovery, whereas a `BoundFlowPlan`'s
+  source/sink index serves one flow's requirement/sink lookup
+  (`planning.rs:345-356`). This matches the READ-005 guardrail that the cross
+  phase deliberately re-indexes per module and per run with its own budget.
 
 ## Coverage
 

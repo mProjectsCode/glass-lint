@@ -65,8 +65,11 @@ make the lookup a single direct map access (e.g.,
 `function_containing`, `BindingKey`), and the fail-closed
 `InvalidBindingIndex` issue path untouched; `resolve_function_targets`
 for `function_bindings`/`function_aliases` may remain since those
-values are consumed as `FunctionId`, but its error payload should be
-narrowed to the field actually read.
+values are consumed as `FunctionId`. Once `resolve_parameter_aliases`
+is gone, `BindingIndexError` is produced only by that path, so its
+`scope` payload (dead data today — the sole consumer at `freeze.rs:38`
+discards it) can be dropped to a bare marker while the fail-closed
+`InvalidBindingIndex` fallback stays.
 
 **Fix Applied:** None so far.
 
@@ -93,15 +96,16 @@ directly. The pairing is also inconsistently encapsulated:
 while its inner `FrozenPropertyArtifacts` is `pub(in crate::analysis)`
 with `pub(in crate::analysis)` fields (build/mod.rs:105-115).
 
-**Recommendation:** Flatten the property facts directly onto
-`FrozenScopeCollectionArtifacts` and pass the three vectors to
-`finish_collected_properties` by value; fold the three `BindingAllocation`
-maps flat into the freeze input (or have `allocate_ids` return the maps)
-so the transition has at most one bundle level. Guardrails: each
-collection must be consumed exactly once across the transition, the
-`InvalidBindingIndex` fallback must stay, and if the build→graph module
-boundary genuinely needs a named bundle, keep one (`FrozenPropertyArtifacts`)
-rather than two nested layers.
+**Recommendation:** Flatten the three property vectors directly onto
+`FrozenScopeCollectionArtifacts` (deleting the nested
+`FrozenPropertyArtifacts`) so `freeze.rs` can destructure them in one
+place and pass them straight to `finish_collected_properties`, and fold
+the three `BindingAllocation` maps flat into `BindingFreezeInput` so the
+`allocate_ids` → `from_freeze_input` transition has no intermediate
+bundle. Guardrails: each collection must be consumed exactly once across
+the transition and the `InvalidBindingIndex` fallback must stay; no named
+bundle is needed at the build→graph boundary because
+`finish_collected_properties` is the sole consumer.
 
 **Fix Applied:** None so far.
 
@@ -123,13 +127,17 @@ byte-identical to `LexicalScope::contains`
 twice, and the query layer reaches across the collection-phase module
 boundary to borrow a projection helper.
 
-**Recommendation:** Implement containment once at a neutral owner (an
-inherent method on the span type in a syntax utility, or route callers
-through `LexicalScope::contains`), and delete the aliases.rs free
-function plus the `query/mod.rs` re-export. Guardrails: the predicate is
-a plain inclusive containment (`outer.lo <= inner.lo && outer.hi >= inner.hi`)
-used to test an assignment's scope span against a use span — semantics
-must not change in `chain.rs`.
+**Recommendation:** Implement containment once as a single free function
+at a neutral owner (e.g., `span_contains(outer: Span, inner: Span)` in a
+syntax utility), make `LexicalScope::contains` delegate to it, and route
+`chain.rs` through it; delete the `aliases.rs` free function plus the
+`query/mod.rs` re-export. (An inherent method on the span type is not
+possible — `Span` is `swc_common`'s, and `chain.rs` holds only a `ScopeId`
+plus its span, not a `LexicalScope`, so the shared helper must take the two
+spans.) Guardrails: the predicate is a plain inclusive containment
+(`outer.lo <= inner.lo && outer.hi >= inner.hi`) used to test an
+assignment's scope span against a use span — semantics must not change in
+`chain.rs`.
 
 **Fix Applied:** None so far.
 
@@ -139,7 +147,7 @@ must not change in `chain.rs`.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/scope/build/aliases.rs:26-76,79-137`
+- **Location:** `glass-lint-core/src/analysis/scope/build/aliases.rs:26-76,78-137`
 
 The two alias-collection methods are the same "build append closure →
 `project_destructuring` → match Unsupported/Exhausted" sequence
@@ -153,9 +161,13 @@ sink (`update_binding` vs `record_assignment`). Within the same file,
 
 **Recommendation:** Collapse the two methods into one helper
 parameterized by the assignment flag and a small sink (or an enum), so
-the projection and error handling exist once. Guardrails: declaration
-aliases must keep updating binding provenance while assignment aliases
-append an `AliasAssignment`; the `Exhausted` arm must keep setting
+the projection and error handling exist once. In the same file, use one
+conversion path for the module `SmolStr` — `module.clone()` in the
+`ObjectPatProp::Assign` arm (`aliases.rs:107`) instead of the pointless
+`module.as_str().into()`, matching the sibling helper's
+`&str → SmolStr` conversion. Guardrails: declaration aliases must keep
+updating binding provenance while assignment aliases append an
+`AliasAssignment`; the `Exhausted` arm must keep setting
 `name_exhausted` and the `Unsupported` arm must remain a no-op.
 
 **Fix Applied:** None so far.
@@ -275,20 +287,35 @@ must keep producing `None` for the name via `declaration_name`
 
 ## Open Questions
 
-- Can the three provenance precedence chains (assignment / argument /
-  classification candidates) share one policy representation without
-  changing the tested orderings in `analysis/scope/build/analysis/tests.rs`?
-  A consolidation is only worth it if precedence stays explicit per caller.
-- Is the string-keyed collection-phase vs NameId-keyed frozen-phase surface
-  split deliberate? If so, a short contract doc on `ScopeGraph`'s binding
-  helpers would prevent drift; if not, unifying the key type across the two
-  graph phases would remove the duplicated `binding_version_at` wrappers.
-- `visible_binding_with_scope` falls back to `BindingProvenance::Local`
-  when an assignment's preferred witness is unknown (assignments.rs:178),
-  conflating "unknown/incomplete" with "local binding" during collection.
-  The frozen graph keeps these distinct via `BindingResolutionStatus`, so
-  confirm the collection-time conflation is intended fail-closed behavior
-  rather than a lost uncertainty state.
+- Resolved: the three provenance precedence chains are deliberate policy,
+  not an accidental duplicate. `assignment_provenance`
+  (`analysis/assignment.rs:21-33`) and `argument_provenance`
+  (`build/provenance.rs:119-138`) order overlapping probes differently for
+  different callers, and `classify_candidates`
+  (`analysis/classification.rs:180-223`) selects per-expression candidate
+  lists. A shared policy representation would have to re-encode those
+  per-caller orderings in a new vocabulary, so consolidation is not worth
+  it; precedence stays explicit per caller, with the orderings pinned by
+  `analysis/scope/build/analysis/tests.rs`.
+- Resolved: the string↔`NameId` surface split is deliberate. `ScopeGraph`'s
+  `&str` helpers (`graph.rs:146-173`) are collection-phase convenience
+  projections over the same `NameId` core, converting via `self.name_id`
+  and failing closed to `AssignmentAt::Absent` / `BindingVersion::new(0)`
+  for uninterned names; the visitor works from source `&str`.
+  `FrozenScopeGraph` (`graph.rs:376-434`) serves the query layer, which
+  already holds `NameId`s. Unifying the key types would not remove the one
+  genuine wart — the duplicated `binding_version_at` wrapper
+  (`graph.rs:271-273`, `query/bindings.rs:131-141`) — already noted in
+  Systemic Themes.
+- Resolved: the `Local` fallback in `visible_binding_with_scope`
+  (`assignments.rs:178`) is intended fail-closed behavior, not a lost
+  uncertainty state. The collection-time projection is documented to
+  discard joined/incomplete status (`graph.rs:231-234`,
+  `query/bindings.rs:31-42`), and `BindingProvenance::Local` is the
+  least-assuming provenance: an unknown/ambiguous witness degrades to
+  "plain local" and can never mint a false module/global claim. The frozen
+  phase retains the full `BindingResolutionStatus` for callers that need
+  the distinction.
 
 ## Coverage
 

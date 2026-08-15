@@ -34,32 +34,41 @@ as guardrails throughout.
 - **Category:** Conversion
 - **Location:** `glass-lint-core/src/analysis/syntax/names.rs:89-103,171-177,216-218`, `glass-lint-core/src/analysis/syntax/constant/eval.rs:357-375,377-389`
 
-`PropName`/`MemberProp` → `Option<SmolStr>` conversion is implemented twice
-with subtly different behavior. `names.rs::literal_property_name` and
-`names.rs::literal_member_property_name` (with private helper
-`static_property_name` at names.rs:216) dispatch over the same AST types as
-`eval.rs::contextual_property_name` and `eval.rs::contextual_member_property_name`,
-but: `literal_member_property_name` is behaviorally identical to
+`PropName`/`MemberProp` → `Option<SmolStr>` conversion is implemented twice.
+`names.rs::literal_property_name` and `names.rs::literal_member_property_name`
+(with private helper `static_property_name` at names.rs:216) dispatch over the
+same AST types as `eval.rs::contextual_property_name` and
+`eval.rs::contextual_member_property_name`. Only the member-property pair is a
+true duplicate: `literal_member_property_name` is behaviorally identical to
 `contextual_member_property_name(prop, &NoLookup)` under a fresh `EvalState`
-(Ident/PrivateName/Computed handling is the same), and `literal_property_name`
-differs from `contextual_property_name` on `PropName::Str` (no
-`MAX_STRING_BYTES` bound) and `PropName::Computed` (only `Expr::Lit(Lit::Str)`
-vs. full bounded evaluation via `property_key`). Both are actively used —
-`literal_member_property_name` at `scope/build/visitor.rs:335`,
-`facts/interface/commonjs.rs:36`, `resolution/call.rs:87`, and
-`literal_property_name` at `scope/build/provenance.rs:263`,
-`facts/pattern.rs:196`, `scope/build/projection.rs:54` — so any future edit to
-one path's bounds or accepted shapes will silently diverge from the other.
+(Ident/PrivateName/Computed handling is the same). `literal_property_name` is a
+distinct pure-syntax path that genuinely differs from `contextual_property_name`
+on `PropName::Str` (no `MAX_STRING_BYTES` bound), `PropName::Num` (any number
+vs. non-negative integers only), and `PropName::Computed` (only
+`Expr::Lit(Lit::Str)` vs. full bounded evaluation via `property_key`). Both are
+used widely — representative call sites: `literal_member_property_name` at
+`scope/build/visitor.rs:335`, `facts/interface/commonjs.rs:36`,
+`resolution/call.rs:87`; `literal_property_name` at
+`scope/build/provenance.rs:263`, `facts/pattern.rs:196`,
+`scope/build/projection.rs:54` — so any future edit to one path's bounds or
+accepted shapes will silently diverge from the other.
 
-**Recommendation:** Consolidate the canonical property-name conversion in
-`constant/eval.rs` (the path that already applies `MAX_STRING_BYTES` and
-shared-budget computed keys) and re-express `names.rs::literal_property_name`
-and `literal_member_property_name` through `contextual_property_name` /
-`contextual_member_property_name` with `NoLookup` and a fresh state, deleting
-`static_property_name`. Guardrails: preserve each call site's current accepted
-shape exactly (computed keys that are string literals vs. full constant
-evaluation are a deliberate under-approximation in `literal_property_name`,
-and the string bound must not be loosened on any path).
+**Recommendation:** Consolidate only the behaviorally identical pair.
+Re-express `literal_member_property_name` as
+`contextual_member_property_name(prop, &NoLookup)` and delete the private
+`static_property_name` (plus the then-unused `evaluate` import in names.rs):
+the Ident/PrivateName/Computed arms and the fresh `EvalState` make the two
+exactly equivalent, so every call site keeps its current accepted shape. Leave
+`literal_property_name` as its own documented pure-syntax path — unlike
+`contextual_property_name` it does not bound string keys with
+`MAX_STRING_BYTES`, accepts arbitrary numeric keys, and only handles
+literal-string computed keys — so re-expressing it through
+`contextual_property_name` would change accepted shapes at its call sites
+(`facts/pattern.rs:196`, `scope/build/provenance.rs:263`,
+`scope/build/projection.rs:54`). Document the divergence in
+`literal_property_name`'s doc comment so the two paths are not mistaken for
+variants of one another. Guardrail: the string bound must not be loosened on
+any path.
 
 **Fix Applied:** None so far.
 
@@ -98,18 +107,26 @@ for shorthand properties stays unchanged.
 - **Location:** `glass-lint-core/src/analysis/syntax/name.rs:8`, `glass-lint-datastructures/src/name.rs:10`
 
 `name.rs::MAX_NAMES` and `glass_lint_datastructures::DEFAULT_MAX_NAMES` are
-both `1 << 20`; the doc comment on `MAX_NAMES` states it "matches the default
-semantic-operation bound." Core re-declares the datastructures default instead
-of referencing it (used at `analysis/semantic/mod.rs:147,431` and
+both `1 << 20`. The doc comment on `MAX_NAMES` states it "matches the default
+semantic-operation bound," which refers to core's own
+`limits.rs::default_semantic_operations` (also `1 << 20`), not to the
+datastructures `NameTable` default; the two constants happen to share the
+value. Core re-declares the value instead of referencing the datastructures
+default (used at `analysis/semantic/mod.rs:147,431` and
 `analysis/resolution/mod.rs:283`), so a future change to the datastructures
-default silently diverges from core's pinned value, with consequences for
-artifact cache identity which is keyed on limits.
+default silently diverges from core's pinned value. Divergence matters: the
+name bound affects resolution output but is excluded from the artifact cache
+key (`LocalAnalysisConfig`), so it must not drift silently.
 
-**Recommendation:** Have core reference
-`glass_lint_datastructures::DEFAULT_MAX_NAMES` (it is public) or, if the
-pinning is deliberate, say so in the doc comment and assert the two stay
-equal. Guardrail: the cache-identity and `NameTable` capacity semantics must
-not change.
+**Recommendation:** Keep `MAX_NAMES` as core's deliberate artifact bound and
+make the alignment explicit: add a compile-time assertion that
+`MAX_NAMES == glass_lint_datastructures::DEFAULT_MAX_NAMES`, and extend the
+doc comment to state that the value also matches the default semantic-operation
+bound. Do not replace `MAX_NAMES` with a reference to `DEFAULT_MAX_NAMES`:
+core's name bound affects resolution output but is excluded from the artifact
+cache key (`LocalAnalysisConfig`), so silently tracking the `NameTable` default
+would change artifacts without invalidating the cache. Guardrail: the
+cache-identity and `NameTable` capacity semantics must not change.
 
 **Fix Applied:** None so far.
 
@@ -213,11 +230,15 @@ whereas the repo convention is to put behavior on the type that owns the state
 (AGENTS.md: "Use free functions for genuine coordination across independent
 types").
 
-**Recommendation:** Make the arena id a field of `TraceArena` used implicitly
-by a `node_id` helper, and move `intern_lifecycle_trace` onto `TraceArena` as
-an inherent method that chains `intern`. Guardrail: keep the foreign-handle
-rejection (`parent.arena != self.arena`) and fail-closed exhaustion behavior
-exactly as tested in `analysis/trace/tests.rs`.
+**Recommendation:** The arena id is already a field of `TraceArena`; replace
+the `TraceNodeId::from_node_count(self.arena, self.nodes.len())` call at
+trace.rs:106 with an inherent `TraceArena::node_id(&self, count: usize) ->
+Option<TraceNodeId>` that uses `self.arena`, and drop the redundant arena
+parameter from `TraceNodeId::from_node_count` (its only caller). Move
+`intern_lifecycle_trace` onto `TraceArena` as an inherent method that calls
+`self.intern_chain(steps)`. Guardrail: keep the foreign-handle rejection
+(`parent.arena != self.arena`) and fail-closed exhaustion behavior exactly as
+tested in `analysis/trace/tests.rs`.
 
 **Fix Applied:** None so far.
 
@@ -242,15 +263,22 @@ exactly as tested in `analysis/trace/tests.rs`.
 
 ## Open Questions
 
-- `UnknownReason` (including `BudgetExhausted`) is constructed at several
-  resolution sites but never matched for distinct behavior anywhere in the
-  workspace. If it is intended to be surfaced in diagnostics or matcher
-  decisions, that future consumer should define which fields (`component`,
-  `limit`, `observed`) are contract; until then READ-004 assumes they are
-  speculative.
-- Whether core's `MAX_NAMES` pin against `DEFAULT_MAX_NAMES` is a deliberate
-  decoupling (see READ-003); if so, an assertion or shared constant should
-  document the intent.
+- Resolved: verified that no workspace code matches `UnknownReason` for
+  distinct behavior — every consumer pattern-matches
+  `SymbolCallProvenance::Unknown(_)` and ignores the payload as a fail-closed
+  sentinel. At all three construction sites `component` is
+  `BudgetComponent::Values`, `observed` is `None`, and `limit` is `MAX_VALUES`,
+  so `component` and `observed` carry no information today and READ-004's
+  collapse to `{ limit }` is safe. Whether a future diagnostic will surface the
+  reason (and which fields become contract) is a product decision the current
+  code does not answer.
+- Resolved: the `MAX_NAMES` doc comment predates the datastructures crate and
+  describes the value as matching the default semantic-operation bound
+  (`limits.rs::default_semantic_operations`, also `1 << 20`);
+  `DEFAULT_MAX_NAMES` was introduced with the datastructures crate from the
+  same value. The pin is deliberate core policy — `MAX_NAMES` affects
+  resolution output but is not part of the artifact cache key — so READ-003 now
+  recommends keeping the pin and asserting equality at compile time.
 
 ## Coverage
 

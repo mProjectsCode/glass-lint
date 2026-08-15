@@ -56,11 +56,19 @@ consolidate local budget reporting onto one variant, either folding
 `SemanticBudgetExhausted` into `BudgetExhausted { component: Facts, .. }` or keeping
 `SemanticBudgetExhausted` as the sole local budget variant and removing the `Facts`
 arm from `AnalysisComponent::budget_diagnostic` (`status.rs:201-222`). Guardrails:
-both diagnostic codes are public report schema and are asserted in
-`project/tests/status_policy.rs:251`, `project/report/tests.rs:167`, and
-`analysis/semantic/status/tests.rs:20`; update every assertion and any harness
-fixtures in the same change, and preserve fail-closed behavior — an exhausted budget
-must still yield an incomplete `AnalysisStatus`, never a successful-empty result.
+the two codes are public report schema, so whichever variant you drop, update its
+assertions in the same change: dropping `SemanticBudgetExhausted` (option A) affects
+`semantic_step_budget_exhausted`, asserted at `project/tests/status_policy.rs:251`,
+`project/tests/mod.rs:170`, `project/tests/cache_and_session.rs:147`,
+`cli/src/output/tests.rs:77`, and `project/types/report/code/tests.rs:18`; dropping
+the `Facts` arm (option B) affects `semantic_budget_exhausted`, asserted at
+`analysis/semantic/status/tests.rs:20`, `project/report/tests.rs:167`, and
+`project/types/report/code/tests.rs:13`, and constructed at
+`lint/report/files/tests.rs:8`. Under option B, removing the `Facts` arm also removes
+`AnalysisComponent::Facts`, whose only remaining reference is the status unit test.
+Update every assertion and any harness fixtures in the same change, and preserve
+fail-closed behavior — an exhausted budget must still yield an incomplete
+`AnalysisStatus`, never a successful-empty result.
 
 **Fix Applied:** None so far.
 
@@ -135,7 +143,8 @@ code and message identical (`status.rs:271-274`); the variant is part of the sha
 
 `check_facts_budget` (`semantic/mod.rs:207`) is named for one condition but returns
 five distinct exhaustion reasons (step budget, fact capacity, path capacity, value
-arena, structural invalidity), and `AnalysisCompletion::record_fact_failure`
+arena, and structural invalidity — the last is the dead `Facts`-component branch from
+READ-001), and `AnalysisCompletion::record_fact_failure`
 (`semantic/mod.rs:273-277`) also records name exhaustion and invalid-parser-span
 reasons that are not "fact failures." The budget is threaded as a parameter yet the
 single call site reads it from a sibling module's field: `check_facts_budget(..., resolver.budget)`
@@ -144,13 +153,16 @@ single call site reads it from a sibling module's field: `check_facts_budget(...
 `SemanticBudget` state is unclear from the call.
 
 **Recommendation:** Rename the helpers to reflect the full condition set (e.g.
-`check_fact_construction_incompleteness`) and either add a `Resolver::budget()`
-accessor or keep the budget exclusively as an explicit parameter created by
-`SemanticAnalyzer::analyze_program` (`semantic/mod.rs:168`) and threaded down.
+`check_fact_construction_incompleteness`, and a name for `record_fact_failure` that
+covers name-exhaustion and invalid-parser-span reasons), and add a
+`Resolver::budget()` accessor so the call site at `semantic/mod.rs:299` passes
+`resolver.budget()` instead of reaching into the sibling module's `pub(super)` field.
 Guardrails: preserve the current check ordering — step-budget exhaustion is reported
 before capacity (`semantic/mod.rs:213-223`) — since that precedence is observable in
-reported diagnostics, and do not pull budget state into a new owner that would split
-the shared charging semantics across scope collection, resolver, and fact building.
+reported diagnostics, and do not pull budget state into a new owner; the shared
+`SemanticBudget` stays the reference already created by
+`SemanticAnalyzer::analyze_program` (`semantic/mod.rs:168`) and threaded through
+`ResolvedProgram::collect` into `Resolver`.
 
 **Fix Applied:** None so far.
 
@@ -195,8 +207,8 @@ line-index allocation (asserted by `analysis/local/tests.rs:48-54`).
   `RuleSelectionInvalid`, ...) under one `AnalysisStatus` keyed by `StatusScope`, so
   that project completion stays total and fail-closed. Preserve this aggregation; only
   the local-phase vocabulary (READ-001, READ-003) needs tightening.
-- **Status materialization is the only scope transition.** `LocalAnalysisStatus →
-  AnalysisStatus::materialize_file` is the sole allowed Local→File rewiring, and the
+- **Status materialization is the only scope transition.** `LocalAnalysisStatus::materialize_file →
+  AnalysisStatus` is the sole allowed Local→File rewiring, and the
   `ParseFailure` skip in `AnalysisStatus::diagnostics` (`status.rs:184-186`) keeps
   parser presentation out of the completion channel. Keep this one-way.
 - **SWC isolation and cache discipline are strong.** `SpanNormalizer`, `ResolvedProgram`,
@@ -214,33 +226,35 @@ line-index allocation (asserted by `analysis/local/tests.rs:48-54`).
 
 ## Open Questions
 
-1. **Cache memory retention:** `ArtifactCacheKey` retains a full `SourceText` clone
-   (`local.rs:187`), each in-flight `LocalJob` carries the key
-   (`project/session/execution.rs:24`), and the cached artifact's own
-   `Arc<SourceLineIndex>` also holds the source text — so up to
-   `MAX_ENTRIES + max_in_flight` sources are duplicated. The full-key check is
-   documented as deliberate collision verification (`local.rs:255-266`). Is that
-   retention acceptable, or should the 64-bit fingerprint be the sole cache identity
-   (accepting an astronomically small collision risk)? This is a boundedness/space
-   tradeoff, not a correctness issue; do not change without the fail-closed
+1. **Resolved — cache memory retention is deliberate and bounded.** `ArtifactCacheKey`
+   retains a full `SourceText` clone (`local.rs:187`), each in-flight `LocalJob` carries
+   the key (`project/session/execution.rs:24`), and the cached artifact's own
+   `Arc<SourceLineIndex>` also holds the source text (`diagnostic.rs:54`), so up to
+   `MAX_ENTRIES` (64) plus in-flight sources are duplicated. The full-key check is an
+   explicit design choice: `CacheEntry` documents that "a fingerprint match is not a
+   hit until the full key matches" (`local.rs:255-266`), deliberately rejecting
+   fingerprint-only identity to avoid any collision risk. Retention is acceptable under
+   that documented boundedness contract; do not change it without the fail-closed
    full-key check in mind.
-2. **`ParserSpanKey` vs `ByteRange`:** `ParserSpanKey { lo, hi }`
-   (`semantic/mod.rs:37-49`) duplicates the shape of datastructures' `ByteRange`
-   (u32 start/end, `Hash`/`Ord`) but deliberately stores unvalidated SWC coordinates
-   for hash-map identity (`analysis/resolution/mod.rs:121-133`,
-   `analysis/facts/call_results.rs:11`). This seems intentional (validated vs
-   unvalidated ranges), but the relationship is undocumented; confirm a
-   `From<Span>`-style conversion to `ByteRange` at consumption is not a better single
-   owner.
-3. **`SpanNormalizer::new` and `Default` are test-only** (`semantic/mod.rs:63-68`,
-   `semantic/mod.rs:104-108`); production uses only `with_index`
-   (`semantic/mod.rs:197`). Consider whether `new`/`Default` should be dropped or
-   the canonical constructor made `with_index` to remove the dual construction path.
-4. **`DerivedPhaseCapabilities` always couples its three flags** — `disable_derived_phases`
+2. **Resolved — the split is intentional.** `ParserSpanKey { lo, hi }`
+   (`semantic/mod.rs:37-49`) stores unvalidated SWC coordinates and is used only as a
+   hash-map identity key (`analysis/resolution/mod.rs:121-133`,
+   `analysis/facts/call_results.rs:11`); it is never converted to a `ByteRange` at
+   consumption. Validated `ByteRange`s are produced separately via
+   `SpanNormalizer::normalize`, which rejects dummy/out-of-range spans that
+   `ParserSpanKey` deliberately accepts, so a `From<Span>`-style conversion to
+   `ByteRange` is not a viable single owner.
+3. **Resolved — the dual construction path is test-only.** Production uses only
+   `SpanNormalizer::with_index` (`semantic/mod.rs:197`); `new` (`semantic/mod.rs:63-68`)
+   and `Default` (`semantic/mod.rs:104-108`) are used only by test modules (semantic,
+   analysis, matching-arguments, linker-graph, and resolution tests). `with_index` is
+   already the canonical constructor; `new`/`Default` can stay as test conveniences or
+   be made `#[cfg(test)]`.
+4. **Resolved — the three flags are always coupled today.** `disable_derived_phases`
    (`analysis/mod.rs:68-73`) turns off `fact_index`, `effects`, and `export_origins`
-   together, and no path disables them individually. If per-phase gating is not
-   anticipated, a single all-or-nothing availability would be simpler; keep the
-   per-field shape only if independent control is planned.
+   together, the only construction is `enabled()` (all three on), and no path disables
+   a single phase. A single all-or-nothing availability would be simpler today; keep
+   the per-field shape only if independent per-phase gating is planned.
 
 ## Coverage
 

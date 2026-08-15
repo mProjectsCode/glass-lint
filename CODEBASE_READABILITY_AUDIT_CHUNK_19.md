@@ -47,7 +47,7 @@ variant. The chunk therefore has two parallel representations of "authored
 argument position", and the sink's hand-rolled check is a second copy of
 `ArgumentIndex::try_from_usize` (the check in `try_from_usize` also makes its
 inner `u8::try_from` fallback unreachable, value.rs:21-23). The normalized
-compiler IR and flow engine keep `usize` (`normalized.rs:267`,
+compiler IR and flow engine keep `usize` (`normalized.rs:266-268`,
 `object_flow.rs:298-300`), so only the authored layer is affected, but two
 authors of the same concept produce drift risk (e.g. one side forgetting the
 bound check).
@@ -56,8 +56,8 @@ bound check).
 and convert in `build_call_sink` via `ArgumentIndex::try_from_usize`, deleting
 the manual bound check. Keep the compiler/normalized/flow layers on `usize`
 unchanged so the fix stays inside the chunk; guardrail: preserve the
-`InvalidArgumentIndex(index)` error and the `index.get()` conversion at the
-explanation site (`explanation.rs:264`).
+`InvalidArgumentIndex(index)` error and the `index.get()` conversions at the
+two `ArgumentOf { index }` consumers (`normalize.rs:454`, `explanation.rs:264`).
 
 **Fix Applied:** None so far.
 
@@ -139,11 +139,13 @@ deferred `Into*`), not in this scaffolding.
 **Recommendation:** Move `build` onto `LifecycleBuilderState`
 (`fn build(self) -> Result<LifecycleQuery, QueryBuildError>` taking the state
 apart exactly once) and delete the per-builder `build` bodies and
-`CatalogLifecycleQueryBuilder::record_operation` in favor of the state's
-existing method. Consider whether `record_first_error` (`api/rule/mod.rs:36`)
-and `LifecycleBuilderState::record_operation` should share one first-error
-recorder, but keep the immediate-vs-deferred setter split: it is the intended
-public distinction and must not be collapsed.
+`CatalogLifecycleQueryBuilder::record_operation`/`record_error` in favor of the
+state's existing method. Collapse the three identical first-error recorders
+into the shared `record_first_error` (`api/rule/mod.rs:36`), with
+`LifecycleBuilderState::record_operation` delegating to it, so the "record the
+first error from a `Result<(), E>`" idiom exists exactly once. Keep the
+immediate-vs-deferred setter split: it is the intended public distinction and
+must not be collapsed.
 
 **Fix Applied:** None so far.
 
@@ -170,12 +172,14 @@ requires `T: Ord` and `EventQuery` derives only `PartialEq/Eq/Hash`
 (`query/mod.rs:148-149`).
 
 **Recommendation:** Make source ordering canonical at the builder boundary:
-give `EventQuery` the missing `Ord` derivation and reuse the canonical
-collection (or otherwise normalize sources in `LifecycleStages::build`) so
-`LifecycleQuery` equality is order-independent and the compiler's dedup/sort at
-`normalize.rs:352-367` becomes a no-op safety net. Guardrail: preserve
-fail-closed duplicate handling and the deterministic evidence order the
-compiler already establishes; do not change which source events may appear.
+derive `Ord` on `EventQuery` (every field already derives `Ord`) and sort+dedup
+`sources` in `LifecycleStages::build` after the existing empty and size checks,
+keeping the `Vec` storage so `sources()` is unchanged. `LifecycleQuery`
+equality then becomes order-independent and the compiler's dedup/sort at
+`normalize.rs:352-367` becomes a no-op safety net. Guardrail: keep the
+`MAX_LIFECYCLE_SOURCES` check on the authored count (pre-dedup), the
+compiler's `first-wins` duplicate semantics, and its deterministic evidence
+order; do not change which source events may appear.
 
 **Fix Applied:** None so far.
 
@@ -229,21 +233,24 @@ after) equivalent.
 consumer must then treat a state that cannot occur: the compiler re-validates
 "at least one source" and "at least a condition or completion"
 (pass4_10.rs:13-17, 29-33) even though the builder already enforced both, and
-`normalize.rs:392` must `.as_ref()` a value that is always `Some` in production
-(the only `None` constructions are the `#[cfg(test)]`
+`normalize.rs:393-394` must `.as_ref()` a value that is always `Some` in
+production (the only `None` constructions are the `#[cfg(test)]`
 `from_parts_for_test`, mod.rs:322-335). This nullable state obscures the
 builder-guaranteed completion invariant and pushes re-validation onto a
 different module.
 
 **Recommendation:** Store `completion: LifecycleCompletion` (non-optional) on
 the built `LifecycleQuery`, change `completion()` to return
-`&LifecycleCompletion`, and update `from_parts_for_test` callers
-(`compiler/tests/normalize.rs:51-52`, `validate/well_formedness.rs:290,324,363`)
-to supply one. Keep `condition` optional — `AnySink`/`AllSinks` completions
-legitimately have no condition — and drop the compiler's now-redundant
-none-checks at pass4_10.rs:13-17 and 29-33. Guardrail: preserve the
-`Configuration`-requires-condition rule in the builder and the fail-closed
-`MissingLifecycleCompletion` error for the deferred catalog builder.
+`&LifecycleCompletion`, and update the touch points: `from_parts_for_test` and
+its callers (`compiler/tests/normalize.rs:51-52`,
+`validate/well_formedness.rs:290,324,363`) to supply one, the
+`completion().as_ref()` at `normalize.rs:393-394` to drop `.as_ref()`, and the
+`.is_some()` presence probes at `expression.rs:200` and `lifecycle/tests.rs:21`.
+Keep `condition` optional — `AnySink`/`AllSinks` completions legitimately have
+no condition — and drop the compiler's now-redundant none-checks at
+pass4_10.rs:13-17 and 29-33. Guardrail: preserve the `Configuration`-requires-
+condition rule in the builder and the fail-closed `MissingLifecycleCompletion`
+error for the deferred catalog builder.
 
 **Fix Applied:** None so far.
 
@@ -253,9 +260,9 @@ none-checks at pass4_10.rs:13-17 and 29-33. Guardrail: preserve the
 - **Fix Complexity:** Medium
 - **Theme:** ENCAPSULATE
 - **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/api/rule/query/mod.rs:156-158` and `glass-lint-core/src/api/rule/query/lifecycle/types.rs:91-94`; sync logic at `glass-lint-core/src/api/rule/query/value.rs:301-326`
+- **Location:** `glass-lint-core/src/api/rule/query/mod.rs:157-158` and `glass-lint-core/src/api/rule/query/lifecycle/types.rs:93-94`; sync logic at `glass-lint-core/src/api/rule/query/value.rs:301-326`
 
-`EventQuery` (mod.rs:156-158) and `LifecycleEventBuilder` (types.rs:91-94) each
+`EventQuery` (mod.rs:157-158) and `LifecycleEventBuilder` (types.rs:93-94) each
 hold the same two-field state — `Vec<ArgumentConstraint>` plus a
 `BTreeMap<ArgumentIndex, usize>` — whose consistency invariant (counts mirror
 the vector; vector stays sorted by `(index, matcher)`; per-index and per-group
@@ -300,26 +307,30 @@ and the public `constraints() -> &[ArgumentConstraint]` surface
 
 ## Open Questions
 
-- **`LifecycleSink::chain()` vs `LifecycleCallEndpoint`.** The endpoint stores
-  both the parsed `MemberChain` and the derived `LifecycleCallTarget`
-  (endpoint.rs:15-19). The compiler consumes only `target()`
-  (normalize.rs:447-463, object_flow.rs), while `chain()` serves display and
-  explanation (explanation.rs:261-269) and tests. Whether the display chain can
-  be derived on demand from the target (dropping the stored chain) depends on
-  whether `Global`/`RootedMember` round-trip spelling exactly; not reported as a
-  finding because the redundancy is not yet a maintenance cost.
-- **Source dedup semantics.** Normalization deduplicates lifecycle sources
-  ("first wins", normalize.rs:350-359). Whether author order of sources is
-  semantically meaningful for evidence ordering, or purely cosmetic, is not
-  documented at the builder; READ-008 assumes the compiler's sort/dedup is the
-  intended canonical form. If evidence order must follow author order instead,
-  the sort in normalize.rs would itself be wrong and READ-008's framing should
-  be revisited.
-- **Why `EventQuery` lacks `Ord`.** `CanonicalLifecycleItems<T: Ord>` cannot
-  host sources because `EventQuery` does not derive `Ord` (mod.rs:148-149). It
-  is unclear whether this is deliberate (avoiding a semantic total order on
-  event selections) or simply an oversight; the answer affects READ-008's
-  recommended fix.
+- **`LifecycleSink::chain()` vs `LifecycleCallEndpoint`.** Resolved: the stored
+  `MemberChain` is redundant. The endpoint stores both the parsed `MemberChain`
+  and the derived `LifecycleCallTarget` (endpoint.rs:15-19); the compiler
+  consumes only `target()` (normalize.rs:447-463, object_flow.rs) while
+  `chain()` serves display and explanation (explanation.rs:261-269) and tests.
+  The display chain round-trips exactly from the target: `Global(name)` stores
+  `chain.as_str()` verbatim (types.rs:391) and `RootedMember(path)` holds the
+  exact path whose `to_string()` produced the display (declarations.rs:32), so
+  `chain()` can be derived on demand. Not reported as a finding because the
+  redundancy is not yet a maintenance cost.
+- **Source dedup semantics.** Resolved: author order of sources is cosmetic.
+  Normalization sorts and deduplicates sources ("first wins",
+  normalize.rs:352-367), and every downstream consumer — `planner.rs:113-124`,
+  `object_flow.rs:158-162`, and the evidence helper `reference.rs:107` — reads
+  the normalized (sorted) list, never the authored order. The compiler's
+  sort/dedup is therefore the intended canonical form, and READ-008's framing
+  stands.
+- **Why `EventQuery` lacks `Ord`.** Resolved: not a deliberate avoidance. Every
+  `EventQuery` field already derives `Ord` (`VarId`, `EventSpec` and
+  `IdentitySpec`, both at event.rs:6-7 and event.rs:71-72,
+  `Vec<ArgumentConstraint>`, `BTreeMap<ArgumentIndex, usize>`), the compiler
+  already imposes a deterministic total order on sources at normalization
+  (normalize.rs:360-366), and nothing derives semantic order from the type.
+  Adding `Ord` is additive and safe; READ-008's recommended fix is unblocked.
 
 ## Coverage
 

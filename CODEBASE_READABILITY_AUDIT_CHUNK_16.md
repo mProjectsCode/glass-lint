@@ -62,10 +62,13 @@ is recomputation whose result is replaced downstream.
 bucket index as an extra, separate tie-break in `MergeItem` only). Guardrails:
 `sort_unstable_by_key` and `dedup_by_key` in `normalize` must keep the identical
 key so deduplication never diverges from sorting; the bucket tie-break in
-`MergeItem::cmp` must stay distinct from the event ordering; and the 
-test-only `OccurrenceIndexes::evidence_for` (`query/mod.rs:56-65`) asserts the
-occurrence order directly, so the boundary sort cannot simply be removed even
-though `normalize_evidence` re-sorts in production.
+`MergeItem::cmp` must stay distinct from the event ordering; and the boundary
+sort cannot simply be removed even though `normalize_evidence` re-sorts in
+production, because the occurrence unit test
+`ordered_selection_sorts_without_deduplicating_physical_events`
+(`occurrence/tests.rs:117-136`) asserts the `(event, span.start, span.end)`
+order directly (the `evidence_for` integration test at `matching/tests.rs:49`
+exercises only the lazy Indexed path and is indifferent to it).
 
 **Fix Applied:** None so far.
 
@@ -218,15 +221,17 @@ both `IpAddr::V4` and `IpAddr::V6` (`private_network.rs:48-51`), but the
 candidate is a run of digits and dots with exactly three dots, which can only
 parse as an IPv4 address, so the `V6` arm is unreachable.
 
-**Recommendation:** Extract a shared boundary predicate (or per-scan
-normalization helper) for the surrounding-character checks, and parse the IPv4
-candidate directly as `Ipv4Addr` so the match has no dead arm. Guardrails: the
-rule sets genuinely differ per scan (the IPv6 tokenizer already delimits on
-whitespace/punctuation and only rejects `?`/`\\`, while the IPv4/localhost
-scans also enforce alphanumeric/dot boundaries), so the consolidation must not
-merge the three distinct boundary rules; the `localhost` → IPv4 → IPv6
-precedence in `private_network_match` (`private_network.rs:6-10`) and the
-regex non-match guarantees asserted in `query/view/tests.rs:3-15` must remain.
+**Recommendation:** Parse the dotted IPv4 candidate directly as `Ipv4Addr` so
+`contains_private_ipv4` has no dead `V6` arm, and extract only the genuinely
+shared piece — the alphanumeric/dot boundary predicate used identically by
+`contains_localhost` on both sides and as the IPv4 after-check — into one
+small helper instead of forcing the three scans into a single scanner.
+Guardrails: the boundary rule sets differ per scan (the IPv6 tokenizer already
+delimits on whitespace/punctuation and only rejects `?`/`\\`, and the IPv4
+before-check additionally excludes `\\`), so the three predicates must not be
+merged; the `localhost` → IPv4 → IPv6 precedence in `private_network_match`
+(`private_network.rs:6-10`) and the regex non-match guarantees asserted in
+`query/view/tests.rs:3-15` must remain.
 
 **Fix Applied:** None so far.
 
@@ -256,20 +261,35 @@ regex non-match guarantees asserted in `query/view/tests.rs:3-15` must remain.
 
 ## Open Questions
 
-- `resolve_any` gives `AnyIndex::Constructors` a fallback to the global
-  constructors (`query/view.rs:260-268`) but `AnyIndex::Names` (Call) has no
-  equivalent global fallback (`query/view.rs:247-252`), even though global
-  calls are recorded under interned names as well as in `global_calls`
-  (`build.rs:163-170`). Is the asymmetry intentional, and can a call recorded
-  only as a global provenance evade an `Any` identity?
-- Given every production evidence path re-sorts by `(span.start, span.end,
-  fact)` in `normalize_evidence` (`projection.rs:482`), is the occurrence-level
-  `(event, start, end)` sort in `OrderedOccurrences::sorted` load-bearing for
-  anything other than the `#[cfg(test)]` `evidence_for` path
-  (`query/mod.rs:56-65`)?
-- Should the matching layer own its own named constant for the `"*"` marker
-  rather than referencing `analysis::model::module::NAMESPACE_EXPORT`, or is
-  cross-layer reuse of the existing const the cleaner owner (see READ-005)?
+- **Resolved.** The asymmetry is real, and a call recorded only as global
+  provenance does evade an `Any` identity — but that is consistent with the
+  authoring surface. `Any` is lowered only from `IdentitySpec::Heuristic`
+  (`api/compiler/mod.rs:130`), while global calls are matched through the
+  dedicated `Global` identity (`call_global` → `resolve_global` →
+  `global_calls`, e.g. `glass-lint-js/src/rules/browser/request/mod.rs:15`).
+  A call whose callee is not a plain identifier has no `callee_name`
+  (`facts/calls/callee.rs:69` sets it only for `Expr::Ident`) yet can still
+  carry `Global` provenance (`resolution/call.rs:155-177`), so e.g. `fetch?.()`
+  lands only in `global_calls` and is invisible to `Any`. Whether the
+  `Constructors` global fallback (`view.rs:260-268`) is the intentional
+  outlier or an inconsistency is a policy decision, not determinable from code.
+- **Resolved.** Yes — the sort is load-bearing for the occurrence unit tests:
+  `ordered_selection_sorts_without_deduplicating_physical_events`
+  (`occurrence/tests.rs:117-136`) asserts the `(event, span.start, span.end)`
+  order directly, and `ordered_normalized_selections_keep_their_lazy_order`
+  (`occurrence/tests.rs:138-149`) pins the Indexed/Borrowed lazy order. The
+  `evidence_for` integration test (`matching/tests.rs:49`) exercises only the
+  lazy Indexed path and is indifferent to the sort. Production output is
+  insensitive to it because `normalize_evidence` re-sorts and dedups each
+  group deterministically; the boundary sort exists for the occurrence-level
+  ordering contract, not for final report order.
+- **Resolved.** Cross-layer reuse of the existing `NAMESPACE_EXPORT` is the
+  cleaner owner: it already sits in the model constant group
+  (`model/module.rs:14`), is already used by the project layer for the
+  identical concept (`project/linker/export.rs:290`), and the matching and
+  resolution layers already depend on `analysis::model` (`matching/build.rs:89`,
+  `resolution/call.rs:10`), so referencing it introduces no new coupling. A
+  matching-owned duplicate would split the concept's ownership (see READ-005).
 
 ## Coverage
 

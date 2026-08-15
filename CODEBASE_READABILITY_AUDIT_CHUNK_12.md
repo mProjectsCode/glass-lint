@@ -47,15 +47,17 @@ touch `ExportEntry`, `ExportObservation`, `from_observation`, `merge`, three
 constructors, and the tests, and the two same-shaped structs can silently
 drift apart.
 
-**Recommendation:** Delete `ExportObservation` and `ExportMerge`; make
-`observe_export` take the three optional channels (resolution, function id,
-static string) directly, or keep a single `ExportEntry` with one `observe`
-method that runs the merge logic uniformly for vacant and occupied entries
-and returns `()` (no caller consumes the classification). Guardrail: preserve
-the exact contradiction semantics — any conflicting channel observation
-`mark_unknown`s the entry (resolution `Some(ModuleExport::Unknown)`, other
-channels cleared), the three channels merge independently, and an unknown
-entry stays unknown for subsequent observations.
+**Recommendation:** Delete `ExportObservation` and `ExportMerge`. Have the
+three `add_*` methods pass their single channel (`Option<ModuleExport>`,
+`Option<FunctionId>`, `Option<String>`) directly to `observe_export`, which
+inserts a fresh `ExportEntry` for a vacant name and otherwise calls one
+`observe` method on `ExportEntry` that runs the merge logic uniformly for
+both paths and returns `()` (no caller consumes the classification).
+Guardrail: preserve the exact contradiction semantics — any conflicting
+channel observation `mark_unknown`s the entry (resolution
+`Some(ModuleExport::Unknown)`, other channels cleared), the three channels
+merge independently, and an unknown entry stays unknown for subsequent
+observations.
 
 **Fix Applied:** None so far.
 
@@ -68,7 +70,7 @@ entry stays unknown for subsequent observations.
 - **Location:** `glass-lint-core/src/analysis/facts/interface/mod.rs:15-107`; `glass-lint-core/src/analysis/model/module.rs:214-424`
 
 `ModuleInterfaceBuilder` (`facts/interface/mod.rs:15-107`) re-declares the
-`ModuleInterface` surface (`add_local`→`add_local`, `add_import_request`,
+`ModuleInterface` surface (`record_local`→`add_local`, `add_import_request`,
 `add_reexport_request`, `add_star_export_request`, `mark_unknown_exports`,
 `has_exports`, and the export adders) as one-line forwards. Every forwarded
 method is already `pub` on `ModuleInterface` (`model/module.rs:215-350`),
@@ -97,11 +99,12 @@ unchanged for `semantic`, `project`, and `flow` consumers.
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/model/module.rs:34-40,196-212,219-291`; `glass-lint-core/src/analysis/model/module/tests.rs:75-99`
+- **Location:** `glass-lint-core/src/analysis/model/module.rs:34-40,196-212,219-291,319-341`; `glass-lint-core/src/analysis/model/module/tests.rs:75-99`
 
 `ModuleRequest` stores both `kind: ResolutionRequestKind` and
 `role: ModuleRequestRole` (`module.rs:36-37`). Every constructor pairs them
-(`module.rs:246-291`): `Import`, `ReExport`, and `StarExport` always map to
+(`module.rs:240-291,319-341`): `Import`, `ReExport`, and `StarExport` always
+map to
 `StaticImport`, `DynamicImport` to `DynamicImport`, `Require` to `Require`.
 The invariant is only documented implicitly by the test
 `request_constructors_retain_their_valid_kind_and_role_pair`
@@ -124,27 +127,32 @@ resolution-record identity and project budgets are unchanged.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/model/value.rs:119-171,242-279`; callers `glass-lint-core/src/analysis/resolution/expression/static_values.rs:120-149`, `glass-lint-core/src/analysis/resolution/constant.rs:76-101`
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:119-171,242-279`; callers `glass-lint-core/src/analysis/resolution/expression/static_values.rs:120-166`, `glass-lint-core/src/analysis/resolution/constant.rs:76-101`, `glass-lint-core/src/analysis/resolution/call.rs:95,107-125`, `glass-lint-core/src/analysis/resolution/expression.rs:348`
 
 `ValueConstruction` (`value.rs:152-171`) mirrors `Value` (`value.rs:119-133`)
-for 11 of its 12 variants, and `intern_construction` (`value.rs:242-279`)
+for 10 of its 12 variants (all but `Binding`; the single `StaticObject`
+variant is split into `StaticObjectShape` and the name-interning
+`StaticObject`), and `intern_construction` (`value.rs:242-279`)
 destructures every variant into the identical `Value` — a repeated
 destructure/rebuild transform that must be kept in sync whenever `Value`
 grows a variant. Only `ValueConstruction::StaticObject { values, names }`
 actually needs pre-interning state (string keys plus a `&NameTable`
 borrow); the remaining variants are already the final `Value`. The helper
 methods in `static_values.rs` (`static_string`, `static_number`,
-`static_array`, `static_object_shape`, `rooted_member`) each wrap a single
+`static_array`, `static_object_shape`, `intern_object_id`, `rooted_member`),
+the callable and provenance interns in `call.rs:95,107-125`, and the global
+intern in `expression.rs:348` each wrap a single
 `intern_construction(ValueConstruction::…)` call, so the construction enum is
 an intermediate layer between helpers that already know the target variant and
 `intern_value`/`intern_value_with_binding` (`value.rs:193-240`).
 
 **Recommendation:** Delete `ValueConstruction` and `intern_construction`; make
 `intern_value_with_binding` `pub(in crate::analysis)` and call it directly
-with `Value` from the `static_values.rs`/`constant.rs` helpers. Keep the
-name-table object path as a dedicated `intern_static_object`-style method on
-`ValueTable` (a `pub(in crate::analysis)` version of the test-only method at
-`value.rs:296-308`) so the `&NameTable` lifetime stays inside `ValueTable`.
+with `Value` from the `static_values.rs`, `constant.rs`, `call.rs`, and
+`expression.rs` helpers. Keep the name-table object path as a dedicated
+`intern_static_object`-style method on `ValueTable` (a `pub(in crate::analysis)`
+version of the test-only method at `value.rs:296-308`) so the `&NameTable`
+lifetime stays inside `ValueTable`.
 Guardrail: preserve fail-closed behavior — unresolved name or over-budget
 shape still marks the table `exhausted` and returns `ValueId::UNKNOWN`
 (`value.rs:263-275`), and binding wrapping in `intern_value_with_binding`
@@ -190,17 +198,18 @@ change — that is a separate storage decision.
 - **Location:** `glass-lint-core/src/analysis/model/scope.rs:240-241,279-319`
 
 `ScopeBindings(HashMap<NameId, BindingProvenance>)` (`scope.rs:240-241`) has
-no methods of its own; every access goes through `self.bindings.0` in the six
-`LexicalScope` methods (`insert_binding`, `update_binding`, `binding`,
-`has_binding`, `binding_names`, and the test-only accessors,
-`scope.rs:279-319`). The wrapper adds no vocabulary, invariant, or operation —
-`LexicalScope` is the real owner of the binding map.
+no methods of its own; every access goes through `self.bindings.0` in the
+seven `LexicalScope` methods (`insert_binding`, `update_binding`, `binding`,
+`has_binding`, `binding_names`, and the two test-only accessors `has_bindings`
+and `binding_entries`, `scope.rs:279-319`). The wrapper adds no vocabulary,
+invariant, or operation — `LexicalScope` is the real owner of the binding map.
 
 **Recommendation:** Inline the field as
 `bindings: HashMap<NameId, BindingProvenance>` on `LexicalScope`, keeping it
-private and updating only the six methods. Guardrail: the map must remain
-private to `LexicalScope`; no caller currently reaches it directly and none
-should after the change.
+private and updating the field declaration, the `new` constructor, and the
+seven access methods. Guardrail: the map must remain private to
+`LexicalScope`; no caller currently reaches it directly and none should after
+the change.
 
 **Fix Applied:** None so far.
 
@@ -254,24 +263,31 @@ the value must remain hashable/equatable and be resolved identically by
 
 ## Open Questions
 
-- `Value` and `BindingProvenance` share overlapping variants (`Local`,
-  `StaticString`, `StaticNumber`, `ModuleExport { module, export }`) but live
-  at different lifecycle phases (scope-collected facts vs resolved arena).
-  Conversions already exist (`scope/static_value.rs`,
-  `resolution/call.rs`). No consolidation is recommended — the phases are
-  deliberately distinct — but a single authoritative conversion would reduce
-  drift risk if a third conversion site ever appears.
-- `ModuleInterface::has_exports()` (`module.rs:349-351`) returns `true` for an
-  entry whose only content is resolution `Some(ModuleExport::Unknown)` (a
-  per-export contradiction), which drives `module.exports = {…}` reassignment
-  to `mark_unknown_exports` in `facts/interface/commonjs.rs:63`. This appears
-  intentional and fail-closed; worth a comment or a test asserting the
-  per-export-unknown + CommonJS reassignment interaction if none exists.
-- `ValueTable`'s `terminal_cache` (`value.rs:176-233`) is a parallel
-  index-aligned vector to `values`, coupled implicitly to
-  `ValueId::UNKNOWN == 0` in the `Default` impl. It is a performance cache and
-  should stay; deriving it from `values` at construction would document the
-  invariant if the table ever gains a non-default constructor.
+- Resolved: `Value` and `BindingProvenance` share overlapping variants
+  (`Local`, `StaticString`, `StaticNumber`, `ModuleExport { module, export }`)
+  but live at different lifecycle phases and convert through disjoint type
+  pairs: `ConstValue ↔ BindingProvenance`
+  (`scope/static_value.rs:16-41,44-62`) and `SymbolCallProvenance ↔ Value`
+  (`resolution/call.rs:101-128,135-184`). No third conversion site exists
+  today, and no single conversion could serve both pairs, so no consolidation
+  is warranted.
+- Resolved: `ModuleInterface::has_exports()` (`module.rs:349-351`) indeed
+  returns `true` for an entry whose only content is resolution
+  `Some(ModuleExport::Unknown)`, so a later `module.exports = {…}` assignment
+  wipes the interface via `mark_unknown_exports` (`commonjs.rs:63-66`). This
+  is intentional and fail-closed: `mark_unknown_exports` clears every entry
+  (`module.rs:343-347`). No unit test composes the two behaviors (module
+  tests cover each in isolation, and `commonjs.rs` has no unit tests), so a
+  focused test is worth adding if this path is touched.
+- Resolved: `ValueTable`'s `terminal_cache` (`value.rs:178`) is index-aligned
+  with `values`: `intern_value` pushes exactly one cache entry per newly
+  inserted value and none on dedup or early exhaustion (`value.rs:209-232`),
+  so `terminal_cache[i]` is the terminal of `values[i]`, with
+  `ValueId::UNKNOWN == 0` seeding index 0 in `Default` (`value.rs:181-190`).
+  `resolve_terminal` relies on that alignment (`value.rs:341-344`). It is a
+  performance cache and should stay; it cannot be derived from `values` at
+  construction without re-walking every `Binding` chain, which is the exact
+  work the cache avoids.
 
 ## Coverage
 

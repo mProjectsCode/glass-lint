@@ -75,14 +75,17 @@ checked by `rule_mut` at `cross/evidence.rs:77`), the early `return evidence` wo
 silently drop the remaining rules if the invariant ever broke — a fail-open path on a
 path that must stay fail-closed.
 
-**Recommendation:** Give `ModuleEvidence::into_evidence` an infallible conversion
-(`expect`/`debug_assert` with the invariant named, or construct the table from the
-already-validated capacity), so a capacity regression fails loudly instead of
-dropping rules. For the mutating methods, either document that in-range keys are a
-caller precondition or keep the `Result` only where an unvalidated key can genuinely
-arrive. Guardrail: preserve the two-lifecycle split (in-flow accumulation with
-`nonmatching` keys vs. final report storage) — do not collapse `ModuleEvidence` into
-`RuleEvidenceTable`.
+**Recommendation:** Make `ModuleEvidence::into_evidence` infallible
+(`expect`/`debug_assert` naming the invariant, since `rule_mut` at
+`cross/evidence.rs:77` already bounds every stored key below the table capacity), so
+a capacity regression fails loudly instead of silently dropping the remaining rules.
+Keep the `Result` on `RuleEvidenceTable::record`/`replace`/`mark_event_truncated`/
+`merge_equal_capacity`: the capacity guard is a real boundary exercised as
+adversarial negatives in `api/classification/tests.rs` (lines 51-77), and the
+in-flow callers' rollback/discard is the correct handling of an unreachable-but-
+modeled error. Guardrail: preserve the two-lifecycle split (in-flow accumulation
+with `nonmatching` keys vs. final report storage) — do not collapse `ModuleEvidence`
+into `RuleEvidenceTable`.
 
 **Fix Applied:** None so far.
 
@@ -107,20 +110,22 @@ compiler: field access in `normalize.rs:42-48,64,104-107,473-483`,
 accessor access is used in `physical/planner.rs:29-30`, `reference.rs:183,203,342`,
 `contradiction.rs:40-42`, and `physical/validation.rs:37-63`. With `pub(crate)`
 fields, the "groups are sorted, deduplicated, and non-empty" invariant documented on
-`CanonicalArgumentConstraints` (normalized.rs:60-64) is not enforced by the type
-system at the field surface, so a caller can read a partially-built group; and every
-field change must be mirrored in the accessor. There are effectively three
+`CanonicalArgumentConstraints` (normalized.rs:61-64) rests on the convention that
+construction happens only via `from_constraints`; the raw field surface admits
+struct-literal construction that bypasses that guarantee, and every field change
+must be mirrored in the accessor. There are effectively three
 encapsulation conventions in the same module family: private fields + public
 accessors (`classification.rs`), `pub(crate)` fields + accessors (this module), and
-bare `pub(crate)` fields (`EvidenceDescriptor`, `IdentityConstraint` in
-`compiler/mod.rs:119-123`).
+bare `pub(crate)` fields (`EvidenceDescriptor` in `compiler/mod.rs:119-123`,
+`IdentityConstraint` in `compiler/mod.rs:69-100`).
 
 **Recommendation:** Pick one surface for the normalized IR and migrate the ~six
-in-crate consumers to it. Prefer private fields with narrow accessors so the
-canonical-form invariants are enforced at the type boundary; keep `Ord`/`Hash`
-derives and `from_constraints` construction unchanged. Guardrail: do not remove the
-accessors that the physical planner and test oracle rely on without updating those
-callers in the same change; keep the `#[cfg(test)] to_flat_vec` seam.
+in-crate consumers to it. Prefer private fields with narrow accessors so reads and
+construction flow through `from_constraints` and the accessors, the surfaces where
+the canonical-form invariants are guaranteed; keep `Ord`/`Hash` derives and
+`from_constraints` construction unchanged. Guardrail: do not remove the accessors
+that the physical planner and test oracle rely on without updating those callers in
+the same change; keep the `#[cfg(test)] to_flat_vec` seam.
 
 **Fix Applied:** None so far.
 
@@ -134,8 +139,9 @@ callers in the same change; keep the `#[cfg(test)] to_flat_vec` seam.
 - **Category:** Conversion
 - **Location:** `glass-lint-core/src/api/compiler/mod.rs:69-117,127-157`; `glass-lint-core/src/api/compiler/validate/error.rs:382-397`
 
-`IdentityConstraint` (compiler/mod.rs:69-100) is a structural copy of the public
-`IdentitySpec` with the same nine variants (`Heuristic` renamed to `Any`) and a
+`IdentityConstraint` (compiler/mod.rs:69-100) is a structural copy of the declaration
+`IdentitySpec` (`pub(crate)`, `api/rule/query/event.rs:7`) with the same nine
+variants (`Heuristic` renamed to `Any`) and a
 hand-written 1:1 `lower_identity` conversion (mod.rs:127-157) plus a parallel
 `is_empty` check (mod.rs:102-117). The emptiness logic is duplicated in
 `is_identity_empty` (validate/error.rs:382-397), and the two already disagree:
@@ -147,13 +153,14 @@ matcher matches in `analysis/matching/arguments/identity.rs` — five places for
 concept, with the whitespace semantics already drifting.
 
 **Recommendation:** Keep the declaration-vs-IR layer boundary but make the conversion
-the single canonical path: implement `From<&IdentitySpec> for IdentityConstraint` (or
-replace the free `lower_identity`) and derive the IR emptiness check from the
-declaration check with one documented whitespace policy, so the two cannot diverge.
-Guardrail: do not merge the two enums into one type — `IdentitySpec` is public
-`api/rule` surface with `SmolStr` fields while `IdentityConstraint` is `pub(crate)`
-IR with `String` fields; keep the trim-based validation that guards authored input at
-the declaration boundary if that is the intended difference.
+the single canonical path: implement `From<&IdentitySpec> for IdentityConstraint` in
+place of the free `lower_identity`, and align the two emptiness checks on one
+documented whitespace policy so they cannot diverge again (the trim difference is
+drift, not intentional — see Open Questions). Guardrail: do not merge the two enums
+into one type — the `Heuristic`→`Any` rename stays an explicit lowering step so the
+authoring vocabulary and the IR vocabulary remain distinct; both types are
+`pub(crate)` with identical field types, so this is purely a boundary-of-record
+decision.
 
 **Fix Applied:** None so far.
 
@@ -172,8 +179,9 @@ the declaration boundary if that is the intended difference.
 have identical shape and vocabulary, differing only in that one has accessor methods
 and one has bare fields. `plan_normalized_roots_into` rebuilds the descriptor by hand
 at `planner.rs:66-69` (`EvidenceDescriptor { kind, symbol: symbol.to_owned() }`) once
-per physical root, even though every root in a production plan carries the same
-emission (`plan_root` threads the same `kind`/`symbol` to all branches). This is a
+per physical root, even though every evidence-bearing root in a production plan
+carries the same emission (`plan_root` threads the same `kind`/`symbol` to every
+event branch; lifecycle roots use only `symbol`). This is a
 parallel model type plus a manual conversion path plus per-root duplication of a
 plan-constant value.
 
@@ -182,8 +190,9 @@ EvidenceDescriptor`, or derive the descriptor directly from the emission) and us
 at the single construction site; optionally hoist the constant emission to plan level
 if the tests that construct roots with distinct descriptors are preserved.
 Guardrail: keep the per-root descriptor shape — `optimize_roots`'s dedup rule
-(`physical.rs:429-433`) and the physical tests (`api/compiler/tests/physical.rs`,
-`tests/rule.rs:58`) deliberately treat differing evidence descriptors as distinct
+(`physical.rs:429-433`) and the physical tests (`api/compiler/tests/physical.rs`
+constructs roots with distinct descriptors at 377-437; `tests/rule.rs:58` asserts a
+per-root descriptor) deliberately treat differing evidence descriptors as distinct
 roots.
 
 **Fix Applied:** None so far.
@@ -315,17 +324,25 @@ finished `Vec<PhysicalRoot>`), preserving the `MatcherBuildError` mapping in
 
 - `pub mod classification` is part of the public API surface, but no crate outside
   `glass-lint-core` (providers, output, harness, CLI) references
-  `ClassificationResult`/`MatchedCapability`/`MatchKind` today. Is the public surface
-  reserved for a future report consumer, or could the module be `pub(crate)` until
-  then? Not actionable without the intended roadmap.
+  `ClassificationResult`/`MatchedCapability`/`MatchKind` today; every consumer is
+  in-crate (`analysis/project/projection.rs`, `lint/report/evidence.rs`,
+  `lint/report/mod.rs`), and the external report surface is `project::FileReport`
+  (consumed by `glass-lint-output`). Resolved: whether `pub` is reserved for a future
+  report consumer is a roadmap call; if no external consumer is planned, the module
+  can be `pub(crate)` today.
 - The `normalized::ObjectSlot` and `physical::ObjectSlot` (converted with validation
-  at `planner.rs:125`) are two u32 newtypes for the same concept across IR stages,
-  one of which rejects `u32::MAX`. This looks like an intentional stage boundary with
-  a real invariant addition; confirmed as acceptable unless the two stages are ever
+  at `physical.rs:125`) are two u32 newtypes for the same concept across IR stages,
+  one of which rejects `u32::MAX` (`physical::ObjectSlot::new`, `physical.rs:76-80`).
+  Resolved: this is an intentional stage boundary with a real invariant addition —
+  normalized slots are dense and may hold any `u32`, while physical slots reject
+  `u32::MAX` as an impossible dimension; acceptable unless the two stages are ever
   merged.
 - `IdentityConstraint::is_empty` (no trim) vs `is_identity_empty` (trim) — is the
   whitespace difference intentional (declaration validation vs. validated IR defense)
-  or drift? If intentional, it should be documented; see READ-004.
+  or drift? Resolved: drift, not intentional. Declaration validation
+  (`is_identity_empty`, `validate/pass1_3.rs:18`) rejects whitespace-only identities
+  before lowering, so the no-trim IR check never observes a trim-empty value in
+  production; the checks should be aligned per READ-004.
 
 ## Coverage
 

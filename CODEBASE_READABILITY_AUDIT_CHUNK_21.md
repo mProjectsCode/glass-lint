@@ -38,7 +38,7 @@ test-support surfaces and single-use wrappers that add naming or conversion nois
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `api/compiler/validate/pass4_10.rs:71-82, 122-130`; `api/compiler/validate/pass1_3.rs:18-25`
+- **Location:** `api/compiler/validate/pass4_10.rs:71-83, 122-130`; `api/compiler/validate/pass1_3.rs:18-25`
 
 `check_structure`'s `Event` branch calls `validate_event_query(eq)?` (pass4_10.rs:72)
 and then `check_identity_not_empty(eq.identity())?` (pass4_10.rs:74). Both use the
@@ -50,8 +50,9 @@ advertises a second error category for a condition that cannot reach it.
 
 **Recommendation:** Delete `check_identity_not_empty` and its `// pass_relation_availability`
 call site, leaving `validate_event_query` as the single empty-identity check with its
-stable `invalid_event_predicate` diagnostic. Guardrail: keep the empty-identity
-rejection classified as an authored `InvalidEventPredicate`, not as `UnsupportedRelation`.
+stable `invalid_event_predicate` diagnostic; drop the now-unused `is_identity_empty`
+import (pass4_10.rs:4). Guardrail: keep the empty-identity rejection classified as an
+authored `InvalidEventPredicate`, not as `UnsupportedRelation`.
 
 **Fix Applied:** None so far.
 
@@ -110,7 +111,7 @@ physical check must keep failing closed with `ConstraintsRequireCallEvent`.
 - **Fix Complexity:** Medium
 - **Theme:** DEDUPLICATE
 - **Category:** Conversion
-- **Location:** `api/compiler/physical.rs:73-81, 118-130, 132-144`; `api/compiler/normalized.rs:183-197`; `api/compiler/physical/planner.rs:93-109`
+- **Location:** `api/compiler/physical.rs:73-81, 116-130, 132-144`; `api/compiler/normalized.rs:183-197`; `api/compiler/physical/planner.rs:93-109`
 
 `physical::ObjectSlot(u32)` (physical.rs:73) is a near-copy of
 `normalized::ObjectSlot(u32)` (normalized.rs:183) that exists only to reject the
@@ -136,12 +137,12 @@ fail-closed `ImpossibleDimensions` rejection; do not loosen the sentinel check.
 - **Fix Complexity:** Low
 - **Theme:** ENCAPSULATE
 - **Category:** Encapsulation
-- **Location:** `analysis/flow/planning.rs:249-254, 237`; owner `api/compiler/object_flow.rs:250-253, 256-287`
+- **Location:** `analysis/flow/planning.rs:249-254, 237`; owner `api/compiler/object_flow.rs:250-253, 256-264`
 
 `BoundSink` stores a cloned `CompiledObjectSinkArguments` (planning.rs:237) and its
 `matches_argument` (planning.rs:249-254) re-implements the `Any`/`Indices`
 interpretation by matching the enum variants directly, while the owner already
-encodes the same semantics in `present_indices` (object_flow.rs:256-287). The
+encodes the same semantics in `present_indices` (object_flow.rs:256-264). The
 `Any`-vs-`Indices` decision is therefore duplicated across the chunk and the flow
 engine, so a change to the sink-argument model (e.g. adding a bounded index form)
 requires touching both places.
@@ -172,10 +173,10 @@ test-only `fixed_argument` reads `indices.first()` (object_flow.rs:321). The
 multi-index vocabulary invites callers to assume a capability the model never
 exercises.
 
-**Recommendation:** Model the two real states directly (`Any` | `Single(usize)`) or,
-if multi-index sinks are intended, document it and construct them that way.
-Guardrail: keep `present_indices` bounded and keep `Any` meaning "all arguments of
-the target call".
+**Recommendation:** Model the two real states directly (`Any` | `Single(usize)`).
+Multi-index is unreachable from the normalized lifecycle IR (see Open Questions), so
+the `Vec` form is a leftover generalization. Guardrail: keep `present_indices` bounded
+and keep `Any` meaning "all arguments of the target call".
 
 **Fix Applied:** None so far.
 
@@ -209,21 +210,23 @@ classification of the post-normalization failure in normalize.rs.
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** API
-- **Location:** `api/compiler/physical.rs:288-306, 316-334`; callers `planner.rs:21`, `mod.rs:166`, `tests/physical.rs:383-386`, `tests/physical_extended.rs:10`
+- **Location:** `api/compiler/physical.rs:288-306, 316-334`; callers `planner.rs:21`, `mod.rs:166`, `tests/physical.rs:287, 383-386`, `tests/physical_extended.rs:10`
 
 `PhysicalPlan` has four entry points: production `from_planned_roots` (physical.rs:294)
 plus three `#[cfg(test)]` constructors — `from_roots` (physical.rs:302), which is a
-byte-identical delegation to `from_planned_roots`, `try_new` (physical.rs:316), and
-unvalidated `new` (physical.rs:328). The doc comment on `from_planned_roots`
+byte-identical delegation to `from_planned_roots`, `try_new` (physical.rs:317), and
+unvalidated `new` (physical.rs:329). The doc comment on `from_planned_roots`
 (physical.rs:289-293) claims `from_roots` is "the independent validation boundary for
 callers that can supply physical roots directly", but it calls the very same function.
 The extra name and misleading boundary documentation make the sealing story harder to
 trust.
 
 **Recommendation:** Delete `from_roots` and have test callers use `from_planned_roots`
-(including via `plan_normalized`); keep `new`/`try_new` only if their unvalidated and
-requirements-mismatch forms are genuinely exercised, and document why tests bypass the
-sealing boundary. Guardrail: the production path must keep the single
+(including via `plan_normalized`). Keep `new` and `try_new`: their unvalidated and
+requirements-mismatch forms are genuinely exercised (tests/physical.rs:383-386, 426,
+444; tests/physical_extended.rs:10, 123, 157), and note in their docs why tests bypass
+the sealing boundary. Drop the `from_planned_roots` doc claim that `from_roots` is an
+independent boundary. Guardrail: the production path must keep the single
 `from_planned_roots` validation boundary.
 
 **Fix Applied:** None so far.
@@ -264,11 +267,13 @@ beyond keeping the one-to-one normalized-IR mapping.
   (physical.rs:188, planning.rs:249) forks the semantics. Keep the canonical owner and
   delegate.
 
-- **Flow engines re-derive sink-argument semantics.** `summary/sink.rs`
-  (`present_indices`), `cross/propagation.rs` and `projector/evidence.rs`
-  (`matches_argument`) each navigate `CompiledObjectSinkArguments` with slightly
-  different helpers. Narrowing the owner's domain operations (READ-005) is the
-  smallest step that keeps the engines independent.
+- **Flow engines share one hand-written sink-argument re-implementation.** The
+  engines consume `CompiledObjectSinkArguments` only through `BoundSink` accessors
+  (`summary/sink.rs:216` via `present_indices`, `cross/propagation.rs:173` and
+  `projector/evidence.rs:89` via `matches_argument`), but `BoundSink::matches_argument`
+  (planning.rs:249-254) still re-implements `Any`/`Indices` membership by hand.
+  Narrowing the owner's domain operations (READ-005) is the smallest step that keeps
+  the engines independent.
 
 - **Test-support surface on production types.** `PhysicalPlan` constructors
   (READ-008), `PlanRequirements::value_resolution()`/`project_requirements()` returning
@@ -280,20 +285,25 @@ beyond keeping the one-to-one normalized-IR mapping.
 
 ## Open Questions
 
-- `PlanRequirements::value_resolution()` / `project_requirements()` expose the exact
-  requirement sets to tests (requirements.rs:78, 87; used in `tests/normalize/algebra.rs`
-  and `algebra_extended.rs`). The exact-set assertion is a real contract (over- or
-  under-requirement regressions), but the raw `&BTreeSet` accessor leaks storage; it is
-  unclear whether a dedicated test-side assertion API would be worth the machinery.
-- `CompiledObjectSinkArguments::Indices(Vec<usize>)` (READ-006) is only ever built
-  with one element; it is unknown whether multi-index sinks are a planned lifecycle
-  capability or a leftover generalization. If multi-index is intended, a test that
-  constructs one would resolve the question.
-- `physical::ObjectSlot` exists solely to reject `u32::MAX` at the executable
-  boundary (READ-004). It is unclear whether that sentinel can originate from authored
-  queries through the dense renumbering in `normalize.rs`/`normalize_all.rs` or only
-  from direct test construction; if the latter, the invariant could be enforced during
-  normalization instead of duplicated at the physical boundary.
+- **Resolved:** `PlanRequirements::value_resolution()` / `project_requirements()`
+  (requirements.rs:78, 87) are used by `tests/normalize/algebra.rs` and
+  `algebra_extended.rs` as the exact-set contract (`contains` at algebra.rs:380-382,
+  full-set equality at algebra.rs:393-398). Both accessors are `#[cfg(test)]`-gated
+  immutable references, so they are the minimal way to assert the exact requirement
+  sets; a dedicated test-side assertion API would re-wrap the same sets without
+  narrowing the surface. Keep the accessors.
+- **Resolved:** `CompiledObjectSinkArguments::Indices` is constructed only at
+  object_flow.rs:300 with `vec![*index]`, and the normalized lifecycle IR
+  (`NormalizedLifecycleSink`) defines only single-index `ArgumentOf` plus
+  `AnyArgumentOf`, so multi-index sinks are not reachable from authored queries.
+  The `Vec` is a leftover generalization (see READ-006).
+- **Resolved:** Authored queries cannot produce the sentinel: `normalize_query_decl`
+  alpha-renumbers every slot to dense `0..n` (normalize.rs:35-40, 212-222), so
+  `u32::MAX` is reachable only through direct IR construction such as
+  `ObjectSlot::from_raw(u32::MAX)` in `tests/physical.rs:400`. Enforcing the check
+  during normalization would add nothing for authored input; the physical boundary is
+  the correct sealing point because executable roots are also assembled directly in
+  tests (READ-004).
 
 ## Coverage
 

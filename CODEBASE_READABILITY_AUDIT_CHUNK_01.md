@@ -109,16 +109,20 @@ method remembers, so adding a fifth provenance channel or changing the
 lifecycle touches a dozen methods. `OriginChannels` is only ever used from
 `provenance.rs`.
 
-**Recommendation:** Consolidate the four maps under one owner — either move
-`instance_callables` and `static_string_origins` into `OriginChannels` or
-introduce a small generic channel collection that applies one lifecycle
-operation to all four — so the outer struct becomes a thin coordinator with
-domain vocabulary (`finish_branch_with_else`, `replace_targets`) instead of a
-duplicated op-per-map repeater. Guardrails: preserve the branch-intersection
-semantics exactly, especially the asymmetry in `finish_control_region`
-(instance origins flow out of a region, class origins roll back) and the
-snapshot-vs-checkpoint distinction that `control.rs` relies on; keep budget
-charging per map unchanged.
+**Recommendation:** Move `instance_callables` and `static_string_origins`
+into `OriginChannels` so all four maps are owned together, with each lifecycle
+operation expressed once there using the correct per-map semantics; the outer
+`FactProvenanceState` becomes a thin coordinator with domain vocabulary
+(`finish_branch_with_else`, `replace_targets`) instead of a duplicated
+op-per-map repeater. Do not introduce a generic "apply one operation to all
+four" collection: the lifecycle operations are intentionally asymmetric per
+map (e.g. `finish_control_region` commits instance callables and static-string
+origins but rolls back class origins), so such an abstraction would only
+relocate the asymmetry. Guardrails: preserve the branch-intersection semantics
+exactly, especially the asymmetry in `finish_control_region` (instance origins
+flow out of a region, class origins roll back) and the snapshot-vs-checkpoint
+distinction that `control.rs` relies on; keep budget charging per map
+unchanged.
 
 **Fix Applied:** None so far.
 
@@ -187,18 +191,23 @@ order of `emit_call` relative to other facts.
 - **Location:** `glass-lint-core/src/analysis/facts/stream.rs:175-186` and `stream.rs:294-305`
 
 The read accessor `function_parameters` converts `FunctionId` to `usize` with
-`usize::try_from(...).ok()` and returns `None` on failure (fail-closed), while
-the write path `register_function_parameters` uses
+a `let-else` over `usize::try_from(...)` and returns `None` on failure
+(fail-closed), while the write path `register_function_parameters` uses
 `usize::try_from(id.raw()).expect("FunctionId fits in usize")` (stream.rs:300).
-The panic is unreachable on supported targets today, but the two symmetric
+The panic is unreachable on supported targets today (`FunctionId::raw()`
+returns `u32`), but the two symmetric
 paths disagree on how an untrusted identity is handled, which contradicts the
 module's own invariant ("keep unsupported input distinct") and AGENTS.md's
 "Do not panic" rule.
 
-**Recommendation:** Make the write path handle the conversion the same way as
-the read path (return `Option` or `Result`, or document and assert the
-invariant centrally in one place). Guardrail: registration must still fail
-closed (never partially register a function with a missing slot) and the
+**Recommendation:** Remove the panicking conversion. Because
+`FunctionId::raw()` returns `u32` and `usize` is at least 32 bits on every
+supported target, the conversion is provably total; replace the
+`.expect("FunctionId fits in usize")` in `register_function_parameters` with
+the infallible conversion (e.g. `id.raw() as usize`) and note the invariant in
+the method's doc comment, leaving the read path's fail-closed `let-else`
+fallback untouched. Guardrail: registration must still fail closed (never
+partially register a function with a missing slot) and the
 program-level `FunctionId::new(0)` slot behavior must be preserved.
 
 **Fix Applied:** None so far.
@@ -221,13 +230,19 @@ unreachable in production. Two near-identical invalidity signals obscure which
 condition actually failed and force callers to consult several predicates to
 understand a stream.
 
-**Recommendation:** Pick one canonical invalidity signal — the typed
-`FactStreamIssueSet` — and express `is_valid()` as `issues.is_empty()`, or
-drop the `BudgetExhausted` overlap so `valid` means structural corruption and
-`issues` means bounded-construction outcomes, then simplify
-`semantic/mod.rs::check_facts_budget` accordingly. Guardrails: keep every
+**Recommendation:** Stop conflating the two signals in `append`: exceeding
+`max_facts` or overflowing the dense-ID space is a bounded-construction
+outcome, so those paths should `mark_budget_exhausted()` without also setting
+`valid = false`. Keep `valid` exclusively as the structural-corruption latch
+(dense-ID/sequence violations), so `is_structurally_valid()` and
+`budget_exhausted()` become disjoint; then delete the now-unreachable
+`!stream.is_structurally_valid() && !stream.name_exhausted()` branch in
+`check_facts_budget` (semantic/mod.rs:230) and update the `valid` field doc at
+stream.rs:118, which currently lists budget violations. Guardrails: keep every
 exhaustion reason (`name`, `path`, `budget`, `invalid_parser_span`) distinct
-and fail-closed; preserve the diagnostic boundary that retains invalid streams
+and fail-closed; a budget-exhausted stream must still report `!is_valid()` so
+`is_projectable` (facts/mod.rs:417) and matcher gating (matching/mod.rs:278)
+are unaffected; preserve the diagnostic boundary that retains invalid streams
 for reporting.
 
 **Fix Applied:** None so far.
@@ -249,15 +264,21 @@ the return value, so the collection is built only to be thrown away.
 Separately, for an `export const`/`export let` declaration,
 `record_export_decl` (exports.rs:43) recollects the same declarator's pattern
 locals via `collect_pattern_locals` on the same AST nodes that
-`visit_var_declarator` already walked through `record_pattern_locals`, i.e.
-redundant recomputation of the same name set.
+`visit_var_declarator` will also walk through `record_pattern_locals` (the
+export pass runs before the visitor descends), i.e. redundant recomputation of
+the same name set.
 
-**Recommendation:** Change `record_pattern_locals` to return `()` (or let the
-interface builder's method not return the set), and have `record_export_decl`
-reuse the names the visitor already collected (or document why the export pass
-must collect independently). Guardrails: `add_local` must remain idempotent,
-and the export pass's `function_id_for_expr`/`static_string_value` lookups
-must keep running for exported declarations.
+**Recommendation:** Change `record_pattern_locals` to return `()` — the
+`BTreeSet<SmolStr>` it builds is discarded by its only caller
+(`FactBuilder::record_pattern_locals`, facts/mod.rs:241). For the export
+pass's Var arm, keep the independent `collect_pattern_locals` but document the
+ordering dependency: `visit_export_decl` (visitor.rs:416) runs
+`record_export_decl` before descending into the declarator, so the export pass
+must collect the names itself and the visitor's later `record_pattern_locals`
+re-collects the same set for the interface's local table. Guardrails:
+`add_local` must remain idempotent, and the export pass's
+`function_id_for_expr`/`static_string_value` lookups must keep running for
+exported declarations.
 
 **Fix Applied:** None so far.
 
@@ -282,12 +303,13 @@ type and can be silently swapped, and `InstanceCallable::class_identity`
 (instance.rs:24-26) returns the same untyped pair.
 
 **Recommendation:** Delete the `instance_origin_for_constructor` alias and
-have construction.rs call `constructor_origin_for_expr` directly (or rename it
-to state what it actually returns). Consider promoting `Origin` from a type
-alias to a private newtype over `(module, export)` so instance vs class origins
-cannot be mixed at the type level; the alias alone provides no encapsulation.
-Guardrails: keep `(module, export)` semantics distinct from the `member`
-`SymbolPath`, preserve `InstanceCallable`'s equality/order requirements, and
+have construction.rs call `constructor_origin_for_expr` directly (or rename
+the underlying method to state what it actually returns). Leave the `Origin`
+alias in place: promoting it to a newtype is a cross-module conversion tracked
+in Systemic Themes (`provenance`, `instance`, and `model/fact`), and fixing it
+piecemeal here would churn unrelated modules without addressing the
+swap-risk. Guardrails: keep `(module, export)` semantics distinct from the
+`member` `SymbolPath`, preserve `InstanceCallable`'s equality behavior, and
 keep the fact payload shapes unchanged.
 
 **Fix Applied:** None so far.
@@ -322,16 +344,22 @@ keep the fact payload shapes unchanged.
 
 ## Open Questions
 
-- Is per-phase `DerivedPhaseCapabilities` granularity planned (e.g. disabling
-  only `effects` while keeping `fact_index`), or was it speculative? READ-004's
-  simplification assumes no such plan exists.
-- Does any consumer (matching/projection/flow) rely on the relative order of
-  `Import` vs `Call` facts for dynamic `import()` versus `require()`? No test
-  pins it; the order difference in READ-002 appears incidental.
-- Why does `record_export_decl` re-collect pattern locals for exported `var`
-  declarations when `visit_var_declarator` already collected them? If the
-  export pass needs the names before the visitor descends, that ordering
-  dependency should be documented or eliminated (READ-008).
+- Whether per-phase `DerivedPhaseCapabilities` granularity is planned (e.g.
+  disabling only `effects` while keeping `fact_index`) is a roadmap question
+  the code cannot answer. Today `enabled()` is the only constructor and
+  `disable_derived_phases()` (semantic/mod.rs:281) the only transition, so
+  READ-004's all-or-nothing assumption holds in the current code.
+- Resolved: no consumer relies on the relative order of `Import` vs `Call`
+  facts. The matcher index records each into separate literal/call indexes
+  (matching/build.rs:108), and flow/projection consume module requests through
+  the interface model rather than the fact stream, so the order difference in
+  READ-002 is purely an evidence-order consistency concern.
+- Resolved: `visit_export_decl` (visitor.rs:416-422) calls `record_export_decl`
+  before descending into the declarator (`export.decl.visit_with(self)`), so
+  the export pass runs first and must collect the names itself; the visitor's
+  later `record_pattern_locals` re-collects the same set for the interface's
+  local table. The double collection is a consequence of visit order and
+  should be documented, not restructured (see READ-008).
 
 ## Coverage
 

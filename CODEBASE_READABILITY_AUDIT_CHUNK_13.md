@@ -52,10 +52,11 @@ re-derives the provenance it just constructed: it interns
 `SymbolCallProvenance::ModuleExport { module, export: "*" }` at call.rs:61-68 and immediately
 re-reads it with `self.call_provenance_for_value(id)` at call.rs:73, which for a fresh ModuleExport
 value deterministically returns the same provenance. Finally it hand-spells all six
-`ResolutionProvenance` fields at call.rs:71-78 — the only manual struct literal for that type in
-the chunk, outside constructors. Impact: two recognition paths for the same syntax can drift (new
-spread/argument handling must be edited twice), and the arena round-trip and literal duplicate
-logic the arena already owns.
+`ResolutionProvenance` fields at call.rs:71-78 — a struct literal no constructor yet covers for a
+non-local `call` field (compare `ResolutionProvenance::local()` at mod.rs:63-74). Impact: two
+recognition paths for the same syntax can drift (new spread/argument handling must be edited
+twice), and the interning round-trip re-derives a provenance the resolver already constructed,
+spelling out all six fields by hand.
 
 **Recommendation:** Route the import case through
 `recognize_module_call(call, self, ModuleRequestPolicy::alias_with_dynamic_import())` and map the
@@ -163,7 +164,7 @@ the other silently changes the effective bound asymmetry. Impact: a future depth
 and leaves the arena-materialization guard stale.
 
 **Recommendation:** Re-export `MAX_DEPTH` from `syntax::constant` (alongside the already-re-exported
-`MAX_ARRAY_ITEMS`/`MAX_OBJECT_KEYS`) and reference it from `const_value_depth` in
+`MAX_OBJECT_KEYS`) and reference it from `const_value_depth` in
 resolution/constant.rs, making read and write depth limits one constant. Guardrail: keep the value
 at 32; do not alter admission or recursion semantics.
 
@@ -198,7 +199,7 @@ Guardrails: pure rename; no behavior, provenance, or fail-closed changes.
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** Complexity
-- **Location:** `analysis/resolution/expression.rs:296-326`
+- **Location:** `analysis/resolution/expression.rs:296-316`
 
 `resolve_seed` (expression.rs:296-316) destructures `ResolutionStart` with a `let-else` binding
 `Active(guard)`, then in the `else` branch re-matches the same value including an
@@ -251,10 +252,12 @@ directly after the child map is collected. Guardrail: no behavior change; the re
 ## Open Questions
 
 - `Resolver.budget` is a `pub(super)` field read directly by the fact layer (facts/visitor.rs:24,42,63,
-  facts/assignments.rs:47,120, facts/functions.rs:205, semantic/mod.rs:299). It is a shared,
-  read-only `&SemanticBudget`; an accessor method would add indirection without hiding mechanics.
-  Is the field exposure an acceptable crate-internal contract, or is a narrow `budget_exhausted()`
-  worth it?
+  facts/assignments.rs:47,120, facts/functions.rs:205, semantic/mod.rs:299). Resolved: the direct
+  field exposure is the right contract. Callers need the `&SemanticBudget` reference itself, not a
+  boolean — it is passed by value into free functions such as
+  `record_static_string_origin(..., self.resolver.budget)` (facts/visitor.rs:216) and into
+  `check_facts_budget(stream, resolver, limits, resolver.budget)` (semantic/mod.rs:295-299) — so a
+  narrow `budget_exhausted()` accessor would not replace the reads.
 - `resolve_member` converts `module_member` (`SymbolMemberProvenance::ModuleNamespace`) into
   `scoped_call` (`SymbolCallProvenance::ModuleExport`) and `finalize_seed` converts the final
   `call` back into `module_member`. The dual encoding is documented as intentional (member matchers

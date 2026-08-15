@@ -49,16 +49,16 @@ constructor (`analysis/facts/calls/mod.rs:88-104`). Every shared field
 `instance_class`, `target_function`) is therefore declared three times — in
 each struct and in the mapping — and a field addition or rename must be kept
 in sync in all three places. Positional argument lists of this length also
-invite silent field swaps (e.g., the two `Option<ValueId>` arguments).
+invite silent field swaps (e.g., the two adjacent `Option<NamePath>` arguments
+`syntactic_path` and `rooted_chain`).
 
-**Recommendation:** Make `ResolvedCallee` (or a method on it, which already
-owns the builder-phase vocabulary) responsible for lowering itself into the
-retained `CallEvent`, taking the interning context plus the derived
-`result`/`args`/`unwrap` inputs. This centralizes the mapping in one place,
-removes the 14-arg constructor, and leaves `CallEvent` immutable-retained.
-Guardrails: keep interning in the producer that holds the `Resolver`; do not
-expose `CallEvent`'s storage or an interner from the model; keep the two
-lifecycle phases (buildable vs. retained) distinct.
+**Recommendation:** Have `ResolvedCallee` lower itself into the retained
+`CallEvent` via a method that takes the interning context plus the derived
+`result`/`effective_args`/`unwrap` inputs. This centralizes the mapping in one
+place, removes the 14-arg constructor, and leaves `CallEvent`
+immutable-retained. Guardrails: keep interning in the producer that holds the
+`Resolver`; do not expose `CallEvent`'s storage or an interner from the model;
+keep the two lifecycle phases (buildable vs. retained) distinct.
 
 **Fix Applied:** None so far.
 
@@ -83,14 +83,17 @@ owns a type whose only behavior is defined by a trait living in
 `flow/matcher.rs` and which is exercised only by the matching argument
 evaluator.
 
-**Recommendation:** Consolidate the "resolve `ValueId` → static string /
-static object / rooted chain" derivation into one place (either keep only the
-trait fallbacks and drop the prepared overlay type, or keep the overlay and
-have the trait consult it without a second resolution path). Move the
-definition beside its consumers (`flow/matcher.rs`/`matching/arguments`) if it
-stays. Guardrails: preserve single-pass matcher cost — do not reintroduce a
-second `ValueTable` traversal per predicate — and keep the flow side able to
-match on raw `CallArgInfo` without the overlay.
+**Recommendation:** Keep the prepared overlay and make it authoritative.
+`argument_with_overlay` already resolves `ValueId → static string / static
+object / rooted chain` once per group, so `impl ArgumentData for ArgumentView`
+should return the overlay directly instead of falling back to a second
+`ValueTable` resolution per predicate; optionally reuse the
+`Value::StaticObject`/`Value::RootedMember` match already encoded in
+`ArgumentData for CallArgInfo` so the derivation lives in one place. Guardrails:
+preserve single-pass matcher cost — the overlay stays the single per-group
+resolution and predicates stay O(1) — and keep the arena-backed `ArgumentData
+for CallArgInfo` for the flow side, which matches raw `CallArgInfo` without an
+overlay.
 
 **Fix Applied:** None so far.
 
@@ -110,18 +113,16 @@ match on raw `CallArgInfo` without the overlay.
 `values.into_iter().next()` — the first event of each index — on every flow
 finding emission, allocating a Vec only to drop all but its first element.
 The loop-fixed-point snapshot (`state/tables.rs:412-425`) genuinely needs all
-values, so the full clone is justified for exactly one consumer. Separately,
-`prior_sink_events` (`flow.rs:410-419`) re-sorts its filtered result although
-`EvidenceValues` maintains ascending order by construction (binary-search
-insert), so the `.sort()` is redundant on the same hot read path.
+values, so the full clone is justified for exactly one consumer. In contrast,
+`prior_sink_events` (`flow.rs:410-419`) concatenates per-index lists whose
+cross-index order is not globally sorted, so its `.sort()`/`.dedup()` pair is
+load-bearing for the deterministic sorted+dedup output and must be kept.
 
-**Recommendation:** Add a first-event-per-index accessor (or a borrowing
-iterator such as `impl Iterator<Item = (RequirementIndex, &E)>`) on
-`LifecycleEvidence` for the trace consumer, keeping the full-valued
-`*_entries` view only for the snapshot consumer; drop the redundant `.sort()`
-in `prior_sink_events` while retaining `.dedup()`. Guardrails: preserve
-deterministic declaration order in both consumers and keep the sorted,
-deduplicated contract of `prior_sink_events` (the `dedup` is still required).
+**Recommendation:** Add a borrowing first-event-per-index accessor (e.g.
+`impl Iterator<Item = (RequirementIndex, &E)>`) on `LifecycleEvidence` for the
+trace consumer, keeping the full-valued `*_entries` view only for the snapshot
+consumer. Guardrails: preserve deterministic declaration order in both
+consumers and leave `prior_sink_events`' sorted+dedup contract untouched.
 
 **Fix Applied:** None so far.
 
@@ -131,7 +132,7 @@ deduplicated contract of `prior_sink_events` (the `dedup` is still required).
 - **Fix Complexity:** Low
 - **Theme:** ENCAPSULATE
 - **Category:** API
-- **Location:** `analysis/model/flow/state.rs:45-123`, `analysis/model/flow.rs:19-39,90-128`, `analysis/model/fact.rs:13-48`, `api/compiler/object_flow.rs:7,45-59`
+- **Location:** `analysis/model/flow/state.rs:45-123`, `analysis/model/flow.rs:19-39,90-128`, `analysis/model/fact.rs:13-66`, `api/compiler/object_flow.rs:7,45-59`
 
 On `FlowState` alone, `record_requirement`/`record_sink`/`remove_*`/`new`/getters
 are `pub`, `clear_requirement`/`restore_requirement`/`requirement_entries`/
@@ -178,13 +179,14 @@ bool-flag-driven phase (`all` selects any vs. all semantics) that obscures two
 distinct outcomes for callers. Note: `IndexedEvidence::len` (test-only) counts
 keys, not values, which is a mildly misleading name for a "length" accessor.
 
-**Recommendation:** Consolidate the cap-bound and the bit-mask arithmetic into
-one owner (a shared `BoundedIndex<const N>` core or a single module-private
-helper), and split `ready` into named `ready_any`/`ready_all` (or equivalent)
-so the semantics are explicit. Guardrails: preserve the type-level
-distinctness between requirement and sink indices — they must not be
-interchangeable, and the `EvidenceIndex` trait exists precisely to keep the
-domains separate; keep the `u64::BITS` overflow special case for `count == 64`.
+**Recommendation:** Consolidate the 64-key cap bound and the bit-mask
+arithmetic into one owner (a single module-private `BoundedIndex` newtype that
+both `RequirementIndex` and `SinkIndex` wrap, or one private cap/mask helper),
+and split `ready` into named `ready_any`/`ready_all` (or equivalent) so the
+semantics are explicit. Guardrails: preserve the type-level distinctness
+between requirement and sink indices — they must not be interchangeable, and
+the `EvidenceIndex` trait exists precisely to keep the domains separate; keep
+the `u64::BITS` overflow special case for `count == 64`.
 
 **Fix Applied:** None so far.
 
@@ -207,8 +209,7 @@ scaling contract when it needs one number.
 
 **Recommendation:** Use `project.flow_limit()` directly for the operation
 budget at `cross/mod.rs:271` (the projector's full `FlowLimits` construction at
-`analysis/project/projection.rs:390` remains the single scaling site), or
-expose a named operation-budget accessor that documents the pass-through.
+`analysis/project/projection.rs:390` remains the single scaling site).
 Guardrails: keep `from_flow_operations` for the projector path and keep the
 min/clamp saturation behavior; do not change the cross-phase budget semantics
 while collapsing the call.
@@ -238,22 +239,27 @@ while collapsing the call.
 
 ## Open Questions
 
-- `SemanticFact::new(_authority: FactStreamToken, …)` makes the retained model
-  (`model/fact.rs:438-451`) depend on the producer's capability token defined
-  in `facts/stream.rs:34-47`. This enforces a genuine construction invariant
-  and the parameter is deliberately unused, but the dependency direction is
-  model→producer. Keep the token near its only creator (current state) or move
-  the token type into `model/fact.rs` if the model should stop knowing about
-  `facts::stream`.
+- Resolved: `SemanticFact::new(_authority: FactStreamToken, …)`
+  (`model/fact.rs:438-451`) depends on the producer's capability token defined
+  in `facts/stream.rs:34-47`. The token is a zero-field phantom with no
+  dependency on `facts::stream` internals; `FactStreamToken::new()` is called
+  only at `facts/stream.rs:261`. Moving the token type into `model/fact.rs`,
+  keeping its constructor visible only to `crate::analysis::facts::stream`,
+  removes the model→producer import while preserving the guard that only the
+  building stream mints facts.
 - `CallUnwrap::effective_args` (`fact.rs:210-214`) stores a `Vec<CallArgInfo>`
   that overlaps the authored `CallEvent::args`; for wrapper calls both lists
   are retained because the bound projection is only derivable at build time.
-  Whether the authored list can be dropped for wrapper calls was not resolved
-  by this audit and would need provenance/spread tracing through
-  `flow/summary/parameter.rs`.
-- Whether `ArgumentView`'s partial memoization pays for its added type (see
-  READ-002) could be measured with the harness profiling before deciding
-  between the two consolidation directions.
+  Whether the authored list can be dropped for wrapper calls remains
+  unresolved: `call.args()` feeds the summary parameter projection at
+  `flow/projector/driver.rs:290,300` and `flow/summary/summaries.rs:326`, and
+  whether the wrapper receiver prefix aligns with the target signature there
+  needs provenance/spread tracing through `flow/summary/parameter.rs`.
+- Resolved: `ArgumentView`'s partial memoization (see READ-002) does not need a
+  harness profile to choose a direction: the single-pass-cost guardrail rules
+  out dropping the overlay for the evaluator path, so the fix is to keep the
+  overlay and remove the redundant per-predicate arena fallback for
+  `ArgumentView`.
 
 ## Coverage
 

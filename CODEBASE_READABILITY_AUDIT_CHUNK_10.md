@@ -48,11 +48,12 @@ side-effect `state_limit_rejected` flag read later by
 branch that obscures the fail-closed path and invites future "fixes" that
 mistake the second `return` for an `else`.
 
-**Recommendation:** Collapse to `let _ = self.flow_state.admit_object(&aliases,
-object, states); return;` (or make the intended fall-through explicit if a
-`Rejected` batch should retry binding via `object_for(source)`). Keep the
-guarantee that a rejected batch leaves aliases and states untouched and still
-flags `state_limit_rejected`; do not let rejection silently bind aliases.
+**Recommendation:** Collapse the dead conditional to a single call and
+unconditional return: `let _ = self.flow_state.admit_object(&aliases, object,
+states); return;`. Rejection must not fall through to the `object_for(source)`
+path (see the Resolved note under Open Questions): a rejected batch leaves
+aliases and states untouched and still flags `state_limit_rejected`; do not let
+rejection silently bind aliases.
 
 **Fix Applied:** None so far.
 
@@ -79,8 +80,9 @@ the two `PathStore`s stay in lock-step.
 **Recommendation:** Add a private `fn store_for(&self, id: SummaryPathId) ->
 &PathStore` on `SummaryPathStore` and rewrite `is_valid`, `depth`, `segment`,
 `first_segment_of`, and `find_edge_impl` as `self.store_for(id).X(id.path_id())`.
-Delete the `find_edge`/`find_edge_impl` split. Keep `parent`'s match because it
-must translate `ParentRef::Linked(link)` to `Frozen(link.path())`; keep the
+Delete the `find_edge`/`find_edge_impl` split; `find_edge` re-wraps the matched
+`PathId` in the variant of its parent. Keep `parent`'s match because it must
+translate `ParentRef::Linked(link)` to `Frozen(link.path())`; keep the
 overlay-capacity fail-closed behavior (`PathStore::with_max_nodes`) intact.
 
 **Fix Applied:** None so far.
@@ -99,21 +101,26 @@ overlay-capacity fail-closed behavior (`PathStore::with_max_nodes`) intact.
 clone of the entire `ControlFrame::Loop`, including every `Vec<FlowEnvironment>`
 field (:293). `transfer_loop` destructures that clone and moves the vectors into
 `finish_loop` (control.rs:106-119), and `finish_loop` then calls
-`pop_loop(body_start)` (driver.rs:220), which re-validates the top frame kind
-and `body_start` (state.rs:298-311) a second time. So every `LoopEnd` copies the
-whole frame (`FlowEnvironment` is `Copy`, so this is an O(paths) clone per loop
-exit) and validates the frame twice. `new_loop_breaks_since` (:334-343) does the
-same clone-to-`Vec` dance with `breaks.get(count..).to_vec()`. The clone is a
-borrow-checker workaround: `finish_loop` needs `&mut self` while `loop_frame`
-holds `&self`.
+`pop_loop(body_start)` (driver.rs:220), which looks the top frame up and
+re-validates its kind a second time (state.rs:298-311); `body_start` itself is
+matched only in `pop_loop`, and region only in `loop_frame`. So every `LoopEnd`
+copies the whole frame (`FlowEnvironment` is `Copy`, so this is an O(paths)
+clone per loop exit) and checks the top-frame kind twice.
+`new_loop_breaks_since` (:334-343) does the same clone-to-`Vec` dance with
+`breaks.get(count..).to_vec()`. The clone is a borrow-checker workaround:
+`finish_loop` needs `&mut self` while `loop_frame` holds `&self`.
 
-**Recommendation:** Rework the loop hand-off so `transfer_loop` takes the
-`LoopEnd` frame out by value once (e.g., a `take_loop(region)`/`pop_loop`
-returning the owned frame, or `loop_frame` returning a reference consumed inside
-a closure) and delete the duplicate kind/`body_start` validation from the
-follow-up pop. Guardrail: every error path (wrong region, wrong kind, empty
-stack) must leave the stack unchanged and mark `alternatives_complete` incomplete
-(fail-closed), as control.rs:115-118 and loops.rs:136-139 currently do.
+**Recommendation:** Keep the loop frame on the control stack for the whole
+fixed point — `converge` reads and mutates its `breaks`/`continues` via
+`loop_break_count`, `take_loop_continues`, and `new_loop_breaks_since` — so it
+cannot be taken off the stack before `finish_loop` runs. Have one accessor
+validate region, kind, and `body_start` together and hand the owned
+`baseline`/`breaks`/`continues` vectors to `finish_loop` (by value from a
+`&mut` accessor, or as the existing clone), and drop the second top-frame lookup
+and repeated kind check from the deferred pop. Guardrail: every error path
+(wrong region, wrong kind, empty stack) must leave the stack unchanged and mark
+`alternatives_complete` incomplete (fail-closed), as control.rs:115-118 and
+loops.rs:136-139 currently do.
 
 **Fix Applied:** None so far.
 
@@ -136,12 +143,13 @@ surface (public fields + constructor) has no reason to exist and the module
 exists solely to host it. This is the "immediately-consumed wrapper" shape: no
 invariant or vocabulary is enforced by the type itself.
 
-**Recommendation:** Pick one exposure: either keep the fields private and route
-construction through `new` (making the struct an immutable unit), or drop the
-constructor and treat the struct as a plain data record — or pass the
-`(RequirementIndex, bool)` pair directly through the callback closure if no
-reuse appears. Guardrail: preserve the clear-then-conditional-record protocol
-in `apply_property_write` (tables.rs:287-293) and the Copy-ness of the carrier.
+**Recommendation:** Drop the `new` constructor and treat `PropertyWriteUpdate`
+as a plain data record: the fields are already `pub(in
+crate::analysis::flow::projector)` — the same scope as the struct — and the sole
+producer (`record_property_write`, driver.rs:407-416) constructs it in place;
+making the fields private would require getters for `tables.rs`. Guardrail:
+preserve the clear-then-conditional-record protocol in `apply_property_write`
+(tables.rs:287-293) and the Copy-ness of the carrier.
 
 **Fix Applied:** None so far.
 
@@ -188,12 +196,15 @@ snapshot knows whether execution can reach it" is encoded twice with no rule for
 which surface callers should use. (The sibling `checkpoint` field is at least
 narrower at `pub(super)`.)
 
-**Recommendation:** Make `reachable` private to the state module (field
-`pub(super)` or private) and keep `is_reachable()` as the sole public read
-surface, which driver.rs already uses both directly (:276) and as a function
-pointer in `paths.retain(FlowEnvironment::is_reachable)` (:340). Guardrail:
-nothing may mutate `reachable` directly; it is set only by
-`FlowStateTable::capture`.
+**Recommendation:** Make `reachable` `pub(super)` (the state module, which
+covers both `state.rs` and `state/tables.rs`) and keep `is_reachable()` as the
+sole read surface for callers outside it, which driver.rs already uses both
+directly (:276) and as a function pointer in
+`paths.retain(FlowEnvironment::is_reachable)` (:340). It cannot be fully private
+because `FlowEnvironment::initial` (state.rs:431-436) constructs the field.
+Guardrail: `reachable` is written only in `FlowStateTable::capture`
+(tables.rs:466-471) and `FlowEnvironment::initial`; outside the state module it
+may only be read through `is_reachable()`.
 
 **Fix Applied:** None so far.
 
@@ -213,8 +224,8 @@ count, then iterate `for index in 0..count { calls().get(index) }` — with `run
 re-fetching `summaries.by_id.get(caller)` on *every* index (:282-286). Both are
 borrow-conflict workarounds: the sink-collection calls take `&mut self.paths` /
 `&mut self`, so the summary reference cannot be held across the call. The result
-is a fragile index convention (empty slots must be `continue`d) repeated in two
-places.
+is a fragile index convention (each `get(index)` must be option-unwrapped)
+repeated in two places.
 
 **Recommendation:** Give `FunctionSummary` or `FunctionSummaries` one narrow
 operation that yields the call ids for a caller (e.g., iterate a cloned
@@ -229,8 +240,10 @@ collected, and the mutation log / budget charges must stay unchanged.
 
 - **Peek-that-clones accessors.** `ControlStack::loop_frame` and
   `new_loop_breaks_since` (state.rs:284-343) return owned clones of storage
-  instead of a borrow, and are consumed only via immediate destructuring.
-  Prefer take-by-value or borrow-inside-closure so ownership is explicit.
+  instead of a borrow, and are consumed only via immediate destructuring. Where
+  the storage must stay in place (the loop frame must remain on the control
+  stack through the fixed point), keep the snapshot hand-off explicit and avoid
+  re-validating the frame on the follow-up pop.
 - **Discarded outcomes in bounded-flow code.** `StateAdmission` (transfer.rs),
   `IndexTable::insert` (`let _ =`, summaries.rs:92), and
   `mark_event_truncated` (`let _ =`, state.rs:193) all discard fallible results;
@@ -253,22 +266,31 @@ collected, and the mutation log / budget charges must stay unchanged.
 
 ## Open Questions
 
-- **Intended fall-through in `assign`?** `ObjectFlowProjector::assign`
-  (transfer.rs:27-47) returns after `admit_object` regardless of the result. It
-  is unclear whether a `StateAdmission::Rejected` batch was originally meant to
-  fall through to the plain `object_for(source)` alias binding (transfer.rs:43-47)
-  or whether unconditional return is intended. Either way the `matches!` is dead;
-  the semantics of rejection (never bind) must be preserved.
-- **Reachability of the `RequirementRemove` redo path.** `InverseDelta::apply`
-  (state.rs:86-93) on redo performs `clear_requirement` then
-  `restore_requirement(events)`, which re-adds the very events the removal was
-  supposed to delete. Since `FlowStateTable::restore` only transitions between
-  checkpoints, this redo branch may be unreachable in practice; if it is ever
-  reached, verify that moving forward re-applies the removal correctly.
-- **Recursion depth of `SummaryPathWalk::visit`** (store.rs:69-82) and
-  `join_suffix` / `without_first_from` is bounded by path depth but recurses per
-  segment; with `MAX_OVERLAY_NODES = 4096` and path-depth limits this is bounded,
-  but worth confirming against `PathStore` depth caps.
+- **Resolved — intended fall-through in `assign`?** Unconditional return is
+  intended: the pre-refactor code (commit `28f5b876`) already returned on the
+  state-limit-rejected path without binding via `object_for(source)`, and
+  `admit_object` documents that a rejected batch leaves aliases and states
+  unchanged while recording the fail-closed outcome (tables.rs:346-373). A
+  `Rejected` batch must never bind aliases; the `matches!` (transfer.rs:34-40)
+  is a leftover from the refactor and should be collapsed (see READ-001).
+- **Resolved — reachability of the `RequirementRemove` redo path.** The redo
+  branch is reachable: `restore` transitions move forward (Redo) across deltas
+  whenever a checkpoint on a divergent or earlier branch is restored — exercised
+  in `checkpoints_restore_divergent_mutation_paths` (state/tests.rs:74-96). And
+  it is incorrect: on redo, `clear_requirement(*index)` followed by
+  `restore_requirement(*index, events)` (state.rs:86-93) re-adds the very events
+  the removal deleted, so moving forward does not re-apply the removal — the only
+  delta whose redo is not the inverse of its undo (compare `RequirementInsert`,
+  state.rs:77-85). Redo should leave the requirement cleared (clear-only), and
+  the branch currently has no test.
+- **Resolved — recursion depth of `SummaryPathWalk::visit`** (store.rs:69-82)
+  and `join_suffix` / `without_first_from` is bounded by node counts, not a
+  dedicated depth cap: `PathStore` tracks `depth: u32` (path_trie/store.rs) with
+  no depth limit, but a path's depth cannot exceed its store's `max_nodes` —
+  overlay paths are capped at `MAX_OVERLAY_NODES = 4096` and frozen paths at
+  `DEFAULT_MAX_PATH_NODES = 1 << 20` (path_trie/types.rs). So recursion is at
+  most ~4096 small frames for overlay paths, which is safe on default stacks but
+  relies on the node-count cap, not an explicit depth limit.
 
 ## Coverage
 

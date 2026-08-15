@@ -18,8 +18,8 @@ containers (`ObjectFlowProjectorInput` and `ProjectionInputs`) with five
 overlapping fields, built and immediately destructured-rebuilt at a single call
 site; (2) two near-duplicate path-transfer orchestrators in `driver.rs`;
 (3) duplicated admission loops in `loops.rs`; (4) a `ControlStack::loop_frame`
-that clones three environment vectors purely to satisfy a borrow, then
-re-reads and pops the same frame; and (5) scattered direct writes to
+that clones three environment vectors even though the live frame must stay on
+the stack through the whole fixed point; and (5) scattered direct writes to
 `ProjectionRunState` invariants instead of a single method. Several redundant
 conditionals and one unnecessary clone remain from refactoring.
 
@@ -51,11 +51,11 @@ pack arguments for `new`, so the struct's vocabulary adds no invariant beyond
 **Recommendation:** Delete the parallel conversion. Keep the
 immutable-vs-mutable split (that is a real ownership distinction — the frozen
 facts/plan inputs must not merge with the run-time evidence/limits/completion),
-but make the construction path linear: either `ObjectFlowProjector::new` takes
-the parameters `collect_into` already has (or a `ProjectionInputs` plus the
-four run-state inputs) and `ProjectionInputs::new`'s `calls_by_result` scan
-moves into the single construction site, or `ObjectFlowProjectorInput` absorbs
-the `calls_by_result` index. Owner: `ObjectFlowProjector` / `collect_into`.
+but make the construction path linear: `collect_into` constructs
+`ProjectionInputs` directly (via `ProjectionInputs::new`, which already computes
+the `calls_by_result` index once) and passes it to `ObjectFlowProjector::new`
+alongside the four run-state inputs (`evidence`, `limits`, `completion`,
+`trace_arena`); delete `ObjectFlowProjectorInput`. Owner: `collect_into`.
 Guardrail: keep frozen inputs (`ProjectionInputs`) separate from per-run mutable
 state (`ProjectionRunState`, `FlowEvidence`); do not collapse those ownership
 domains.
@@ -73,7 +73,7 @@ domains.
 `FlowEvidence::record_if_admitted` (state.rs:142) takes `limit` and
 `max_per_key` as parameters even though both are fixed for the run and the
 type already tracks the relevant state (`total_emitted`, `emitted`). Its only
-caller, `emit_state_final` (evidence.rs:247-253), passes
+production caller, `emit_state_final` (evidence.rs:247-253), passes
 `self.run.limits.emission_limit()` and the literal `256` (evidence.rs:250)
 each time. The magic `256` cap per evidence key is undocumented and easy to
 lose across edits.
@@ -100,19 +100,23 @@ deterministic.
 
 Both methods run the identical sequence: take the incoming paths, restore each
 environment (break on `Exhausted`, skip `Failed`), run a per-path transfer,
-collect reachable environments, `replace_paths`, `join_paths`, and
-`end_batch`/re-join. They differ only in (a) `transfer_paths` selects a path
-index via `select_path(path_index)` so pending states can be queued against
-`PathToken`, and (b) `transfer_paths` calls `finalize_pending` before the join.
+collect reachable environments, `replace_paths`, and `join_paths`.
+`transfer_paths` (driver.rs:102-127) adds the path-token machinery
+(`begin_batch`/`select_path`/`end_batch`) so pending states can be queued
+against `PathToken`, plus `observe_alternatives`, an empty-incoming early
+return, and a `finalize_pending` call before the join.
 `transfer_paths_without_finalization` (used only by `transfer_function`'s
 `Enter` branch, driver.rs:237) instead takes a `transfer: impl Fn(&mut Self)`
 closure. The shared restore/charge/fail-closed handling is a single invariant
 spread across two copies.
 
-**Recommendation:** Collapse into one orchestrator that takes a per-path
-closure plus a `finalize: bool` flag (or two small closure arguments for
-"select path" and "transfer"); keep `transfer_function`'s enter semantics as
-one caller. Owner: `ObjectFlowProjector` (driver). Guardrail: preserve the
+**Recommendation:** Collapse into one orchestrator that always runs the shared
+restore/charge loop and the path-token bookkeeping, takes a per-path closure,
+and gates only `finalize_pending` behind a `finalize: bool` flag —
+`transfer_paths` passes the `transfer_fact` closure with `finalize = true`,
+and `transfer_function`'s `Enter` branch passes its clear/reachable closure
+with `finalize = false`. Keep `transfer_function`'s enter semantics as one
+caller. Owner: `ObjectFlowProjector` (driver). Guardrail: preserve the
 `PathRestoration::Exhausted => break` ordering, the `select_path` call before
 `transfer_fact`, and the `finalize_pending` placement relative to `join_paths`
 — certainty and boundedness depend on them.
@@ -149,7 +153,7 @@ converge on different collections), and keep every failure path setting both
 
 ### Unnecessary work and dead logic
 
-#### [ ] READ-003 — `ControlStack::loop_frame` clones three environment vectors just to satisfy a borrow, then the frame is re-read and popped
+#### [ ] READ-003 — `ControlStack::loop_frame` clones three environment vectors while the live frame must stay on the stack through the fixed point
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -160,19 +164,27 @@ converge on different collections), and keep every failure path setting both
 `ControlKind::LoopEnd` (control.rs:106-120) calls `ControlStack::loop_frame`,
 which returns `Ok(frame.clone())` (state.rs:293), cloning the whole `Loop`
 frame including `baseline`, `breaks`, and `continues` (three
-`Vec<FlowEnvironment>`). The clone exists only so `finish_loop` can borrow
-`self` mutably afterwards; the destructured Vecs are moved into `finish_loop`,
-which then independently validates and pops the same frame via
-`pop_loop(body_start)` (driver.rs:220). Every loop-end therefore copies all
-live environments once and leaves the frame on the stack through the whole
-fixed-point computation, only to pop it afterwards.
+`Vec<FlowEnvironment>`). The seed data is moved into `finish_loop`, which then
+validates and pops the same frame via `pop_loop(body_start)` (driver.rs:220).
+The frame cannot be popped up front: `converge` keeps reading and mutating the
+live frame throughout the fixed point — `route_abrupt` pushes new `breaks` and
+`continues` during each body replay, `loop_break_count`/
+`new_loop_breaks_since` derive per-iteration break deltas, and the replayed
+body's `LoopUpdate` marker drains the frame's `continues`. Every loop-end
+therefore copies all live environments once while the frame stays on the stack
+through the whole fixed-point computation.
 
-**Recommendation:** Add a `pop_loop_frame(region) -> Result<ControlFrame,
-ControlStackError>` that moves the frame out (retaining `pop_loop`'s
-`body_start` validation), destructure it in `transfer_loop`, and have
-`finish_loop` stop popping. Delete `loop_frame`. Owner: `ControlStack`.
-Guardrail: keep the region and `body_start` checks — popping the wrong frame
-must remain a `mark_control_stack_incomplete` failure, not a panic.
+**Recommendation:** Keep the frame on the stack through the fixed point and
+reduce the copy to what must actually be snapshotted. Replace `loop_frame`
+with a `take_loop_seed(region)` that moves the fields `converge` does not need
+live out by `mem::take` — `baseline` (frozen since `LoopStart`) and `breaks`
+(each replay's new breaks are already derived from the live count by
+`loop_break_count`/`new_loop_breaks_since`, so the moved-out set stays the
+correct base) — and clones only `continues`, which the replayed `LoopUpdate`
+marker must still drain from the live frame. Fold `pop_loop`'s `body_start`
+validation into the take and delete `loop_frame`. Owner: `ControlStack`.
+Guardrail: the region/`body_start` checks stay — popping the wrong frame must
+remain a `mark_control_stack_incomplete` failure, not a panic.
 
 **Fix Applied:** None so far.
 
@@ -191,7 +203,7 @@ unconditional `return;` — both arms return, so the `matches!` can never
 influence control flow and the admission result is discarded either way.
 Rejection is already recorded on the table via `state_limit_rejected`
 (tables.rs:364-367) and surfaces through `FlowCompletion::from_sources`
-(mod.rs:63-66). In `record_sinks` (evidence.rs), each argument of the same call
+(mod.rs:75-78). In `record_sinks` (evidence.rs), each argument of the same call
 re-runs `plan.sink_candidates_for_call(call)` (evidence.rs:79), and the inner
 `if !matching_sinks.is_empty()` (evidence.rs:98) is dead because the collection
 was built with `(!matching_sinks.is_empty()).then_some(...)` (evidence.rs:93).
@@ -223,12 +235,11 @@ driver.rs:208 is pure copying. The same `join_paths(...)` then
 `frontier.take_paths()` store-then-re-read dance appears at driver.rs:124-125,
 driver.rs:264-265, and control.rs:102-104.
 
-**Recommendation:** Move `entrance` into `join_paths` (no clone), and consider
-having `join_paths` return the joined `Vec<FlowEnvironment>` it already builds
-so callers do not re-take it from the frontier. Owner: `ObjectFlowProjector`.
-Guardrail: `join_paths` must keep its truncate-and-mark-incomplete behavior
-(driver.rs:357-360) and its final `run.reachable` update; the returned set must
-remain deduplicated and ordered.
+**Recommendation:** Move `entrance` into `join_paths` (no clone); the
+immediate re-take can stay, since `take_paths` is a zero-copy `mem::take`.
+Owner: `ObjectFlowProjector`. Guardrail: `join_paths` must keep its
+truncate-and-mark-incomplete behavior (driver.rs:357-360) and its final
+`run.reachable` update.
 
 **Fix Applied:** None so far.
 
@@ -252,13 +263,13 @@ the module boundary. The invariant is never cleared, so a single guard method
 would both document the contract and reduce the chance a future path forgets
 to mark incompleteness.
 
-**Recommendation:** Add a single `mark_alternatives_incomplete()` (or a
-`mark_incomplete()` on `ProjectionRunState`) and use it everywhere; give
-`LoopFixedPoint` narrow projector methods instead of direct `projector.run`
-field access. Owner: `ProjectionRunState`. Guardrail: the marker must remain
-sticky and must never be cleared mid-run; `FlowCompletion::from_sources`
-(mod.rs:76-78) already reads it as the single source of the `Alternatives`
-reason.
+**Recommendation:** Add `mark_incomplete()` on `ProjectionRunState` and route
+every assignment through it — including `mark_control_stack_incomplete`
+(driver.rs:85-87), which delegates — and give `LoopFixedPoint` a narrow
+projector method so `loops.rs` stops reaching into `projector.run.*`. Owner:
+`ProjectionRunState`. Guardrail: the marker must remain sticky and must never
+be cleared mid-run; `FlowCompletion::from_sources` (mod.rs:76-78) already reads
+it as the single source of the `Alternatives` reason.
 
 **Fix Applied:** None so far.
 
@@ -290,20 +301,26 @@ reason.
 
 ## Open Questions
 
-- `coalescing_comparisons` (mod.rs:99, incremented at driver.rs:348-351) counts
-  admitted paths after the first per join; the metric's precise definition is
-  only visible in the increment site. If this counter is part of the profiling
-  contract, its semantics could be documented on `LocalFlowProjectionOutcome`.
-- The `replay_loop_body` mode toggle writes `self.run.emission_mode` directly
-  (driver.rs:182-189) while `emit_state` reads it (evidence.rs:198). Whether a
-  `EmissionMode` change should also suppress `queue_state`/pending finalization
-  is not exercised by any test; current behavior relies on `emit_state`
-  short-circuiting before `queue_state`, which holds under inspection.
+- **Resolved:** `coalescing_comparisons` is documented on
+  `LocalFlowProjectionOutcome` (mod.rs:98) and is part of the profiling
+  contract: it is aggregated into `ProjectionMetrics` (outcome.rs:148-151),
+  surfaced through `coalescing_comparisons()` (outcome.rs:193-195), and carried
+  into report operations and the lint summary. The increment rule
+  (driver.rs:348-351) — each coalescing admission after the first per join —
+  matches the documented "comparisons made while coalescing paths."
+- **Resolved:** the `Replay` toggle already suppresses both queueing and
+  finalization without extra work — `queue_state`'s only caller is `emit_state`
+  (evidence.rs:201), which returns before queueing in `Replay` mode
+  (evidence.rs:198-200), and `finalize_pending` (driver.rs:366-379) drains
+  pending at each transfer boundary, so nothing is queued or finalized during a
+  loop-body replay. No additional guard is needed unless a future caller queues
+  outside `emit_state`.
 - `LocalFlowProjectionOutcome` exposes five raw `pub` counter fields
-  (mod.rs:92-104) consumed as a metrics DTO by
-  `projection/outcome.rs:139-158`. Whether this should be a read-only
-  accessor surface is a taste question; left open because the sibling chunk
-  treats it as an aggregate.
+  (mod.rs:92-104) consumed as a metrics DTO by `projection/outcome.rs:139-158`
+  and asserted directly in projector tests (tests.rs:156-208). The sibling
+  `ProjectionMetrics` already wraps the same counters in accessor methods
+  (outcome.rs:180-199), so a read-only surface would be consistent, but this
+  is a taste question rather than an invariant; left open.
 
 ## Coverage
 
@@ -333,5 +350,5 @@ dispatch and are appropriate; no panic on user input was found. Test-only
 `unwrap`/`expect` in `tests.rs`/`tests_extended.rs` are assertion helpers and
 not reported.
 
-Final check: `git status --short` shows only this audit file as untracked; no
-source, test, config, or Cargo files were modified.
+Final check: `git status --short` shows a clean tree; no source, test, config,
+or Cargo files were modified.

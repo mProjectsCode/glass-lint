@@ -82,12 +82,16 @@ misuse.
 
 **Recommendation:** Consolidate onto one collection: since
 `record_export_decl` runs before the export's declarators are visited, have
-the `Decl::Var` arm call the recording variant `record_pattern_locals` and use
-its returned names for `add_export`, then delete the static
-`collect_pattern_locals` and drop the discarded return in `facts/mod.rs`.
-Guardrail: locals must still be recorded exactly once per declarator and
-non-`Pat::Ident` patterns (object/array destructuring) must still export their
-local names; interface `add_local` must remain idempotent.
+the `Decl::Var` arm (`exports.rs:43`) call the recording variant
+`record_pattern_locals` and use its returned names for `add_export`, then
+delete the static `collect_pattern_locals`.
+`FactBuilder::record_pattern_locals` (`facts/mod.rs:241-243`) keeps its
+discarded return as the plain recording wrapper.
+Guardrail: `visit_var_declarator` must keep recording locals for every
+declarator, and `add_local` must stay idempotent (it inserts into a
+`BTreeSet`), so the export arm re-inserting the same names is a no-op;
+non-`Pat::Ident` patterns (object/array destructuring) must still export
+their local names.
 
 #### [ ] READ-003 — Module-export-name `(original, exported)` normalization is repeated in two export functions
 
@@ -127,27 +131,32 @@ and use it in both functions. Guardrail: keep the type-only filtering and the
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/facts/visitor.rs:386,393,407-413`, `glass-lint-core/src/analysis/model/fact.rs:405-412`, `glass-lint-core/src/analysis/flow/projector/control.rs:35-37,271-293`, `glass-lint-core/src/analysis/flow/effect/mod.rs:145-158,431`
+- **Location:** `glass-lint-core/src/analysis/facts/visitor.rs:386,393,407-413`, `glass-lint-core/src/analysis/model/fact.rs:405-412`, `glass-lint-core/src/analysis/flow/projector/control.rs:35-37,271-293`, `glass-lint-core/src/analysis/flow/projector/driver.rs:92-97`, `glass-lint-core/src/analysis/flow/effect/mod.rs:145-158,431`, `glass-lint-core/src/analysis/matching/build.rs:154-155`
 
 The visitor hard-codes `ControlRegionId::new(0)` for `Break`, `Continue`, and
-`Return` facts (`visitor.rs:386,393,410`), yet every consumer ignores it:
-the projector routes `Break | Continue | Return` to `transfer_abrupt(kind)`
+`Return` facts (`visitor.rs:386,393,410`), yet every consumer ignores it: the
+projector routes `Break | Continue | Return` to `transfer_abrupt(kind)`
 (`flow/projector/control.rs:35-37,271-293`), which takes only the kind, and
 effects match only on the kind (`flow/effect/mod.rs:148-155,431`). Worse,
 region 0 is not a reserved sentinel — the first allocated control region *is*
-`ControlRegionId::new(0)` (`control.rs:196` with `next_control_region`
-starting at the default), so the constant is both dead and collides with a
-real region identity. The field invites a future consumer to believe the
-region is meaningful and to "fix" the wrong-looking constant.
+`ControlRegionId::new(0)` (`facts/control.rs:196`, with `next_control_region`
+seeded at the default in `state.rs:31`), so the constant is both dead and
+collides with a real region identity. The field invites a future consumer to
+believe the region is meaningful and to "fix" the wrong-looking constant.
 
-**Recommendation:** Remove the `region` field from `FactPayload::Return`
-and from `ControlKind::Break`/`Continue` (e.g., split these kinds out of
-`FactPayload::Control` or make the region field optional and set it only for
-regioned kinds), and update the two projector/effects consumers to match the
-new shape. Guardrail: keep branch/loop/switch/try region semantics exactly as
-they are; `Return` must still carry `value`, and the deterministic fact order
-of `visit_return_stmt` (`stmt.arg` visited before the fact is emitted) must
-not change.
+**Recommendation:** Remove the `region` field from `FactPayload::Return` and
+split `Break`/`Continue` out of `FactPayload::Control` into standalone payload
+variants with no region (only the regioned kinds stay in `Control`). In
+`flow/projector/driver.rs:92-97` route the three abrupt facts directly to
+`transfer_abrupt(AbruptExit::…)`, delete the now-dead
+`Break | Continue | Return` arm from `transfer_control`
+(`flow/projector/control.rs:35-37`), and widen that abrupt transfer to
+`pub(super)` so the driver can call it. Effects match the new shapes
+(`flow/effect/mod.rs:145-158,431`), and the ignore-arm at
+`matching/build.rs:154-155` must list the new variants. Guardrail: keep
+branch/loop/switch/try region semantics exactly as they are; `Return` must
+still carry `value`, and the deterministic fact order of `visit_return_stmt`
+(`stmt.arg` visited before the fact is emitted) must not change.
 
 #### [ ] READ-005 — The visitor repeats identical fact-emission blocks across `visit_*` methods
 
@@ -207,13 +216,14 @@ indistinguishable at the type level.
 **Recommendation:** Define one semantic newtype owning the module/export pair
 (e.g., a `ClassIdentity { module, export }` in `analysis/model`, so both
 `facts` and `matching` can use it), give it private fields plus narrow
-accessors/`From` conversions, and replace the raw tuples in the chunk's files
-first (`provenance.rs`, `state.rs`, `functions.rs`, `calls/callee.rs`,
-`construction.rs`, `instance.rs`) and then `model/fact.rs` and
-`matching/build.rs`. Guardrail: keep the instance-origin and class-origin
-channels (`provenance.rs:33-36`) as separate maps — the newtype must not
-collapse distinct provenance channels — and preserve the pair-by-value `Copy`
-semantics the tuple has today.
+accessors/`From` conversions, and replace the raw tuple spellings at every
+listed site (`provenance.rs`, `state.rs`, `functions.rs`, `calls/callee.rs`,
+`construction.rs`, `instance.rs`, `model/fact.rs`, `matching/build.rs`) in one
+change; the newtype supersedes the partial `Origin` alias in `provenance.rs:7`.
+Guardrail: keep the instance-origin and class-origin channels
+(`provenance.rs:33-36`) as separate maps — the newtype must not collapse
+distinct provenance channels — and preserve the pair's current by-value
+`Clone` semantics (`SmolStr` is not `Copy`).
 
 ## Systemic Themes
 
@@ -232,19 +242,23 @@ semantics the tuple has today.
 
 ## Open Questions
 
-- `FactStream::function_parameters` (`stream.rs:175-186`) special-cases
-  `FunctionId::new(0)` and reads dense slots; an unregistered function whose
-  `emit_function_fact` early-returns on `scope_at` failure (`functions.rs:81`)
-  would read back as `Some(&[])` ("registered zero-parameter function"). This
-  appears unreachable in normal flow because failures only accompany budget or
-  span anomalies that already fail the stream closed; left as a question rather
-  than a finding.
-- Whether `Break`/`Continue`/`Return` region 0 was deliberately left as a
-  placeholder for future cross-function return correlation; if so, READ-004
-  should be downgraded to documentation.
-- A shared `ClassIdentity` newtype (READ-006) must live in
-  `analysis::model` to serve `matching/build.rs`; whether that placement is
-  acceptable to the `model` owner is outside this chunk's boundary.
+- Resolved: `FactStream::function_parameters` (`stream.rs:175-186`) returns
+  `Some(&[])` only for `FunctionId::new(0)`, the documented implicit
+  program-level slot (`stream.rs:160-162`) that never passes through
+  `emit_function_fact`. Every other unregistered id reads back as `None`, and
+  the effect builder marks those effects invalid (`flow/effect/mod.rs:389-392`),
+  so a `scope_at` failure in `emit_function_fact` (`functions.rs:81`) cannot be
+  mistaken for a registered zero-parameter function.
+- Resolved: no deliberate placeholder. No consumer reads the region on
+  `Break`/`Continue`/`Return` — abrupt routing is kind-only
+  (`route_abrupt`/`record_abrupt_exit`, `flow/projector/state.rs:345-393`) and
+  effects match on kind only; no comment reserves region 0 as a sentinel, and
+  region 0 is a real identity (the first allocated region). READ-004 stands as
+  a removal, not documentation.
+- Resolved: `analysis::model` already hosts shared producer/consumer
+  contracts — `CallEvent` (`model/fact.rs:220`) is produced by `facts` and
+  consumed by `matching` (`matching/build.rs:46,204`) — so a shared
+  `ClassIdentity` there follows the existing pattern.
 
 ## Coverage
 
