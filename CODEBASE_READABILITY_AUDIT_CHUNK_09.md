@@ -246,7 +246,7 @@ the single `sink_candidates_for_call` lookup is hoisted above the argument loop
 (owned copy so the loop can borrow `self` mutably) and the redundant emptiness
 check is removed.
 
-#### [ ] READ-007 — `finish_loop` clones the entrance paths and re-takes them from the frontier
+#### [x] READ-007 — `finish_loop` clones the entrance paths and re-takes them from the frontier
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -269,7 +269,10 @@ Owner: `ObjectFlowProjector`. Guardrail: `join_paths` must keep its
 truncate-and-mark-incomplete behavior (driver.rs:357-360) and its final
 `run.reachable` update.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `finish_loop` now moves `entrance` into `join_paths` with no
+`.clone()`; the immediate re-take remains a zero-copy `mem::take`.
+`join_paths`' truncate-and-mark-incomplete behavior and final `run.reachable`
+update are unchanged.
 
 ### Encapsulation
 

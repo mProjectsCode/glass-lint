@@ -187,7 +187,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     pub(super) fn finish_loop(&mut self, mut seed: LoopSeed, body_end: FactId) {
         let mut entrance = self.paths.frontier.take_paths();
         entrance.append(&mut seed.continues);
-        self.join_paths(entrance.clone());
+        self.join_paths(entrance);
         let entrance = self.paths.frontier.take_paths();
 
         let mut fixed_point = LoopFixedPoint::start(
