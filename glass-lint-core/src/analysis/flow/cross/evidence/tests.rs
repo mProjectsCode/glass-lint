@@ -45,18 +45,15 @@ fn trace_assembly_keeps_prior_sinks_as_sinks() {
 #[test]
 fn incomplete_projection_keeps_cross_evidence_as_possible() {
     let rule = RuleIndex::new(0);
-    let key = EvidenceKey {
-        kind: MatchKind::CallArgument,
-        symbol: "fetch".to_owned(),
-        fact: FactId::from_test(1),
-    };
+    let flow = CompiledObjectFlow::test_with_evidence_counts(0, 0);
+    let key = EvidenceKey::for_call(&flow, FactId::from_test(1));
     let mut evidence = ModuleEvidence::new(RuleEvidenceCapacity::from_catalog_len(1));
     evidence.record(
         rule,
         &key,
         ClassificationEvidence::from_occurrence(
             MatchKind::CallArgument,
-            "fetch".to_owned(),
+            flow.evidence_symbol().to_string(),
             ClassificationEvidenceOccurrence::new(
                 glass_lint_datastructures::ByteRange::empty(),
                 Some(1),

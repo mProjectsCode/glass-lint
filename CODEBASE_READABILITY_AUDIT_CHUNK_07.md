@@ -140,7 +140,7 @@ from worklist mutation.
 
 **Fix Applied:** Deleted `EmissionContext`; `emit` now takes `&mut CrossProjectionSession` and reads only `session.project`/`session.evidence`/`session.arena` (never the call graph, worklist, or names). Both `propagation.rs` call sites updated.
 
-#### [ ] READ-005 — `EvidenceKey` construction is duplicated and its invariants unencoded
+#### [x] READ-005 — `EvidenceKey` construction is duplicated and its invariants unencoded
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -162,7 +162,7 @@ all constructions through it. Guardrails: keep `kind`/`symbol` on the key
 (they are still needed to merge into `RuleEvidenceTable`, and flows of the
 same rule can share a symbol), but stop letting callers choose them freely.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added private `EvidenceKey::for_call(flow, event)` (encodes the `CallArgument` key of the flow's evidence symbol) and routed `mark_nonmatching`, `emit`, and `evidence/tests.rs` through it.
 
 #### [ ] READ-006 — `seed_from_calls` re-scans the candidate set per flow and per call argument
 

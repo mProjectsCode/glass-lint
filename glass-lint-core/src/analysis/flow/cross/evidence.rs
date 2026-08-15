@@ -48,6 +48,16 @@ struct EvidenceKey {
     fact: FactId,
 }
 
+impl EvidenceKey {
+    fn for_call(flow: &CompiledObjectFlow, event: FactId) -> Self {
+        Self {
+            kind: MatchKind::CallArgument,
+            symbol: flow.evidence_symbol().as_str().to_owned(),
+            fact: event,
+        }
+    }
+}
+
 #[derive(Default)]
 struct RuleEvidence {
     items: BTreeMap<EvidenceKey, ClassificationEvidence>,
@@ -157,14 +167,8 @@ pub(super) fn mark_nonmatching(
         return;
     };
     let rule_idx = flow_id.rule_index();
-    values.mark_nonmatching(
-        rule_idx,
-        &EvidenceKey {
-            kind: MatchKind::CallArgument,
-            symbol: flow.evidence_symbol().as_str().to_owned(),
-            fact: event,
-        },
-    );
+    let key = EvidenceKey::for_call(flow, event);
+    values.mark_nonmatching(rule_idx, &key);
 }
 
 fn assemble_trace(
@@ -197,11 +201,7 @@ pub(super) fn emit(
         return;
     };
     let rule_idx = flow_id.rule_index();
-    let key = EvidenceKey {
-        kind: MatchKind::CallArgument,
-        symbol: flow.evidence_symbol().as_str().to_owned(),
-        fact: event,
-    };
+    let key = EvidenceKey::for_call(flow, event);
     let span = session
         .project
         .fact(QualifiedEvent::new(module, event))
