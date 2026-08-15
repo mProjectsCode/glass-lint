@@ -240,7 +240,7 @@ and all callers were updated: `resolve_string_literal`, `facts/calls/wrapper.rs`
 `ModuleRequestContext::static_string`, and the free `syntax::constant::static_string` evaluator are
 unchanged.
 
-#### [ ] READ-007 — `resolve_seed` uses let-else plus an unreachable match arm
+#### [x] READ-007 — `resolve_seed` uses let-else plus an unreachable match arm
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -260,6 +260,11 @@ adds a variant changes the reachability reasoning in two places.
 commit }, Cached(value) => value, Cycle => archive_unknown_with_reason(Cycle) }`, moving the
 build/finalize/commit body into the `Active` arm. Guardrail: keep cycle → unknown fail-closed and
 keep the guard commit ordering identical.
+
+**Fix Applied:** `Resolver::resolve_seed` now uses a single `match self.start_resolution(key)`
+with the build/finalize/commit body in the `Active(guard)` arm, `Cached(value) => value`, and
+`Cycle => Self::archive_unknown_with_reason(UnknownReason::Cycle)`; the `unreachable!` arm is gone.
+Cycle handling and guard commit ordering are unchanged.
 
 #### [ ] READ-008 — Borrow-alias noise in `intern_bounded_const_value`
 

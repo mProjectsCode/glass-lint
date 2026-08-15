@@ -306,17 +306,15 @@ impl Resolver<'_> {
     where
         F: FnOnce(&mut Self) -> ResolutionSeed,
     {
-        let start = self.start_resolution(key);
-        let ResolutionStart::Active(guard) = start else {
-            return match start {
-                ResolutionStart::Cached(value) => value,
-                ResolutionStart::Cycle => Self::archive_unknown_with_reason(UnknownReason::Cycle),
-                ResolutionStart::Active(_) => unreachable!("active resolution handled above"),
-            };
-        };
-        let seed = build(self);
-        let resolved = self.finalize_seed(seed, span);
-        guard.commit(&mut self.cache, resolved)
+        match self.start_resolution(key) {
+            ResolutionStart::Active(guard) => {
+                let seed = build(self);
+                let resolved = self.finalize_seed(seed, span);
+                guard.commit(&mut self.cache, resolved)
+            }
+            ResolutionStart::Cached(value) => value,
+            ResolutionStart::Cycle => Self::archive_unknown_with_reason(UnknownReason::Cycle),
+        }
     }
 
     fn start_resolution(&mut self, key: &ResolutionKey) -> ResolutionStart {
