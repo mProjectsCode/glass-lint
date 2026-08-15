@@ -3,6 +3,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{Callee, Expr, Pat};
 
 use crate::analysis::{
+    module_request::ModuleRequestPolicy,
     scope::{BindingProvenance, build::ScopeCollector},
     syntax::literal_member_property_name,
 };
@@ -148,7 +149,7 @@ fn classify_call(
     name: Option<&str>,
     derived_function_pattern: bool,
 ) -> DeclarationClassification {
-    if let Some(module) = collector.require_module_expr_name(expr) {
+    if let Some(module) = collector.module_request_name(expr, ModuleRequestPolicy::alias()) {
         return DeclarationClassification::Require { module };
     }
 
@@ -193,7 +194,7 @@ fn classify_candidates(
                 .module_alias_provenance(expr)
                 .and_then(|provenance| module_alias(name, provenance)),
             Candidate::Require => collector
-                .require_module_expr_name(expr)
+                .module_request_name(expr, ModuleRequestPolicy::alias())
                 .map(|module| DeclarationClassification::Require { module }),
             Candidate::Constant => collector
                 .const_provenance(expr)

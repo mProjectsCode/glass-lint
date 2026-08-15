@@ -98,15 +98,14 @@ impl ScopeCollector<'_> {
         }
     }
 
-    /// Resolve literal CommonJS/interop-loader module names only.
-    fn module_request_name(&mut self, expr: &Expr, policy: ModuleRequestPolicy) -> Option<SmolStr> {
+    /// Resolve a literal CommonJS/interop-loader module name under `policy`.
+    pub(super) fn module_request_name(
+        &mut self,
+        expr: &Expr,
+        policy: ModuleRequestPolicy,
+    ) -> Option<SmolStr> {
         let request = recognize_module_expression(expr, self, policy)?;
         Some(request.module().to_smolstr())
-    }
-
-    /// Find a literal CommonJS module name through the supported alias shapes.
-    pub(super) fn require_module_expr_name(&mut self, expr: &Expr) -> Option<SmolStr> {
-        self.module_request_name(expr, ModuleRequestPolicy::alias())
     }
 
     /// Convert a bounded constant result into collector provenance.

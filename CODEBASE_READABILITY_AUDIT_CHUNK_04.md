@@ -119,7 +119,7 @@ closed; the planner variant must not gain that guard.
 
 **Fix Applied:** Added `bindings::register_declaration_binding` owning charge → intern → fail-close-on-exhaustion → `insert_binding` over the owning state (`&mut LexicalScopes`, `&mut NameTable`, `&mut bool name_exhausted`, `&SemanticBudget`). The planner's `insert` and the collector's `register_binding` now both delegate to it; `register_binding` keeps its `intern_provenance_strings` step (taking provenance by reference). `update_binding` / `reset_pat_locals` and the provenance-string interning stayed in the collector; both `binding_scope` methods remain thin branches over the centralized `var_binding_scope`, with the collector's `has_issues()` fail-closed guard preserved and the planner variant unchanged.
 
-#### [ ] READ-003 — Three name-lookup methods expose overlapping, inconsistently named surfaces
+#### [x] READ-003 — Three name-lookup methods expose overlapping, inconsistently named surfaces
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -146,7 +146,7 @@ call sites (classification.rs:151, 196), keeping the policy-parameterized
 `lookup_or_intern_name` (which interns) distinct from `name_id` (which does
 not) — that difference is real and load-bearing for budget accounting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the one-line `require_module_expr_name` wrapper, widened `module_request_name` to `pub(super)`, and updated the two classification call sites to call `module_request_name(expr, ModuleRequestPolicy::alias())` directly, keeping the policy-parameterized function as the single entry point. The `interned_name` deletion had already been applied by chunk 03 read 005; `lookup_or_intern_name` (interning) and `name_id` (non-interning) remain distinct.
 
 #### [ ] READ-005 — Assignment recording duplicates the versioning-and-push tail across two variants
 
