@@ -48,6 +48,14 @@ impl ModuleIdentityMap {
     }
 }
 
+/// Star-export disagreement policy, the single source of truth for both the
+/// overlay walker and the single-export resolver: multiple star paths that
+/// resolve to differing identities mark the export `Ambiguous`; a direct or
+/// named export from the exporting module wins over any star contribution;
+/// unresolved star paths keep each traversal's own unknown handling.
+/// `ModuleIdentityContributions::add_star` applies this policy to the matcher
+/// overlay, and `ExportResolver::walk_star_exports` applies the same rule to
+/// a single export lookup.
 #[derive(Default)]
 pub(in crate::analysis) struct ModuleIdentityContributions {
     direct: ModuleIdentityMap,

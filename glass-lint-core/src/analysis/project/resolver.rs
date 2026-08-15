@@ -247,6 +247,9 @@ impl<'a> ExportResolver<'a> {
                 None => None,
             };
             match candidate_export {
+                // Same disagreement policy as `ModuleIdentityContributions`:
+                // a second differing star contribution marks the export
+                // Ambiguous, while unresolved star paths stay distinct.
                 Some(resolved)
                     if candidate
                         .as_ref()

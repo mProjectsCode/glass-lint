@@ -277,7 +277,7 @@ not expose `ModuleRequestId` beyond `pub(in crate::analysis)`.
 
 ### Star-export ambiguity policy (`analysis/project/identities.rs`, `resolver.rs`, `matching/identity_map.rs`)
 
-#### [ ] READ-009 — The "star exports that disagree → Ambiguous" policy is implemented twice with different mechanisms
+#### [x] READ-009 — The "star exports that disagree → Ambiguous" policy is implemented twice with different mechanisms
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -310,7 +310,7 @@ unresolved-handling (overlay: absent entries unset or `Unknown` inserted;
 resolver: unresolved star path ⇒ unknown result), and keep the
 direct-wins-over-star precedence and the cycle bounds.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Documented the canonical star-export disagreement policy on `ModuleIdentityContributions` as the single source of truth and added a reference to it from `ExportResolver::walk_star_exports`; both traversals and their distinct unresolved handling are unchanged.
 
 ## Systemic Themes
 
