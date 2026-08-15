@@ -51,7 +51,7 @@ pub(crate) enum LifecycleEventKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleEvent {
-    pub(crate) kind: LifecycleEventKind,
+    kind: LifecycleEventKind,
 }
 
 impl LifecycleEvent {
@@ -309,7 +309,7 @@ pub(crate) enum LifecycleSinkKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleSink {
-    pub(crate) kind: LifecycleSinkKind,
+    kind: LifecycleSinkKind,
 }
 
 impl LifecycleSink {

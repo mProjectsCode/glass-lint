@@ -89,7 +89,7 @@ Guardrail: keep rejecting empty/whitespace-only properties with
 
 **Fix Applied:** `property_write` now routes the property through the existing `checked_name` helper, trimming and canonicalizing before storage; whitespace-only names still fail with `EmptyIdentityName`. Added a focused positive/negative test.
 
-#### [ ] READ-006 — Redundant crate-visible storage plus accessor on `LifecycleEvent` and `LifecycleSink`
+#### [x] READ-006 — Redundant crate-visible storage plus accessor on `LifecycleEvent` and `LifecycleSink`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -111,7 +111,7 @@ inconsistent internal API surface.
 and `explanation.rs:262` already use). Guardrail: no behavior change; the
 derived `PartialEq/Eq/Hash/Ord` semantics must remain identical.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The `kind` field on both `LifecycleEvent` and `LifecycleSink` is now private; `kind()` remains the sole access path. No behavior change.
 
 ### [api/rule/query/lifecycle.rs]
 
