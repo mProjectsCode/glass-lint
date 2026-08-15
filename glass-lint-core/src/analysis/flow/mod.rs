@@ -41,6 +41,7 @@ pub(super) enum FlowCompletionReason {
     SourcePropagation,
     CrossStepBudget,
     CrossContextLimit,
+    PhaseDisabled,
 }
 
 impl FlowCompletion {

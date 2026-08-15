@@ -192,7 +192,7 @@ own copy of the closure.
 
 ### [effect/mod.rs — FunctionEffects availability/completion coupling]
 
-#### [ ] READ-006 — A disabled `FunctionEffects` reports a complete completion, making disabled look like successful-empty
+#### [x] READ-006 — A disabled `FunctionEffects` reports a complete completion, making disabled look like successful-empty
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -221,7 +221,7 @@ lose the existing fail-closed behavior where disabled effects produce no
 qualified propagation; the local projector must still short-circuit on
 availability without allocating flow state.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `finish()` now returns `completion = FlowCompletion::incomplete(FlowCompletionReason::PhaseDisabled)` when the phase was disabled, so a consumer inspecting only `completion().is_complete()` sees an incomplete (distinct from successful-empty) result. `is_available()` remains the phase-gating flag and the local projector still short-circuits on it without allocating flow state, preserving fail-closed behavior. Added a focused test asserting disabled effects report an incomplete completion with no effect rows.
 
 #### [ ] READ-007 — `value_roots` and `parameter_index` are parallel maps whose consistency is caller-maintained
 

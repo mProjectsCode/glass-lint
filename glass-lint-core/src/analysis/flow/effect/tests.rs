@@ -191,6 +191,19 @@ fn effects_budget_exhausted_false_with_unlimited_budget() {
 }
 
 #[test]
+fn disabled_phase_reports_incomplete_completion() {
+    let stream = facts::build_test_facts("const x = 1;", "test.js");
+    let effects = FunctionEffects::collect_with_availability(
+        &stream,
+        usize::MAX,
+        DerivedPhaseAvailability::DisabledByIncompleteAnalysis,
+    );
+    assert!(!effects.is_available());
+    assert!(effects.completion().is_incomplete());
+    assert!(effects.iter_effects().next().is_none());
+}
+
+#[test]
 fn collect_creates_program_level_function() {
     let (_stream, effects) = collect_effects("const x = 1;");
     assert!(effects.get(FunctionId::from_test(0)).is_some());

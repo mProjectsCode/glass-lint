@@ -445,7 +445,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
         if !self.availability.is_enabled() {
             return FunctionEffects {
                 by_id: FunctionTable::new(0),
-                completion: FlowCompletion::default(),
+                completion: FlowCompletion::incomplete(FlowCompletionReason::PhaseDisabled),
                 operation_count: 0,
                 availability: self.availability,
             };
