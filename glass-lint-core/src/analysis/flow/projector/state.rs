@@ -333,14 +333,10 @@ impl ControlStack {
     }
 
     pub(super) fn pop_loop(&mut self) -> Result<(), ControlStackError> {
-        match self.frames.last() {
-            Some(ControlFrame::Loop { .. }) => {
-                self.frames.pop();
-                Ok(())
-            }
-            Some(_) => Err(ControlStackError::WrongKind),
-            None => Err(ControlStackError::Empty),
+        if self.frames.pop().is_none() {
+            return Err(ControlStackError::Empty);
         }
+        Ok(())
     }
 
     pub(super) fn loop_break_count(&self) -> Result<usize, ControlStackError> {

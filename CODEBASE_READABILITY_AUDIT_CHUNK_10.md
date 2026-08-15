@@ -101,7 +101,7 @@ is unchanged.
 
 ### [state.rs — control stack]
 
-#### [ ] READ-003 — Loop frame accessors clone the whole frame and re-validate on every path
+#### [x] READ-003 — Loop frame accessors clone the whole frame and re-validate on every path
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -134,7 +134,14 @@ and repeated kind check from the deferred pop. Guardrail: every error path
 `alternatives_complete` incomplete (fail-closed), as control.rs:115-118 and
 loops.rs:136-139 currently do.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ControlStack::loop_frame` was already replaced by chunk 09
+read 003 (`3356ffa6`) with `take_loop_seed(region)`, the single accessor that
+validates region/kind and hands owned `baseline`/`breaks` plus cloned
+`continues` to `finish_loop` via `LoopSeed`, keeping the loop frame on the stack
+through the fixed point. Here the deferred pop no longer re-looks up the top
+frame or re-validates its kind: `pop_loop` now pops directly and only reports
+`Empty` (stack unchanged, run marked incomplete), so the `LoopEnd` path checks
+the top-frame kind exactly once.
 
 ### [state/tables/updates.rs — property-write update carrier]
 
