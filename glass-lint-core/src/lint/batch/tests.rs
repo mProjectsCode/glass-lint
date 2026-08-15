@@ -21,10 +21,11 @@ fn options_have_non_zero_bounded_defaults() {
     let options = BatchOptions::default();
     assert!(options.workers().get() > 0);
     assert!(options.max_in_flight().get() >= options.workers().get());
-    assert_eq!(
-        BatchOptions::new(NonZeroUsize::new(usize::MAX).unwrap()).max_in_flight(),
-        NonZeroUsize::new(usize::MAX).unwrap()
-    );
+
+    let capped = BatchOptions::new(NonZeroUsize::new(usize::MAX).unwrap());
+    assert!(capped.workers().get() > 0);
+    assert!(capped.max_in_flight().get() >= capped.workers().get());
+    assert!(capped.workers().get() <= host_parallelism());
 }
 
 #[test]

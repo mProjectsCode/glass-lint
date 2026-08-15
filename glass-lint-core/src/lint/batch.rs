@@ -27,11 +27,16 @@ pub struct BatchOptions {
 }
 
 impl BatchOptions {
-    /// Create options with the requested worker count and the default window.
+    /// Create options with the requested worker count capped by host
+    /// parallelism, and the default window.
     pub fn new(workers: NonZeroUsize) -> Self {
-        let max_in_flight = workers.get().saturating_mul(2).max(1);
+        Self::from_workers(workers.get().min(host_parallelism()))
+    }
+
+    fn from_workers(workers: usize) -> Self {
+        let max_in_flight = workers.saturating_mul(2).max(1);
         Self {
-            workers,
+            workers: NonZeroUsize::new(workers).unwrap_or(NonZeroUsize::MIN),
             max_in_flight: NonZeroUsize::new(max_in_flight).unwrap_or(NonZeroUsize::MIN),
         }
     }
@@ -54,8 +59,12 @@ impl BatchOptions {
 
 impl Default for BatchOptions {
     fn default() -> Self {
-        Self::new(std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN))
+        Self::from_workers(host_parallelism())
     }
+}
+
+fn host_parallelism() -> usize {
+    std::thread::available_parallelism().map_or(1, NonZeroUsize::get)
 }
 
 /// Failure to create the dedicated worker pool for a batch.

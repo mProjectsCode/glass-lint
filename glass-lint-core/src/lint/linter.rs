@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, sync::Arc};
+use std::sync::Arc;
 
 use rayon::ThreadPoolBuilder;
 
@@ -244,11 +244,9 @@ impl Linter {
     where
         I: IntoIterator<Item = crate::project::SourceFile>,
     {
-        let available = std::thread::available_parallelism().map_or(usize::MAX, NonZeroUsize::get);
         let worker_count = options
             .workers()
             .get()
-            .min(available)
             .min(options.max_in_flight().get())
             .max(1);
         let pool = ThreadPoolBuilder::new()

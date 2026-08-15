@@ -218,7 +218,7 @@ dedup/order determinism (`BTreeSet` insert, `evidence.rs:60-83`) must be kept.
 
 ### Batch options
 
-#### [ ] READ-007 — `Linter::lint_batch` re-queries host parallelism already resolved by `BatchOptions::default`
+#### [x] READ-007 — `Linter::lint_batch` re-queries host parallelism already resolved by `BatchOptions::default`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -241,7 +241,7 @@ system at most once per batch. Guardrails: the clamping rule (workers ≤
 available, ≤ max_in_flight, ≥ 1) and the dedicated-per-batch Rayon pool
 semantics in `lint_batch` (`linter.rs:257-268`) must be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolved the host-parallelism clamp once inside `BatchOptions`: `new` caps the requested worker count via a private `host_parallelism()` helper, `Default` builds through the same private `from_workers` constructor (one system query per construction), and `lint_batch` dropped its own query, clamping only against `max_in_flight` with a floor of 1.
 
 ## Systemic Themes
 
