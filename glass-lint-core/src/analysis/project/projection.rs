@@ -179,14 +179,12 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                     outcome.record_effects(module.id(), effects);
                 }
                 let (projected, local) = project_facts(
-                    ProjectionInputs {
-                        facts,
-                        effects,
-                        plan: self.plan,
-                        flow_limits: self.flow_limits,
-                        module_id: module.id(),
-                        trace_arena: self.arena,
-                    },
+                    facts,
+                    effects,
+                    self.plan,
+                    self.flow_limits,
+                    module.id(),
+                    self.arena,
                     &matcher_context,
                 )?;
                 outcome.record_local(&local);
@@ -241,27 +239,15 @@ impl<'a> ProjectionPlan<'a> {
 
 /// Execute the query-selected local matching and flow projection for one
 /// immutable facts artifact.
-struct ProjectionInputs<'a> {
-    facts: &'a SemanticFacts,
-    effects: Option<&'a crate::analysis::flow::effect::FunctionEffects>,
-    plan: &'a ProjectionPlan<'a>,
+fn project_facts(
+    facts: &SemanticFacts,
+    effects: Option<&crate::analysis::flow::effect::FunctionEffects>,
+    plan: &ProjectionPlan<'_>,
     flow_limits: FlowLimits,
     module_id: ModuleId,
-    trace_arena: &'a mut TraceArena,
-}
-
-fn project_facts(
-    inputs: ProjectionInputs<'_>,
+    trace_arena: &mut TraceArena,
     matcher_context: &MatcherProjectContext<'_, '_>,
 ) -> Result<(RuleEvidenceTable, LocalFlowProjectionOutcome), RuleEvidenceError> {
-    let ProjectionInputs {
-        facts,
-        effects,
-        plan,
-        flow_limits,
-        module_id,
-        trace_arena,
-    } = inputs;
     let mut projected_evidence = RuleEvidenceTable::new(plan.rule_capacity);
     if !facts.is_projectable() {
         return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));

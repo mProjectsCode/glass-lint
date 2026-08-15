@@ -29,7 +29,7 @@ star-export-disagreement policy.
 
 ### Projection orchestration (`analysis/project/projection.rs`)
 
-#### [ ] READ-001 — `ProjectionInputs` is an immediately-consumed argument bundle that collides with the flow projector's same-named type
+#### [x] READ-001 — `ProjectionInputs` is an immediately-consumed argument bundle that collides with the flow projector's same-named type
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -54,7 +54,7 @@ flow-projector type. Guardrails: keep the `trace_arena: &mut TraceArena`
 borrow shape intact, and do not touch the flow projector's
 `ProjectionInputs`, which has a distinct lifetime structure and owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ProjectionInputs` and passed the six fields directly to `project_facts`; no collision remains with the flow projector's type.
 
 #### [ ] READ-002 — Redundant re-read of the export memo table inside `ExportResolver::lookup_export_body`
 
