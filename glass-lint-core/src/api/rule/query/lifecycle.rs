@@ -1,6 +1,7 @@
 use crate::api::rule::{
     FirstError,
     query::{EventQuery, QueryBuildError, limits},
+    record_first_error,
 };
 
 mod endpoint;
@@ -148,12 +149,14 @@ impl LifecycleQueryBuilder {
     }
 
     /// Add a lifecycle source and return construction errors immediately.
-    pub fn try_source<S: IntoLifecycleSource>(
-        mut self,
-        source: S,
-    ) -> Result<Self, QueryBuildError> {
-        self.state.stages.try_source(source)?;
-        Ok(self)
+    pub fn try_source<S: IntoLifecycleSource>(self, source: S) -> Result<Self, QueryBuildError> {
+        let mut builder = self;
+        builder.try_add_source(source)?;
+        Ok(builder)
+    }
+
+    fn try_add_source<S: IntoLifecycleSource>(&mut self, source: S) -> Result<(), QueryBuildError> {
+        self.state.stages.try_source(source)
     }
 
     pub fn condition(mut self, condition: LifecycleCondition) -> Self {
@@ -163,12 +166,20 @@ impl LifecycleQueryBuilder {
     }
 
     /// Set the lifecycle condition and return construction errors immediately.
-    pub fn try_condition(
-        mut self,
-        condition: impl IntoLifecycleCondition,
+    pub fn try_condition<C: IntoLifecycleCondition>(
+        self,
+        condition: C,
     ) -> Result<Self, QueryBuildError> {
-        self.state.stages.try_condition(condition)?;
-        Ok(self)
+        let mut builder = self;
+        builder.try_add_condition(condition)?;
+        Ok(builder)
+    }
+
+    fn try_add_condition<C: IntoLifecycleCondition>(
+        &mut self,
+        condition: C,
+    ) -> Result<(), QueryBuildError> {
+        self.state.stages.try_condition(condition)
     }
 
     pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
@@ -179,11 +190,19 @@ impl LifecycleQueryBuilder {
 
     /// Set lifecycle completion and return construction errors immediately.
     pub fn try_completion<C: IntoLifecycleCompletion>(
-        mut self,
+        self,
         completion: C,
     ) -> Result<Self, QueryBuildError> {
-        self.state.stages.try_completion(completion)?;
-        Ok(self)
+        let mut builder = self;
+        builder.try_add_completion(completion)?;
+        Ok(builder)
+    }
+
+    fn try_add_completion<C: IntoLifecycleCompletion>(
+        &mut self,
+        completion: C,
+    ) -> Result<(), QueryBuildError> {
+        self.state.stages.try_completion(completion)
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
@@ -200,47 +219,37 @@ impl LifecycleQueryBuilder {
 
 #[derive(Debug, Clone)]
 pub struct CatalogLifecycleQueryBuilder {
-    state: LifecycleBuilderState,
+    inner: LifecycleQueryBuilder,
+    first_error: FirstError<QueryBuildError>,
 }
 
 impl CatalogLifecycleQueryBuilder {
-    fn record_error(&mut self, error: QueryBuildError) {
-        self.state.invalid_operation.record(error);
-    }
-
-    fn record_operation(&mut self, result: Result<(), QueryBuildError>) {
-        if let Err(error) = result {
-            self.record_error(error);
-        }
-    }
-
     pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
-        let result = self.state.stages.try_source(source);
-        self.record_operation(result);
+        record_first_error(&mut self.first_error, self.inner.try_add_source(source));
         self
     }
 
     pub fn condition<C: IntoLifecycleCondition>(mut self, condition: C) -> Self {
-        let result = self.state.stages.try_condition(condition);
-        self.record_operation(result);
+        record_first_error(
+            &mut self.first_error,
+            self.inner.try_add_condition(condition),
+        );
         self
     }
 
     pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
-        let result = self.state.stages.try_completion(completion);
-        self.record_operation(result);
+        record_first_error(
+            &mut self.first_error,
+            self.inner.try_add_completion(completion),
+        );
         self
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        let LifecycleBuilderState {
-            stages,
-            invalid_operation,
-        } = self.state;
-        if let Some(error) = invalid_operation.take() {
+        if let Some(error) = self.first_error.take() {
             return Err(error);
         }
-        stages.build()
+        self.inner.build()
     }
 }
 
@@ -253,7 +262,8 @@ impl LifecycleQuery {
 
     pub fn catalog_builder(symbol: impl Into<String>) -> CatalogLifecycleQueryBuilder {
         CatalogLifecycleQueryBuilder {
-            state: LifecycleBuilderState::new(symbol),
+            inner: Self::builder(symbol),
+            first_error: FirstError::default(),
         }
     }
 }

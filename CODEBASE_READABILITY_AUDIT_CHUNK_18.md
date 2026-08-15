@@ -29,7 +29,7 @@ convention that forces callers into `Ok(...)` wrapping. No `unwrap`/`expect`/
 
 ### [api/rule/query/lifecycle]
 
-#### [ ] READ-001 — Parallel lifecycle builders duplicate state wiring and build logic; `CatalogLifecycleQueryBuilder` does not compose `LifecycleQueryBuilder`
+#### [x] READ-001 — Parallel lifecycle builders duplicate state wiring and build logic; `CatalogLifecycleQueryBuilder` does not compose `LifecycleQueryBuilder`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -63,7 +63,7 @@ single-sourced, deleting the duplicated `build` bodies and the two duplicate
 (fail at `build`) distinct from immediate `try_*` propagation, and keep
 `DuplicateLifecycleStage`, per-stage limits, and error identity unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CatalogLifecycleQueryBuilder` now wraps `inner: LifecycleQueryBuilder` plus `FirstError<QueryBuildError>`, delegating each stage to new `&mut self` `try_add_*` helpers and reusing `record_first_error` (made generic over `Result<T, E>`); the duplicated `build()` bodies and `record_operation`/`record_error` helpers were deleted.
 
 ### [api/rule/query/mod.rs, api/rule/mod.rs]
 

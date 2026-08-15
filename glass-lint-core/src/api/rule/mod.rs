@@ -33,7 +33,7 @@ impl<E> FirstError<E> {
     }
 }
 
-fn record_first_error<E>(slot: &mut FirstError<E>, result: Result<(), E>) {
+fn record_first_error<T, E>(slot: &mut FirstError<E>, result: Result<T, E>) {
     if let Err(error) = result {
         slot.record(error);
     }
