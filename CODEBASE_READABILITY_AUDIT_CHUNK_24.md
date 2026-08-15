@@ -268,7 +268,7 @@ check order so combine stays lossless and deterministic.
 
 ### Project session tests
 
-#### [ ] READ-009 — Repeated analyzer setup and "unknown key" rebuilds in tests
+#### [x] READ-009 — Repeated analyzer setup and "unknown key" rebuilds in tests
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -289,7 +289,7 @@ the unknown-key rebuild into a small shared test helper used by both modules.
 Guardrail: keep the assertions on `UnknownRequest`/`DuplicateResolution`
 semantics and the deterministic key construction unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Rewrote the three inlined `SemanticAnalyzer` calls in `project/session/artifacts/tests.rs` to use the existing `lower` helper, and lifted the "make a request unknown" key rebuild into `as_require_key` in `project/tests/support.rs`, shared by `artifacts/tests.rs` and `project/tests/mod.rs`.
 
 ### Documentation
 

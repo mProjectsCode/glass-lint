@@ -89,15 +89,10 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         ))
         .unwrap();
     let key = analysis.iter().next().unwrap().key().clone();
-    let mut unknown = key;
-    unknown = crate::project::ResolutionRequestKey::new(
-        unknown.importer().clone(),
-        crate::project::ResolutionRequestKind::Require,
-        unknown.range().clone(),
-    );
+    let unknown = as_require_key(&key);
     let Err(error) = collection.finish([(
         unknown,
-        crate::project::ResolverOutcome::Target(ResolvedTargetKind::Missing),
+        crate::project::ResolverOutcome::Target(crate::project::ResolvedTargetKind::Missing),
     )]) else {
         panic!("unknown requests must be rejected")
     };

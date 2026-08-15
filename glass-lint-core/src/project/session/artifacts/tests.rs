@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     AnalysisLimits, Environment,
     analysis::SemanticAnalyzer,
-    project::{ResolutionRequestKind, ResolvedTargetKind, SourceFile},
+    project::{ResolvedTargetKind, SourceFile, tests::as_require_key},
 };
 
 fn lower(path: &str, source: &str) -> (ProjectRelativePath, AnalyzedSource) {
@@ -76,12 +76,8 @@ fn parse_failure_replaces_a_previous_success() {
 fn qualified_ids_reject_missing_importer_modules() {
     let source = SourceFile::new("missing.js", "import value from './dep.js';").unwrap();
     let mut artifacts = AnalysisArtifacts::default();
-    artifacts.record_analyzed(
-        source.path(),
-        SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
-            .analyze_source(&source)
-            .unwrap(),
-    );
+    let (path, analyzed) = lower(source.path().as_str(), source.source());
+    artifacts.record_analyzed(&path, analyzed);
 
     assert_eq!(
         artifacts.authored_requests.qualified_ids(&BTreeMap::new()),
@@ -99,12 +95,8 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
 
     let (link_input, parse_diagnostics) = {
         let mut artifacts = AnalysisArtifacts::default();
-        let requests = artifacts.record_analyzed(
-            source.path(),
-            SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
-                .analyze_source(&source)
-                .unwrap(),
-        );
+        let (path, analyzed) = lower(source.path().as_str(), source.source());
+        let requests = artifacts.record_analyzed(&path, analyzed);
         let key = requests[0].key().clone();
         artifacts
             .into_link_input(
@@ -117,18 +109,9 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
     assert_eq!(link_input.resolution_count(), 1);
 
     let mut artifacts = AnalysisArtifacts::default();
-    let requests = artifacts.record_analyzed(
-        source.path(),
-        SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
-            .analyze_source(&source)
-            .unwrap(),
-    );
-    let mut unknown = requests[0].key().clone();
-    unknown = ResolutionRequestKey::new(
-        unknown.importer().clone(),
-        ResolutionRequestKind::Require,
-        unknown.range().clone(),
-    );
+    let (path, analyzed) = lower(source.path().as_str(), source.source());
+    let requests = artifacts.record_analyzed(&path, analyzed);
+    let unknown = as_require_key(requests[0].key());
     let error = artifacts.into_link_input(
         &sources,
         [(

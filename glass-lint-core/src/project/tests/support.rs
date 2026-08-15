@@ -161,6 +161,16 @@ pub fn key(importer: &str) -> ResolutionRequestKey {
     )
 }
 
+/// Rebuild a request key as a `Require` at the same location, exercising
+/// unknown-request rejection for keys the authored request table does not hold.
+pub fn as_require_key(key: &ResolutionRequestKey) -> ResolutionRequestKey {
+    ResolutionRequestKey::new(
+        key.importer().clone(),
+        ResolutionRequestKind::Require,
+        key.range().clone(),
+    )
+}
+
 pub struct ProjectFixture<'a> {
     session: ProjectSession<'a>,
     outcomes: Vec<(ResolutionRequestKey, ResolverOutcome)>,
