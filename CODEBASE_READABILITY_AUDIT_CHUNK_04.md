@@ -253,7 +253,7 @@ are not merged, since the planner has no inline parameters.
 
 ### Encapsulation and data-shape issues
 
-#### [ ] READ-006 — Joined path assignments are a raw 3-tuple that callers destructure and re-pass field by field
+#### [x] READ-006 — Joined path assignments are a raw 3-tuple that callers destructure and re-pass field by field
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -279,7 +279,7 @@ at the call site. Guardrail: keep the join bound (`self.alternative_limit`)
 fixed at merge start and keep the fallback-to-incoming/unknown handling in
 `join_paths`; do not expose the type outside the `build` subtree.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the `JoinedPathAssignments` triple alias with a private `JoinedAssignment { scope, name, value }` value type owned by the `assignments` module. `PathCollectionState::join_paths` produces `Vec<JoinedAssignment>` and `ScopeCollector::join_paths` hands each value to `record_join_assignment` by value, deleting the triple destructuring at the call site. The join bound stays fixed at merge start (`self.alternative_limit`) and the fallback-to-incoming/unknown handling remains in `join_paths`; the type is not exposed outside the `build` subtree.
 
 #### [ ] READ-008 — Needless deep pattern clone and an `if`-as-`Option` idiom
 

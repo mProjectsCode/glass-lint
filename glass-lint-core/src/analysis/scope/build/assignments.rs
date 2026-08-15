@@ -14,7 +14,12 @@ use crate::analysis::{
     syntax::member_root_identifier,
 };
 
-type JoinedPathAssignments = Vec<(ScopeId, glass_lint_datastructures::NameId, ProvenanceJoin)>;
+/// A joined assignment pending install after a control-flow merge.
+struct JoinedAssignment {
+    scope: ScopeId,
+    name: glass_lint_datastructures::NameId,
+    value: ProvenanceJoin,
+}
 
 impl super::PathCollectionState {
     fn join_paths(
@@ -22,7 +27,7 @@ impl super::PathCollectionState {
         incoming: &CollectorCheckpoint,
         paths: &[CollectorCheckpoint],
         fallback: impl Fn(ScopeId, glass_lint_datastructures::NameId) -> ProvenanceAlternatives,
-    ) -> Result<Option<JoinedPathAssignments>, super::history::HistoryRestoreError> {
+    ) -> Result<Option<Vec<JoinedAssignment>>, super::history::HistoryRestoreError> {
         let reachable: Vec<&CollectorCheckpoint> =
             paths.iter().filter(|path| path.reachable).collect();
 
@@ -57,7 +62,11 @@ impl super::PathCollectionState {
                 value.add(&path_value);
             }
             self.restore_checkpoint(incoming)?;
-            joined.push((key.scope(), key.name(), value));
+            joined.push(JoinedAssignment {
+                scope: key.scope(),
+                name: key.name(),
+                value,
+            });
         }
         Ok(Some(joined))
     }
@@ -113,13 +122,8 @@ impl ScopeCollector<'_> {
         );
     }
 
-    fn record_join_assignment(
-        &mut self,
-        span: Span,
-        scope: ScopeId,
-        name: glass_lint_datastructures::NameId,
-        value: &ProvenanceJoin,
-    ) {
+    fn record_join_assignment(&mut self, span: Span, assignment: JoinedAssignment) {
+        let JoinedAssignment { scope, name, value } = assignment;
         self.push_assignment(span, scope, name, value.alternatives().clone());
     }
 
@@ -282,8 +286,8 @@ impl ScopeCollector<'_> {
             return;
         };
 
-        for (scope, name, value) in joined {
-            self.record_join_assignment(Span::new(span.hi, span.hi), scope, name, &value);
+        for assignment in joined {
+            self.record_join_assignment(Span::new(span.hi, span.hi), assignment);
         }
     }
 
