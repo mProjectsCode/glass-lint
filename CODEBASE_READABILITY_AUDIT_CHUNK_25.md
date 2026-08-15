@@ -185,7 +185,7 @@ round-trips each code.
 
 **Fix Applied:** `DiagnosticKind` is now declared once by a `macro_rules!` that expands into the enum and a test-only `ALL` slice; the test iterates `ALL`, so every variant (including the previously omitted `EvidenceCapacityMismatch`) is covered by construction, while `as_str`'s match remains exhaustive.
 
-#### [ ] READ-006 — `into_partial` hard-codes a code string that bypasses the `DiagnosticKind` vocabulary
+#### [x] READ-006 — `into_partial` hard-codes a code string that bypasses the `DiagnosticKind` vocabulary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -208,7 +208,7 @@ documented `const` code next to `DiagnosticKind`) and construct it through the
 same `From` conversion as the other codes. Guardrail: the emitted string must
 remain exactly `"incomplete_project"` — the report schema is stable.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `DiagnosticKind::IncompleteProject` (with `as_str` value `"incomplete_project"`) to the central vocabulary; `into_partial` now constructs the code via `DiagnosticKind::IncompleteProject.into()`, and the schema string is unchanged.
 
 ### report/location.rs, report/diagnostic.rs — accessors and ordering keys
 

@@ -1,5 +1,6 @@
 use crate::project::types::{
-    AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, DiagnosticCode, FileReport,
+    AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, DiagnosticCode, DiagnosticKind,
+    FileReport,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,11 +150,9 @@ impl AnalysisReport {
 
     #[must_use]
     pub fn into_partial(mut self, reason: impl std::fmt::Display) -> Self {
-        let code = DiagnosticCode::new("incomplete_project")
-            .expect("incomplete_project is a valid diagnostic code");
         self.diagnostics
             .push(Diagnostic::Project(AnalysisDiagnostic::new(
-                code,
+                DiagnosticKind::IncompleteProject.into(),
                 reason.to_string(),
                 None,
             )));
