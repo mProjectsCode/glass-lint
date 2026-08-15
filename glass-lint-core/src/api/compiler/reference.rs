@@ -155,7 +155,7 @@ fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> Option<LifecycleRe
     Some(LifecycleReferencePlan {
         source: LifecycleSourceMatcher {
             target: source.target().clone(),
-            arguments: source.arguments().to_flat_vec(),
+            arguments: source.argument_constraints().to_flat_vec(),
         },
         property: property.clone().into(),
         property_value: property_value.clone(),

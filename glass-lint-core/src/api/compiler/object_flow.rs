@@ -195,11 +195,6 @@ impl CompiledObjectSource {
         &self.target
     }
 
-    #[cfg(test)]
-    pub(crate) fn arguments(&self) -> &CanonicalArgumentConstraints {
-        &self.arguments
-    }
-
     pub(crate) fn argument_constraints(&self) -> &CanonicalArgumentConstraints {
         &self.arguments
     }

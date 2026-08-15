@@ -60,7 +60,7 @@ call site; empty-identity rejection now flows solely from `validate_event_query`
 
 ### api/compiler/object_flow — conflicting accessor names for one field
 
-#### [ ] READ-002 — `CompiledObjectSource` exposes the same field under two names split by `cfg(test)`
+#### [x] READ-002 — `CompiledObjectSource` exposes the same field under two names split by `cfg(test)`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -78,7 +78,8 @@ make the accessor surface look like two different operations.
 test-only reference representation call it. Delete the other. Guardrail: none beyond
 keeping the returned reference read-only.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the `#[cfg(test)] arguments()` accessor; the test-only
+reference representation now calls the single production `argument_constraints()`.
 
 ### api/compiler — the "call-bearing event" predicate is defined three times
 
