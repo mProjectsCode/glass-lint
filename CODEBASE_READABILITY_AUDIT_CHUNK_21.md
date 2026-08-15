@@ -167,7 +167,7 @@ engines no longer match the enum by hand.
 
 ### api/compiler/object_flow — `Indices(Vec<usize>)` over-generalizes a single-index value
 
-#### [ ] READ-006 — `CompiledObjectSinkArguments::Indices` is always constructed with one element
+#### [x] READ-006 — `CompiledObjectSinkArguments::Indices` is always constructed with one element
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -188,7 +188,9 @@ Multi-index is unreachable from the normalized lifecycle IR (see Open Questions)
 the `Vec` form is a leftover generalization. Guardrail: keep `present_indices` bounded
 and keep `Any` meaning "all arguments of the target call".
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `Indices(Vec<usize>)` with `Any` | `Single(usize)`;
+`present_indices` stays count-bounded and `Any` still means all target-call
+arguments.
 
 ### api/compiler/validate — immediately-consumed `validate_subject_relation` wrapper
 

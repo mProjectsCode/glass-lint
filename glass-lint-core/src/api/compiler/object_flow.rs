@@ -1,4 +1,4 @@
-use std::{ops::Range, slice::Iter};
+use std::ops::Range;
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
@@ -244,46 +244,56 @@ impl CompiledObjectRequirement {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum CompiledObjectSinkArguments {
     Any,
-    Indices(Vec<usize>),
+    Single(usize),
 }
 
 impl CompiledObjectSinkArguments {
     pub(crate) fn matches_argument(&self, argument: usize) -> bool {
         match self {
             Self::Any => true,
-            Self::Indices(indices) => indices.contains(&argument),
+            Self::Single(index) => *index == argument,
         }
     }
 
-    pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
+    pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices {
         match self {
             Self::Any => PresentIndices::Any(0..argument_count),
-            Self::Indices(indices) => PresentIndices::Indices {
-                iter: indices.iter(),
+            Self::Single(index) => PresentIndices::Single {
+                index: *index,
                 argument_count,
+                yielded: false,
             },
         }
     }
 }
 
-pub(crate) enum PresentIndices<'a> {
+pub(crate) enum PresentIndices {
     Any(Range<usize>),
-    Indices {
-        iter: Iter<'a, usize>,
+    Single {
+        index: usize,
         argument_count: usize,
+        yielded: bool,
     },
 }
 
-impl Iterator for PresentIndices<'_> {
+impl Iterator for PresentIndices {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Any(range) => range.next(),
-            Self::Indices {
-                iter,
+            Self::Single {
+                index,
                 argument_count,
-            } => iter.find(|index| **index < *argument_count).copied(),
+                yielded,
+            } => {
+                if *yielded {
+                    None
+                } else {
+                    *yielded = true;
+                    (*index < *argument_count).then_some(*index)
+                }
+            }
         }
     }
 }
@@ -299,7 +309,7 @@ impl CompiledObjectSink {
         match sink {
             NormalizedLifecycleSink::ArgumentOf { target, index } => Self {
                 target: target.clone(),
-                args: CompiledObjectSinkArguments::Indices(vec![*index]),
+                args: CompiledObjectSinkArguments::Single(*index),
             },
             NormalizedLifecycleSink::AnyArgumentOf { target } => Self {
                 target: target.clone(),
@@ -320,7 +330,7 @@ impl CompiledObjectSink {
     pub(crate) fn fixed_argument(&self) -> Option<usize> {
         match &self.args {
             CompiledObjectSinkArguments::Any => None,
-            CompiledObjectSinkArguments::Indices(indices) => indices.first().copied(),
+            CompiledObjectSinkArguments::Single(index) => Some(*index),
         }
     }
 }
