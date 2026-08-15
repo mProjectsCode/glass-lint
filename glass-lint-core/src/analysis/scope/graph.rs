@@ -54,15 +54,6 @@ pub(in crate::analysis) struct FrozenScopeGraph {
     scope_shape_valid: bool,
 }
 
-pub(super) struct ScopeGraphInput {
-    pub(super) environment: Environment,
-    pub(super) names: NameTable,
-    pub(super) scopes: LexicalScopes,
-    pub(super) bindings: BindingIndex,
-    pub(super) mutations: MutationIndexBuilder,
-    pub(super) scope_shape_valid: bool,
-}
-
 impl ScopeGraph {
     fn read_view(&self) -> ScopeReadView<'_, MutationIndexBuilder> {
         ScopeReadView {
@@ -86,15 +77,14 @@ impl ScopeGraph {
     }
 
     /// Assemble a validated scope graph from the collector's freeze output.
-    pub(super) fn from_collected(input: ScopeGraphInput) -> Self {
-        let ScopeGraphInput {
-            environment,
-            names,
-            scopes,
-            bindings,
-            mutations,
-            scope_shape_valid,
-        } = input;
+    pub(super) fn from_collected(
+        environment: Environment,
+        names: NameTable,
+        scopes: LexicalScopes,
+        bindings: BindingIndex,
+        mutations: MutationIndexBuilder,
+        scope_shape_valid: bool,
+    ) -> Self {
         Self {
             data: ScopeData {
                 names: NameEnvironment::new(names, environment),

@@ -263,7 +263,7 @@ not combine facts across different owners in the helper.
 
 **Fix Applied:** Added `ScopeData::ancestors(scope)` (scope-then-parents iterator) and exposed it as `FrozenScopeGraph::scope_ancestors`. `binding_with_scope_at`, `enclosing_function_at`, `has_prior_eval`, `scope_or_ancestor_has_kind`, and `function_binding_at` are now `find`/`any` expressions over the iterator, each preserving its per-caller stop rule and fallback. The now-unused facade `scope_parent` delegators were removed and the scope test asserts parentage via `scope_ancestors`.
 
-#### [ ] READ-009 — Single-use `ScopeGraphInput` data-passing struct
+#### [x] READ-009 — Single-use `ScopeGraphInput` data-passing struct
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -284,7 +284,7 @@ keep `scope_shape_valid` and the assembly order (binding index resolved
 before property facts are folded in, then `freeze`) exactly as-is; this is
 assembly plumbing, not an independent lifecycle owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ScopeGraphInput`; `ScopeGraph::from_collected` now takes the six fields directly and freeze.rs passes them in the same order, preserving the assembly sequence (binding index resolved, property facts folded in, then `freeze`).
 
 ## Systemic Themes
 
