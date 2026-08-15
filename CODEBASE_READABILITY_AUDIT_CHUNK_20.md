@@ -197,8 +197,6 @@ roots.
 
 **Fix Applied:** Added `From<&NormalizedEmission> for EvidenceDescriptor` as the single canonical conversion and used it once in `plan_normalized_roots_into`, threading the descriptor through `plan_root`/`plan_event` so the manual field-by-field `EvidenceDescriptor { kind, symbol: symbol.to_owned() }` copy per root is gone. Each root still carries its own cloned per-root descriptor, so the `optimize_roots` dedup rule and the physical tests that assert distinct descriptors are unchanged.
 
-**Fix Applied:** None so far.
-
 ### [Compiler: vocabulary ownership]
 
 #### [x] READ-006 — `api::rule` declarations and the compiler IR reach into `api::classification` for the `MatchKind` occurrence vocabulary
@@ -228,8 +226,6 @@ rule declarations, compiler IR, and reports. Guardrail: the `as_str()` spellings
 strings; do not split the vocabulary into two enums.
 
 **Fix Applied:** Relocated `MatchKind` (definition and `as_str` contract) to `api/rule/query` as the shared occurrence-kind vocabulary, re-exported it from `api::rule`, and made `api::classification` re-export it for serialization (module doc updated accordingly). The public `rules::MatchKind` re-export now points at `api::rule::MatchKind`. Migrated the compiler IR, matching, and flow consumers plus all test imports to the canonical `crate::api::rule::MatchKind` path. Exact `as_str()` spellings preserved; no vocabulary split.
-
-**Fix Applied:** None so far.
 
 ### [Compiler: normalization]
 

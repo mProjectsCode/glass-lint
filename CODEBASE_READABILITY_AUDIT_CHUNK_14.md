@@ -106,9 +106,7 @@ to `materialize_file` so one canonical name exists per concept. Guardrails: `Ana
 remains the materialized project/report type used by the linker
 (`analysis/project/model.rs:427 status_snapshot`) and report session
 (`lint/report/mod.rs:74`); keep the `is_complete` semantics (empty entry set equals
-complete) and the `materialize_file` path-rewrite behavior unchanged.
-
-**Fix Applied:** None so far.
+ complete) and the `materialize_file` path-rewrite behavior unchanged.
 
 #### [x] READ-003 — Single-variant `ModuleInterfaceKind` used as a constant payload
 
@@ -177,9 +175,7 @@ before capacity (`semantic/mod.rs:213-223`) — since that precedence is observa
 reported diagnostics, and do not pull budget state into a new owner; the shared
 `SemanticBudget` stays the reference already created by
 `SemanticAnalyzer::analyze_program` (`semantic/mod.rs:168`) and threaded through
-`ResolvedProgram::collect` into `Resolver`.
-
-**Fix Applied:** None so far.
+ `ResolvedProgram::collect` into `Resolver`.
 
 ### analysis/local and analysis/semantic construction
 
@@ -220,9 +216,7 @@ in `SemanticAnalyzer::analyze_source`) and stores it directly, and
 `LocatedSourceContext::from_normalizer` constructor plus a narrow
 `SpanNormalizer::into_lines` accessor. The two responsibilities remain distinct, and
 the normalizer and context still share one `Arc` allocation (the resolver's cloned
-`SpanNormalizer` and the context come from the same `Arc::new`).
-
-**Fix Applied:** None so far.
+ `SpanNormalizer` and the context come from the same `Arc::new`).
 
 ## Systemic Themes
 
