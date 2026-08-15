@@ -71,6 +71,17 @@ impl ResolutionProvenance {
             syntactic_chain: None,
         }
     }
+
+    fn with_call(call: SymbolCallProvenance) -> Self {
+        Self {
+            rooted_chain: None,
+            call,
+            module_member: None,
+            returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -8,7 +8,9 @@ use smol_str::ToSmolStr;
 
 use crate::analysis::{
     model::value::MAX_VALUES,
-    module_request::ModuleRequestContext,
+    module_request::{
+        ModuleRequestContext, ModuleRequestKind, ModuleRequestPolicy, recognize_module_call,
+    },
     resolution::{
         Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
         ValueId,
@@ -52,31 +54,21 @@ impl Resolver<'_> {
         &mut self,
         call: &swc_ecma_ast::CallExpr,
     ) -> ResolvedValue {
-        if matches!(call.callee, Callee::Import(_))
-            && let Some(argument) = call.args.first()
-            && argument.spread.is_none()
-            && let Some(module) =
-                crate::analysis::syntax::constant::static_string(&argument.expr, self)
+        if let Some(request) =
+            recognize_module_call(call, self, ModuleRequestPolicy::alias_with_dynamic_import())
+            && request.kind() == ModuleRequestKind::DynamicImport
         {
-            let id = self.intern_call_value(
-                &SymbolCallProvenance::ModuleExport {
-                    module: module.into(),
-                    export: "*".into(),
-                },
-                None,
-                None,
-            );
-            return ResolvedValue::with_provenance(
-                id,
-                ResolutionProvenance {
-                    rooted_chain: None,
-                    call: self.call_provenance_for_value(id),
-                    module_member: None,
-                    returned_member: None,
-                    bound_arguments: None,
-                    syntactic_chain: None,
-                },
-            );
+            let import_call = SymbolCallProvenance::ModuleExport {
+                module: request.module().into(),
+                export: "*".into(),
+            };
+            let id = self.intern_call_value(&import_call, None, None);
+            let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
+                SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted { limit: MAX_VALUES })
+            } else {
+                import_call
+            };
+            return ResolvedValue::with_provenance(id, ResolutionProvenance::with_call(call));
         }
         let Callee::Expr(callee) = &call.callee else {
             return Self::unknown();

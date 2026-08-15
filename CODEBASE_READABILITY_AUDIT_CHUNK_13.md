@@ -34,7 +34,7 @@ No source changes were made; this document is read-only.
 
 ### Module request recognition
 
-#### [ ] READ-001 — `resolve_call_expression` duplicates dynamic-import recognition and round-trips the provenance it just interned
+#### [x] READ-001 — `resolve_call_expression` duplicates dynamic-import recognition and round-trips the provenance it just interned
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -66,6 +66,14 @@ value, setting the provenance's `call` field to that known value directly (via a
 keep `export: "*"`, keep the `call` field carrying the ModuleExport provenance (callers read it
 positionally, e.g. facts/calls/mod.rs:35), and keep failing closed for spread or non-literal
 specifiers.
+
+**Fix Applied:** `resolve_call_expression` now routes the dynamic-import case through
+`recognize_module_call(call, self, ModuleRequestPolicy::alias_with_dynamic_import())`, mapping only
+the `DynamicImport` request to `SymbolCallProvenance::ModuleExport { module, export: "*" }` and
+setting the provenance via a new `ResolutionProvenance::with_call` constructor; the
+`call_provenance_for_value` round-trip is gone. The budget-exhausted fail-closed reason is preserved
+when the interned id is `UNKNOWN` and the value arena is exhausted, and non-import calls still fall
+through to the existing callee handling.
 
 ### Expression and static-value resolution
 
