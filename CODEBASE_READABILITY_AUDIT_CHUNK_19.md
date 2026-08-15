@@ -185,7 +185,7 @@ order; do not change which source events may appear.
 
 ### [api/rule/query/value.rs]
 
-#### [ ] READ-002 — Parallel bounded iterator-conversion helpers in value.rs and lifecycle/types.rs
+#### [x] READ-002 — Parallel bounded iterator-conversion helpers in value.rs and lifecycle/types.rs
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -214,7 +214,7 @@ at value.rs:104-109. Guardrail: keep `EmptyLifecycleCondition` /
 keep the two-step lifecycle behavior (bound during conversion, canonicalize
 after) equivalent.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by chunk 18 read 005 (`fefa07e9`): `bounded_lifecycle_items` and `bounded_canonical_values` were deleted in favor of the single shared `CanonicalCollection::collect` (canonical.rs) used by `LifecycleEvents::new`, `LifecycleSinks::new`, `bounded_strings`, and `bounded_paths`, and the dead post-deduplication length check was removed. Verified: distinct `EmptyLifecycleCondition`/`EmptyLifecycleSinks`/`EmptyCollection` errors preserved and bound tests green.
 
 ### [api/rule/query/mod.rs] (chunk boundary — `LifecycleQuery`, `EventQuery`)
 
