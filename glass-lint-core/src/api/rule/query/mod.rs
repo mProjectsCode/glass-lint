@@ -367,10 +367,14 @@ impl EmissionDecl {
         self.primary_var
     }
 
-    pub(crate) fn is_compatible_with(&self, other: &Self, allow_symbol_difference: bool) -> bool {
+    pub(crate) fn is_compatible(&self, other: &Self) -> bool {
         self.primary_var == other.primary_var
             && self.kind == other.kind
-            && (allow_symbol_difference || self.symbol == other.symbol)
+            && self.symbol == other.symbol
+    }
+
+    pub(crate) fn is_compatible_with_aggregate_symbol(&self, other: &Self) -> bool {
+        self.primary_var == other.primary_var && self.kind == other.kind
     }
 
     pub fn kind(&self) -> MatchKind {

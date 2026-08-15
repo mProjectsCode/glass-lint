@@ -291,7 +291,7 @@ input size, and keep the re-export paths used by planning.rs and normalize.rs.
 
 ### [api/rule/query/mod.rs, composition.rs]
 
-#### [ ] READ-008 — `EmissionDecl::is_compatible_with` hides a behavior switch behind a boolean
+#### [x] READ-008 — `EmissionDecl::is_compatible_with` hides a behavior switch behind a boolean
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -312,7 +312,7 @@ other)`, so the distinct semantics are named. Guardrails: keep the primary-var
 and `MatchKind` comparisons identical in both, and keep the
 `EvidenceProjection` failure behavior in `any_impl` unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split `is_compatible_with(_, bool)` into `is_compatible` (also compares the evidence symbol) and `is_compatible_with_aggregate_symbol` (primary var + `MatchKind` only); `any_impl` selects the method on `explicit_symbol.is_some()` with identical `EvidenceProjection` behavior.
 
 ### [api/rule/module.rs]
 

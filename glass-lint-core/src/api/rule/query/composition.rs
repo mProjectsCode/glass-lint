@@ -160,7 +160,12 @@ impl QueryDecl {
             }
             let decl = branch?;
             if let Some(first) = &first_emission {
-                if !first.is_compatible_with(&decl.emission, explicit_symbol.is_some()) {
+                let compatible = if explicit_symbol.is_some() {
+                    first.is_compatible_with_aggregate_symbol(&decl.emission)
+                } else {
+                    first.is_compatible(&decl.emission)
+                };
+                if !compatible {
                     return Err(QueryBuildError::EvidenceProjection);
                 }
             } else {
