@@ -182,7 +182,7 @@ impl Visit for FactBuilder<'_, '_> {
                     || quasi.raw.to_string(),
                     |value| value.to_string_lossy().to_string(),
                 );
-                let resolved = self.resolver.static_string(literal);
+                let resolved = self.resolver.intern_static_string(literal);
                 self.emit(
                     quasi.span,
                     FactPayload::Reference {

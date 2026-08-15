@@ -99,7 +99,7 @@ impl Resolver<'_> {
         ResolvedValue::local(id)
     }
 
-    pub(in crate::analysis) fn static_string(&mut self, value: String) -> ResolvedValue {
+    pub(in crate::analysis) fn intern_static_string(&mut self, value: String) -> ResolvedValue {
         let id = self
             .values
             .intern_value_with_binding(Value::StaticString(value), None);

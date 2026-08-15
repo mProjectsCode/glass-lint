@@ -79,7 +79,7 @@ impl FactBuilder<'_, '_> {
                     values
                         .into_iter()
                         .map(|s| {
-                            let resolved = self.resolver.static_string(s);
+                            let resolved = self.resolver.intern_static_string(s);
                             CallArgInfo {
                                 value: resolved.id,
                                 ..CallArgInfo::unknown()

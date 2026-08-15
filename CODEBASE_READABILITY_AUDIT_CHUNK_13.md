@@ -209,7 +209,7 @@ at 32; do not alter admission or recursion semantics.
 directly; the local `MAX_CONST_DEPTH` literal in `resolution/constant.rs` was deleted. The value
 remains 32.
 
-#### [ ] READ-006 — Inconsistent `static_string*` naming family on `Resolver`
+#### [x] READ-006 — Inconsistent `static_string*` naming family on `Resolver`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -233,6 +233,12 @@ verb-as-verb convention used elsewhere (`intern_const_value`, `intern_call_value
 `intern_const_value`/`intern_call_value` verbs) so the read/write/evaluate surfaces are
 distinguishable by name; keep `static_string_value` and the trait/`syntax` evaluator as-is.
 Guardrails: pure rename; no behavior, provenance, or fail-closed changes.
+
+**Fix Applied:** `Resolver::static_string(String)` was renamed to `Resolver::intern_static_string`,
+and all callers were updated: `resolve_string_literal`, `facts/calls/wrapper.rs`,
+`facts/arguments.rs` (both sites), and `facts/visitor.rs`. `static_string_value`,
+`ModuleRequestContext::static_string`, and the free `syntax::constant::static_string` evaluator are
+unchanged.
 
 #### [ ] READ-007 — `resolve_seed` uses let-else plus an unreachable match arm
 

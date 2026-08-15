@@ -82,7 +82,7 @@ impl FactBuilder<'_, '_> {
         if value == ValueId::UNKNOWN {
             let const_value = syntax_constant::evaluate(expr, resolver);
             if let Some(s) = const_value.string() {
-                return resolver.static_string(s.to_owned()).id;
+                return resolver.intern_static_string(s.to_owned()).id;
             }
         }
         value
@@ -190,7 +190,7 @@ impl FactBuilder<'_, '_> {
     pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => {
-                let resolved = self.resolver.static_string(value.clone());
+                let resolved = self.resolver.intern_static_string(value.clone());
                 CallArgInfo {
                     value: resolved.id,
                     ..CallArgInfo::unknown()

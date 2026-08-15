@@ -73,7 +73,7 @@ impl Resolver<'_> {
         &mut self,
         value: &swc_ecma_ast::Str,
     ) -> ResolvedValue {
-        self.static_string(value.value.to_string_lossy().to_string())
+        self.intern_static_string(value.value.to_string_lossy().to_string())
     }
 
     pub(in crate::analysis) fn resolve_template(
