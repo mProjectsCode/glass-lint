@@ -288,6 +288,27 @@ fn import_fact_is_emitted() {
 }
 
 #[test]
+fn module_call_import_fact_precedes_call_event() {
+    for source in [r"import('mod');", r"require('mod');"] {
+        let stream = build_test_facts(source, "module-call-order.js");
+        let import_index = stream.facts().iter().position(
+            |fact| matches!(&fact.payload, FactPayload::Import { module } if module == "mod"),
+        );
+        let call_index = stream
+            .facts()
+            .iter()
+            .position(|fact| matches!(&fact.payload, FactPayload::Call(_)));
+        let (Some(import_index), Some(call_index)) = (import_index, call_index) else {
+            panic!("{source} should emit Import and Call facts");
+        };
+        assert!(
+            import_index < call_index,
+            "{source} must emit Import before its Call event"
+        );
+    }
+}
+
+#[test]
 fn string_literal_fact_is_emitted() {
     let src = r#"const x = "hello";"#;
     let parsed = crate::parse_test_source(src, "str.js").expect("source should parse");

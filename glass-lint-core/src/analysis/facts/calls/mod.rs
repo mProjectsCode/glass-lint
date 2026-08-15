@@ -48,10 +48,10 @@ impl FactBuilder<'_, '_> {
         } else {
             None
         };
-        self.record_call_like(call.span, callee_expr, &call.args, wrapper);
         if let Some(module) = module_call {
             self.emit(call.span, FactPayload::Import { module });
         }
+        self.record_call_like(call.span, callee_expr, &call.args, wrapper);
     }
 
     pub(in crate::analysis::facts) fn record_call_like(

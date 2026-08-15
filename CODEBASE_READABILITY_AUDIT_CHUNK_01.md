@@ -56,7 +56,7 @@ beforehand and the RHS afterwards), so evidence order is unchanged.
 
 **Fix Applied:** Added `FactBuilder::record_member_read` in a new `reads.rs` module; `visit_member_expr`, the opt-chain `Member` arm, and `record_member_assignment` now all call it with child visitation unchanged.
 
-#### [ ] READ-002 — Import fact order relative to its Call event is inconsistent between `import()` and `require()`
+#### [x] READ-002 — Import fact order relative to its Call event is inconsistent between `import()` and `require()`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -83,7 +83,7 @@ order in `facts/tests/build.rs`. Guardrail: keep the two facts distinct
 `observe_module_call`'s interface side effects, and do not emit `Import`
 twice.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `record_call_expr` now emits the `Import` fact immediately before the Call event on both the `Callee::Import` and `require(...)` paths; added `module_call_import_fact_precedes_call_event` in `facts/tests/build.rs` pinning the order for both forms.
 
 ### Provenance lifecycle
 
