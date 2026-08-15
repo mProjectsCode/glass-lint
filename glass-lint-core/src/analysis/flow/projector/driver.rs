@@ -292,8 +292,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return;
         };
         let effective_args = shape.effective_args();
-        if let Some(chain) = shape.chain_owned(self.inputs.stream, self.inputs.names) {
-            self.record_configuration(call.receiver(), &chain, effective_args, fact.id);
+        if let Some(chain) = shape.chain() {
+            self.record_configuration(call.receiver(), chain, effective_args, fact.id);
         }
         self.record_sinks(&shape, effective_args, fact.id);
         if let Some(function) = call.target_function() {

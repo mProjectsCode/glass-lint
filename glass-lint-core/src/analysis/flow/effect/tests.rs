@@ -1,4 +1,4 @@
-use glass_lint_datastructures::{NamePath, PathId, PathSegment, PathStore};
+use glass_lint_datastructures::{PathId, PathSegment, PathStore};
 
 use super::*;
 use crate::analysis::{
@@ -12,7 +12,7 @@ fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {
 }
 
 #[test]
-fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
+fn chain_resolves_direct_call_with_rooted_chain() {
     let (stream, _effects) = collect_effects("document.createElement('script');");
     let fact = stream
         .facts()
@@ -22,10 +22,7 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
     let cref = stream.call_effect(fact.id);
     let shape = cref.shape().expect("call fact should have a shape");
     let names = stream.names();
-    let chain = shape
-        .chain_owned(&stream, names)
-        .expect("direct call should have a chain");
-    let chain: &NamePath = &chain;
+    let chain = shape.chain().expect("direct call should have a chain");
     assert!(
         names
             .resolve_path(chain)
@@ -35,12 +32,11 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
             .resolve_path(chain)
             .map_or_else(|| "(unresolvable)".to_string(), |s| s.to_string())
     );
-    assert!(shape.chain().is_some(), "borrowed chain should exist");
     assert!(shape.rooted(), "global member call should be rooted");
 }
 
 #[test]
-fn chain_owned_falls_back_to_callee_name_for_alias_call() {
+fn chain_falls_back_to_callee_name_for_alias_call() {
     let (stream, _effects) =
         collect_effects("function fetch(url) { return url; } const alias = fetch; alias('/api');");
     let names = stream.names();
@@ -54,9 +50,8 @@ fn chain_owned_falls_back_to_callee_name_for_alias_call() {
     let cref = stream.call_effect(alias_call.id);
     let shape = cref.shape().expect("call fact should have a shape");
     let chain = shape
-        .chain_owned(&stream, names)
+        .chain()
         .expect("alias call should have a chain via callee_name fallback");
-    let chain: &NamePath = &chain;
     assert!(
         names
             .resolve_path(chain)
@@ -144,22 +139,6 @@ fn call_fact_returns_none_for_unknown_id() {
     let cref = stream.call_effect(unknown);
     assert!(cref.call_fact().is_none());
     assert!(cref.shape().is_none());
-}
-
-#[test]
-fn chain_returns_borrowed_without_callee_name_fallback() {
-    let (stream, _effects) = collect_effects("document.createElement('script');");
-    let fact = stream
-        .facts()
-        .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
-        .expect("call fact should exist");
-    let cref = stream.call_effect(fact.id);
-    let names = stream.names();
-    let shape = cref.shape().expect("call fact should have a shape");
-    let owned = shape.chain_owned(&stream, names).unwrap();
-    let borrowed = shape.chain().unwrap();
-    assert_eq!(&*owned, borrowed, "owned chain should match borrowed");
 }
 
 #[test]

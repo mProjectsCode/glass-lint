@@ -31,7 +31,7 @@ No source, test, config, or documentation file was modified.
 
 ### [effect/domain.rs — CallShape call-target view]
 
-#### [ ] READ-001 — CallShape fragments one "call target" concept across four accessors with inconsistent precedence
+#### [x] READ-001 — CallShape fragments one "call target" concept across four accessors with inconsistent precedence
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -71,7 +71,7 @@ and `syntactic` (pure syntax) notions into one flag, and keep the existing
 precedence (wrapper chain → rooted → syntactic → callee-name fallback) exactly
 once, inside the view.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CallShape::chain` now owns the single member-path resolution with precedence wrapper `chain_path` → `rooted_chain` → `syntactic_path` → callee-name fallback (fallback computed at shape construction, fail-closed to `None` on unresolvable callee). Both the local `transfer_call` (driver.rs) and the cross `apply_receiver` (propagation.rs) route requirement matching through `shape.chain()`, so alias calls resolve identically in both phases. `rooted()` and `global_name()` remain distinct semantic flags; the rooted-gated member candidacy in `candidates_for_call` is unchanged. Tests updated to the single accessor.
 
 #### [ ] READ-002 — `chain_owned` adds a second NamePath-resolution path that duplicates name-table lookup
 

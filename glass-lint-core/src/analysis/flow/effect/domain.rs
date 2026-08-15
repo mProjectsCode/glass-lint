@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-
-use glass_lint_datastructures::{NameId, NamePath, NameTable, PathId, SymbolPath};
+use glass_lint_datastructures::{NamePath, PathId, SymbolPath};
 use smol_str::SmolStr;
 
 use crate::analysis::{
@@ -93,7 +91,7 @@ pub(in crate::analysis) struct CallShape<'a> {
     result: ValueId,
     provenance: &'a SymbolCallProvenance,
     target: Option<FunctionId>,
-    callee_name: Option<NameId>,
+    callee_chain: Option<NamePath>,
 }
 
 impl ParameterRef {
@@ -165,6 +163,13 @@ impl CallEffectRef<'_> {
             SymbolCallProvenance::Global { name } => Some(name),
             _ => None,
         };
+        let callee_chain = if chain.is_none() {
+            call.callee_name()
+                .and_then(|id| self.stream.resolve_name(id))
+                .and_then(|name| self.stream.names().lookup_path(&SymbolPath::from(name)))
+        } else {
+            None
+        };
         Some(CallShape {
             chain,
             rooted: call.rooted_chain().is_some(),
@@ -173,27 +178,18 @@ impl CallEffectRef<'_> {
             result: call.result(),
             provenance: call.call_provenance(),
             target: call.target_function(),
-            callee_name: call.callee_name(),
+            callee_chain,
         })
     }
 }
 
-impl<'a> CallShape<'a> {
-    pub(in crate::analysis) fn chain(&self) -> Option<&'a NamePath> {
-        self.chain
-    }
-
-    pub(in crate::analysis) fn chain_owned(
-        &self,
-        stream: &FactStream<Frozen>,
-        names: &NameTable,
-    ) -> Option<Cow<'a, NamePath>> {
-        self.chain.map(Cow::Borrowed).or_else(|| {
-            self.callee_name
-                .and_then(|id| stream.resolve_name(id))
-                .and_then(|name| names.lookup_path(&SymbolPath::from(name)))
-                .map(Cow::Owned)
-        })
+impl CallShape<'_> {
+    /// Member chain for requirement matching and rooted-member candidacy,
+    /// resolved in one place: wrapper chain, then rooted chain, then
+    /// syntactic path, then the callee-name fallback. Fail-closed: an
+    /// unresolvable call yields no chain rather than an invented path.
+    pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
+        self.chain.or(self.callee_chain.as_ref())
     }
 
     pub(in crate::analysis) fn rooted(&self) -> bool {
