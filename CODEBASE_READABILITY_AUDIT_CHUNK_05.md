@@ -26,7 +26,7 @@ not by file.
 
 ### Scope query surface (bindings / keys)
 
-#### [ ] READ-001 — `binding_key_for_name` duplicated verbatim across the collection and query phases; `ScopeGraph::binding_version_at` is a pure forwarding wrapper
+#### [x] READ-001 — `binding_key_for_name` duplicated verbatim across the collection and query phases; `ScopeGraph::binding_version_at` is a pure forwarding wrapper
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -56,7 +56,7 @@ must keep the exact fallback order (position-versioned lexical key when a
 binding exists, `BindingKey::global` when unbound) and must not change the
 version-at `BindingVersion::new(0)` default.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ScopeReadView::binding_key_for_name` (storage.rs) as the single lexical-key constructor; both `ScopeGraph::binding_key_for_name` and the frozen-phase method (hoisted into graph.rs) delegate to it. Deleted `ScopeGraph::binding_version_at` plus the now-dead `ScopeGraph::binding_version`, `ScopeGraph::binding_id_at`, and `ScopeGraph::function_scope_at`. Fallback order (lexical then `BindingKey::global`) and the `BindingVersion::new(0)` default are unchanged.
 
 #### [ ] READ-002 — `&str` vs `NameId` arguments and the `binding_version`/`binding_version_at` names mean different things on `ScopeGraph` vs `FrozenScopeGraph`
 

@@ -140,22 +140,6 @@ impl FrozenScopeGraph {
         self.binding_version(scope, name, span)
     }
 
-    /// Build a stable key for a name, using a global root when unbound.
-    pub(in crate::analysis) fn binding_key_for_name(
-        &self,
-        name: &str,
-        span: Span,
-    ) -> Option<BindingKey> {
-        if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
-            return Some(BindingKey::lexical(
-                self.function_scope_at(scope),
-                self.binding_id_at(scope, self.name_id(name)?)?,
-                self.binding_version_at(scope, name, span),
-            ));
-        }
-        Some(BindingKey::global(name))
-    }
-
     /// Find the nearest lexical declaration and its owning scope.
     pub(in crate::analysis) fn binding_with_scope_at(
         &self,

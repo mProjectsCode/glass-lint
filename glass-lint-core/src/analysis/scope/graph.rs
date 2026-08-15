@@ -150,11 +150,6 @@ impl ScopeGraph {
         self.read_view().assignment_at(scope, name, span)
     }
 
-    pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
-        let name = self.name_id(name)?;
-        self.read_view().binding_id_at(scope, name)
-    }
-
     pub(super) fn parameter_alias_for(
         &self,
         scope: ScopeId,
@@ -163,13 +158,6 @@ impl ScopeGraph {
         let name = self.name_id(name)?;
         let view = self.read_view();
         view.parameter_alias_for_scope(scope, name)
-    }
-
-    pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
-        let Some(name) = self.name_id(name) else {
-            return BindingVersion::new(0);
-        };
-        self.read_view().binding_version(scope, name, span)
     }
 
     /// Convert collector-side property events into sorted query indexes.
@@ -255,22 +243,7 @@ impl ScopeGraph {
 
     /// Build a stable key for a name, using a global root when unbound.
     fn binding_key_for_name(&self, name: &str, span: Span) -> Option<BindingKey> {
-        if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
-            return Some(BindingKey::lexical(
-                self.function_scope_at(scope),
-                self.binding_id_at(scope, name)?,
-                self.binding_version_at(scope, name, span),
-            ));
-        }
-        Some(BindingKey::global(name))
-    }
-
-    fn binding_version_at(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
-        self.binding_version(scope, name, span)
-    }
-
-    fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
-        self.read_view().enclosing_function_at(scope)
+        self.read_view().binding_key_for_name(name, span)
     }
 }
 
@@ -404,6 +377,15 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> BindingVersion {
         self.read_view().binding_version(scope, name, span)
+    }
+
+    /// Build a stable key for a name, using a global root when unbound.
+    pub(in crate::analysis) fn binding_key_for_name(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Option<BindingKey> {
+        self.read_view().binding_key_for_name(name, span)
     }
 
     pub(in crate::analysis) fn function_span(&self, function: FunctionId) -> Option<Span> {

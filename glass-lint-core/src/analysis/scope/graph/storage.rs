@@ -2,7 +2,9 @@ use glass_lint_datastructures::NameId;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
-    model::scope::{BindingId, BindingProvenance, BindingVersion, FunctionId, ScopeId, ScopeKind},
+    model::scope::{
+        BindingId, BindingKey, BindingProvenance, BindingVersion, FunctionId, ScopeId, ScopeKind,
+    },
     scope::{
         binding_index::BindingIndex, frozen_assignments::AssignmentAt, name_env::NameEnvironment,
         scope_index::LexicalScopeIndex,
@@ -104,6 +106,24 @@ impl<'a, M> ScopeReadView<'a, M> {
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: NameId) -> Option<BindingId> {
         self.data.bindings.binding_id_at(scope, name)
+    }
+
+    /// Build a stable key for a name, using a global root when unbound.
+    ///
+    /// Shared by the collection and frozen query phases so the lexical-key
+    /// construction cannot drift between them.
+    pub(super) fn binding_key_for_name(&self, name: &str, span: Span) -> Option<BindingKey> {
+        let Some(name_id) = self.data.names.name_id(name) else {
+            return Some(BindingKey::global(name));
+        };
+        if let Some((scope, _)) = self.nearest_binding_at(name_id, span) {
+            return Some(BindingKey::lexical(
+                self.enclosing_function_at(scope),
+                self.binding_id_at(scope, name_id)?,
+                self.binding_version(scope, name_id, span),
+            ));
+        }
+        Some(BindingKey::global(name))
     }
 
     pub(super) fn binding_version(
