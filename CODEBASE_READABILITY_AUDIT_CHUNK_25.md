@@ -212,7 +212,7 @@ remain exactly `"incomplete_project"` — the report schema is stable.
 
 ### report/location.rs, report/diagnostic.rs — accessors and ordering keys
 
-#### [ ] READ-007 — Owned-range accessor `range_owned` duplicated across three sibling types
+#### [x] READ-007 — Owned-range accessor `range_owned` duplicated across three sibling types
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -239,7 +239,7 @@ two `resolution.rs` accessors, replacing their test call sites with
 public serde shape unchanged; the harness's `AdapterSourceLocation` conversion
 must keep producing an owned `SourceRange`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by chunk 24 (`fix chunk 24 read 002`, commit 34ae1635): `ResolutionRequestKey::range_owned` and `ResolutionRequest::range_owned` were deleted and their test call sites switched to `.range().clone()`; only `SourceLocation::range_owned` remains, still feeding the harness adapter conversion at protocol.rs:210. Verified: no `range_owned` references remain in `resolution.rs` or the two test call sites.
 
 #### [ ] READ-008 — `AnalysisDiagnostic::ordering_key` is dead and defines a third ordering-key shape
 
