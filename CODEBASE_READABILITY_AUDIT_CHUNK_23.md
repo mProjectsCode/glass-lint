@@ -125,7 +125,7 @@ out of core rule policy.
 
 ### Batch execution
 
-#### [ ] READ-004 — Repeated `WorkerPanic` error construction and near-duplicate pending-failure synthesis
+#### [x] READ-004 — Repeated `WorkerPanic` error construction and near-duplicate pending-failure synthesis
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -154,7 +154,7 @@ broken protocol invalidates received results, a closed channel does not).
 Guardrails: the distinct outcomes (all-failed vs only-missing failed) must
 remain distinct, and the input-order guarantee of `take_ready` must not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a batch-local `worker_panic()` helper that builds the `ProjectError::Execution(…WorkerPanic)` value, used at the `fail_protocol`, `synthesize_missing`, and `catch_unwind` fallback sites and in `batch/tests.rs`; no constructor added to `LocalExecutionError`.
 
 ### Report evidence assembly
 

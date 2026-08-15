@@ -51,12 +51,10 @@ fn pending_batch_synthesizes_missing_worker_failures() {
     pending.submit(path("b.js"));
     let _ = pending.complete(completed(1, "b.js"));
     pending.synthesize_missing();
-    assert!(matches!(
+    assert_eq!(
         pending.take_ready().unwrap().into_result(),
-        Err(ProjectError::Execution(ProjectExecutionError::Local(
-            LocalExecutionError::WorkerPanic,
-        )))
-    ));
+        Err(worker_panic())
+    );
     assert_eq!(pending.take_ready().unwrap().path().as_str(), "b.js");
 }
 
@@ -69,12 +67,10 @@ fn invalid_completion_protocol_fails_all_pending_entries() {
     assert!(pending.complete(completed(9, "unknown.js")).is_err());
     pending.fail_protocol();
     for _ in 0..2 {
-        assert!(matches!(
+        assert_eq!(
             pending.take_ready().unwrap().into_result(),
-            Err(ProjectError::Execution(ProjectExecutionError::Local(
-                LocalExecutionError::WorkerPanic,
-            )))
-        ));
+            Err(worker_panic())
+        );
     }
     assert_eq!(pending.in_flight(), 0);
 }
@@ -86,12 +82,10 @@ fn duplicate_completion_protocol_fails_without_waiting() {
     assert!(pending.complete(completed(0, "a.js")).is_ok());
     assert!(pending.complete(completed(0, "a.js")).is_err());
     pending.fail_protocol();
-    assert!(matches!(
+    assert_eq!(
         pending.take_ready().unwrap().into_result(),
-        Err(ProjectError::Execution(ProjectExecutionError::Local(
-            LocalExecutionError::WorkerPanic,
-        )))
-    ));
+        Err(worker_panic())
+    );
 }
 
 #[test]
@@ -126,18 +120,14 @@ fn protocol_failure_stops_submitting_new_inputs() {
         NonZeroUsize::new(2).unwrap(),
     );
 
-    assert!(matches!(
+    assert_eq!(
         driver.next_result().unwrap().into_result(),
-        Err(ProjectError::Execution(ProjectExecutionError::Local(
-            LocalExecutionError::WorkerPanic,
-        )))
-    ));
-    assert!(matches!(
+        Err(worker_panic())
+    );
+    assert_eq!(
         driver.next_result().unwrap().into_result(),
-        Err(ProjectError::Execution(ProjectExecutionError::Local(
-            LocalExecutionError::WorkerPanic,
-        )))
-    ));
+        Err(worker_panic())
+    );
     assert!(driver.next_result().is_none());
     assert_eq!(submitted.load(Ordering::Relaxed), 2);
 }

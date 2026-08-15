@@ -117,6 +117,12 @@ struct PendingBatch {
     entries: BTreeMap<usize, PendingEntry>,
 }
 
+fn worker_panic() -> ProjectError {
+    ProjectError::Execution(ProjectExecutionError::Local(
+        LocalExecutionError::WorkerPanic,
+    ))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CompletionError {
     UnknownIndex,
@@ -161,18 +167,14 @@ impl PendingBatch {
 
     fn fail_protocol(&mut self) {
         for entry in self.entries.values_mut() {
-            entry.result = Some(Err(ProjectError::Execution(ProjectExecutionError::Local(
-                LocalExecutionError::WorkerPanic,
-            ))));
+            entry.result = Some(Err(worker_panic()));
         }
     }
 
     fn synthesize_missing(&mut self) {
         for entry in self.entries.values_mut() {
             if entry.result.is_none() {
-                entry.result = Some(Err(ProjectError::Execution(ProjectExecutionError::Local(
-                    LocalExecutionError::WorkerPanic,
-                ))));
+                entry.result = Some(Err(worker_panic()));
             }
         }
     }
@@ -270,11 +272,7 @@ where
                     return;
                 }
                 let result = catch_unwind(AssertUnwindSafe(|| linter.run_single_source(source)))
-                    .unwrap_or({
-                        Err(ProjectError::Execution(ProjectExecutionError::Local(
-                            LocalExecutionError::WorkerPanic,
-                        )))
-                    });
+                    .unwrap_or_else(|_| Err(worker_panic()));
                 let _ = sender.send(CompletedBatch { index, result });
             });
         }
