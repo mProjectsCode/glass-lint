@@ -218,7 +218,7 @@ classified as `InternalInvariant`.
 
 ### api/compiler/physical — misleading test-only constructor surface on `PhysicalPlan`
 
-#### [ ] READ-008 — `from_roots` duplicates `from_planned_roots` and is documented as an independent boundary
+#### [x] READ-008 — `from_roots` duplicates `from_planned_roots` and is documented as an independent boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -243,7 +243,9 @@ the sealing boundary. Drop the `from_planned_roots` doc claim that `from_roots` 
 independent boundary. Guardrail: the production path must keep the single
 `from_planned_roots` validation boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `from_roots`; test callers and `plan_normalized` now use
+`from_planned_roots`, `new`/`try_new` document why tests bypass the sealing boundary,
+and the production path keeps the single `from_planned_roots` boundary.
 
 ### api/compiler/object_flow — inconsistent conversion names
 

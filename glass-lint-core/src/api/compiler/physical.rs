@@ -292,20 +292,12 @@ impl PhysicalPlan {
     /// Seal roots produced by the normalized-query planner.
     ///
     /// The production compiler validates the planned roots at this one
-    /// sealing boundary. `from_roots` remains the independent validation
-    /// boundary for callers that can supply physical roots directly.
+    /// sealing boundary.
     pub(crate) fn from_planned_roots(
         roots: Box<[PhysicalRoot]>,
     ) -> Result<Self, PhysicalPlanValidationError> {
         validate_root_set(&roots)?;
         Ok(Self::from_validated_roots(roots))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_roots(
-        roots: Box<[PhysicalRoot]>,
-    ) -> Result<Self, PhysicalPlanValidationError> {
-        Self::from_planned_roots(roots)
     }
 
     fn from_validated_roots(roots: Box<[PhysicalRoot]>) -> Self {
@@ -316,18 +308,25 @@ impl PhysicalPlan {
         }
     }
 
+    /// Validate a hand-built root set and require that its derived
+    /// requirements exactly match `requirements`. Tests assemble roots
+    /// directly to exercise the requirements-mismatch boundary that the
+    /// sealed production path rejects before sealing.
     #[cfg(test)]
     pub(crate) fn try_new(
         roots: Box<[PhysicalRoot]>,
         requirements: &PlanRequirements,
     ) -> Result<Self, PhysicalPlanValidationError> {
-        let plan = Self::from_roots(roots)?;
+        let plan = Self::from_planned_roots(roots)?;
         if plan.requirements != *requirements {
             return Err(PhysicalPlanValidationError::RequirementsMismatch);
         }
         Ok(plan)
     }
 
+    /// Build an unvalidated plan for a root set with explicit requirements.
+    /// Tests assemble roots directly to assert individual validation errors,
+    /// bypassing the `from_planned_roots` sealing boundary on purpose.
     #[cfg(test)]
     pub(crate) fn new(roots: Box<[PhysicalRoot]>, requirements: PlanRequirements) -> Self {
         Self {

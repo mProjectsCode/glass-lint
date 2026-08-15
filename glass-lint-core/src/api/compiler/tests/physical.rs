@@ -283,7 +283,7 @@ fn root_budget_rejects_the_first_root_over_the_limit() {
 #[test]
 fn physical_plan_rejects_empty_roots() {
     assert!(matches!(
-        PhysicalPlan::from_roots(Box::new([])),
+        PhysicalPlan::from_planned_roots(Box::new([])),
         Err(PhysicalPlanValidationError::EmptyRoots)
     ));
 }

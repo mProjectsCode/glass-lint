@@ -15,7 +15,7 @@ pub(crate) fn plan_normalized(
     let mut budget = RootBudget::new();
     let mut roots = Vec::new();
     plan_normalized_roots_into(nq, &mut budget, &mut roots)?;
-    PhysicalPlan::from_roots(roots.into_boxed_slice())
+    PhysicalPlan::from_planned_roots(roots.into_boxed_slice())
 }
 
 pub(crate) fn plan_normalized_roots_into(
