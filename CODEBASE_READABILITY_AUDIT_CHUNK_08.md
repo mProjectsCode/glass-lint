@@ -73,7 +73,7 @@ once, inside the view.
 
 **Fix Applied:** `CallShape::chain` now owns the single member-path resolution with precedence wrapper `chain_path` → `rooted_chain` → `syntactic_path` → callee-name fallback (fallback computed at shape construction, fail-closed to `None` on unresolvable callee). Both the local `transfer_call` (driver.rs) and the cross `apply_receiver` (propagation.rs) route requirement matching through `shape.chain()`, so alias calls resolve identically in both phases. `rooted()` and `global_name()` remain distinct semantic flags; the rooted-gated member candidacy in `candidates_for_call` is unchanged. Tests updated to the single accessor.
 
-#### [ ] READ-002 — `chain_owned` adds a second NamePath-resolution path that duplicates name-table lookup
+#### [x] READ-002 — `chain_owned` adds a second NamePath-resolution path that duplicates name-table lookup
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -101,7 +101,7 @@ bounded and deterministic, and keep the fail-closed behavior where an
 unresolvable call yields no configuration requirements rather than an invented
 path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Folded into the READ-001 fix. `chain_owned` is deleted; the single canonical accessor `CallShape::chain` owns the one resolution path with the callee-name fallback computed once at shape construction (bounded, deterministic), and both flow phases use it. The `Cow`/`SymbolPath` bridge disappears: no owned-vs-borrowed `Cow` surface remains, and an unresolvable call yields `None` so no configuration requirements are produced.
 
 ### [planning.rs — FlowMatchView and planning construction]
 
