@@ -81,7 +81,7 @@ adapters over differently-typed inherent methods (plan.rs:148-167).
 
 **Fix Applied:** Consolidated the inherent control-flow bodies and the scope-stack bodies into the single `impl ScopePass for ScopeCollector` in visitor.rs and deleted the forwarding block. The inherent `pop_scope()` body was folded into the trait method behind the existing `ScopeEntry::Entered` guard; `is_budget_exhausted` stayed direct. Deleted `assignments/control_flow.rs` (and its `mod` declaration) since Rust forbids a second trait impl. Updated direct inherent calls in `tests.rs` / `tests_extended.rs` to go through the trait, and added the `ScopePass` import where `self.current_scope()` is called (collector.rs, callbacks.rs). `ScopeEntry::Rejected` semantics, `ScopeStackUnderflow` / `ShapeMismatch` recording, and fail-closed `current_scope()` returning `None` after an issue are preserved; `ScopePlanner` is untouched.
 
-#### [ ] READ-002 — Declaration registration and `var` binding-scope selection are duplicated across planner and collector
+#### [x] READ-002 — Declaration registration and `var` binding-scope selection are duplicated across planner and collector
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -117,7 +117,7 @@ keep interning provenance strings (`intern_provenance_strings`) and must
 return `None` when `artifacts.has_issues()` so invalid collection fails
 closed; the planner variant must not gain that guard.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `bindings::register_declaration_binding` owning charge → intern → fail-close-on-exhaustion → `insert_binding` over the owning state (`&mut LexicalScopes`, `&mut NameTable`, `&mut bool name_exhausted`, `&SemanticBudget`). The planner's `insert` and the collector's `register_binding` now both delegate to it; `register_binding` keeps its `intern_provenance_strings` step (taking provenance by reference). `update_binding` / `reset_pat_locals` and the provenance-string interning stayed in the collector; both `binding_scope` methods remain thin branches over the centralized `var_binding_scope`, with the collector's `has_issues()` fail-closed guard preserved and the planner variant unchanged.
 
 #### [ ] READ-003 — Three name-lookup methods expose overlapping, inconsistently named surfaces
 

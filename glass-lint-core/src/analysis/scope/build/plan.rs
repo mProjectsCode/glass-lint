@@ -16,7 +16,10 @@ use crate::analysis::{
         BindingProvenance, LexicalScope, LexicalScopes, ScopeId, ScopeKind,
         build::{
             ScopeShape, ScopeShapeTable,
-            bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+            bindings::{
+                for_each_import_binding, for_each_pat_binding, register_declaration_binding,
+                var_binding_scope,
+            },
             traversal::{ScopeEntry, ScopePass},
         },
     },
@@ -91,15 +94,15 @@ impl ScopePlanner<'_> {
     }
 
     fn insert(&mut self, scope: ScopeId, name: impl Into<SmolStr>, provenance: BindingProvenance) {
-        let name = name.into();
-        self.budget.try_charge();
-        let Ok(name_id) = self.names.intern(name.as_str()) else {
-            self.name_exhausted = true;
-            return;
-        };
-        if let Some(scope_data) = self.scopes.get_mut(scope) {
-            scope_data.insert_binding(name_id, provenance);
-        }
+        register_declaration_binding(
+            &mut self.scopes,
+            &mut self.names,
+            &mut self.name_exhausted,
+            self.budget,
+            scope,
+            name,
+            provenance,
+        );
     }
 
     fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {

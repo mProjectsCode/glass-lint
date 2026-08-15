@@ -7,13 +7,40 @@
 
 use std::collections::BTreeSet;
 
+use glass_lint_datastructures::NameTable;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{ImportDecl, ImportSpecifier, Pat};
 
 use crate::analysis::{
+    SemanticBudget,
     scope::{BindingProvenance, LexicalScopes, ScopeId, ScopeKind},
     syntax::{collect_pat_bindings, module_export_name},
 };
+
+/// Register one declaration binding: charge the semantic budget, intern the
+/// name, fail closed on exhaustion, then insert into the owning scope.
+///
+/// Shared by the planner's declaration pass and the collector's source-order
+/// registration so budget and exhaustion handling stays in one place.
+pub(super) fn register_declaration_binding(
+    scopes: &mut LexicalScopes,
+    names: &mut NameTable,
+    name_exhausted: &mut bool,
+    budget: &SemanticBudget,
+    scope: ScopeId,
+    name: impl Into<SmolStr>,
+    provenance: BindingProvenance,
+) {
+    let name = name.into();
+    budget.try_charge();
+    let Ok(name_id) = names.intern(name.as_str()) else {
+        *name_exhausted = true;
+        return;
+    };
+    if let Some(scope_data) = scopes.get_mut(scope) {
+        scope_data.insert_binding(name_id, provenance);
+    }
+}
 
 /// Yield every `(name, provenance)` pair introduced by an import declaration.
 ///

@@ -8,7 +8,7 @@ use crate::analysis::{
         BindingProvenance, ScopeId, ScopedName,
         build::{
             ScopeCollectionArtifacts, ScopeCollector,
-            bindings::{for_each_pat_binding, var_binding_scope},
+            bindings::{for_each_pat_binding, register_declaration_binding, var_binding_scope},
             compact_pat::{CompactPat, compact_pat},
             plan::ScopePlan,
             traversal::ScopePass,
@@ -60,18 +60,18 @@ impl ScopeCollector<'_> {
         &mut self,
         scope: ScopeId,
         name: impl Into<SmolStr>,
-        provenance: BindingProvenance,
+        provenance: &BindingProvenance,
     ) {
-        let name = name.into();
-        self.budget.try_charge();
-        let Some(name) = self.lookup_or_intern_name(name.as_str()) else {
-            self.lexical.name_exhausted = true;
-            return;
-        };
-        self.intern_provenance_strings(&provenance);
-        if let Some(scope_data) = self.lexical.scopes.get_mut(scope) {
-            scope_data.insert_binding(name, provenance);
-        }
+        register_declaration_binding(
+            &mut self.lexical.scopes,
+            &mut self.lexical.names,
+            &mut self.lexical.name_exhausted,
+            self.budget,
+            scope,
+            name,
+            provenance.clone(),
+        );
+        self.intern_provenance_strings(provenance);
     }
 
     pub(super) fn update_binding(
@@ -149,7 +149,7 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn register_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
-        self.register_binding(scope, name, BindingProvenance::Local);
+        self.register_binding(scope, name, &BindingProvenance::Local);
     }
 
     pub(super) fn register_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
