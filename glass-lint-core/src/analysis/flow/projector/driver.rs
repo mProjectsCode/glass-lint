@@ -375,8 +375,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     .plan
                     .matching_property_requirements(flow_id, property, value, value_is_precise)
                     .into_iter()
-                    .map(|match_result| {
-                        PropertyWriteUpdate::new(match_result.index(), match_result.value_matches())
+                    .map(|match_result| PropertyWriteUpdate {
+                        index: match_result.index(),
+                        value_matches: match_result.value_matches(),
                     })
                     .collect()
             });

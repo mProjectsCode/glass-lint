@@ -145,7 +145,7 @@ the top-frame kind exactly once.
 
 ### [state/tables/updates.rs — property-write update carrier]
 
-#### [ ] READ-004 — `PropertyWriteUpdate` exposes both public fields and a constructor at a single call site
+#### [x] READ-004 — `PropertyWriteUpdate` exposes both public fields and a constructor at a single call site
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -170,7 +170,11 @@ making the fields private would require getters for `tables.rs`. Guardrail:
 preserve the clear-then-conditional-record protocol in `apply_property_write`
 (tables.rs:287-293) and the Copy-ness of the carrier.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Dropped the `PropertyWriteUpdate::new` constructor. The sole
+producer `record_property_write` (driver.rs) now constructs the plain two-field
+record in place with the same `pub(in crate::analysis::flow::projector)` fields;
+`apply_property_write`'s clear-then-conditional-record protocol and the Copy
+carrier are unchanged.
 
 ### [sink.rs — sink summary set]
 
