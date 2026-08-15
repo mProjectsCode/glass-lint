@@ -132,6 +132,11 @@ impl FunctionEffect {
         self.value_roots.get(&value).copied()
     }
 
+    /// Totalized root lookup: an unknown root is the value itself.
+    pub(in crate::analysis) fn root_value(&self, value: ValueId) -> ValueId {
+        self.value_root(value).unwrap_or(value)
+    }
+
     pub(in crate::analysis) fn call_argument(
         &self,
         call_id: EffectCallId,
@@ -223,13 +228,13 @@ impl FunctionEffect {
         if source == ValueId::UNKNOWN {
             self.value_roots.remove(&target);
         } else {
-            let root = self.value_roots.get(&source).copied().unwrap_or(source);
+            let root = self.root_value(source);
             self.value_roots.insert(target, root);
         }
     }
 
     fn parameter_for(&self, value: ValueId) -> Option<ParameterRef> {
-        let root = self.value_roots.get(&value).copied().unwrap_or(value);
+        let root = self.root_value(value);
         if root == ValueId::UNKNOWN {
             return None;
         }

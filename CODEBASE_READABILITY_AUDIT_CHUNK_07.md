@@ -67,7 +67,7 @@ cross sink selection so all-flow plans do not change certainty or evidence.
 
 **Fix Applied:** Cross pass now builds one all-roots `BoundFlowPlan` per module (`BoundFlowPlan::new(self.roots, names)`) over the same roots the local projector uses, cached by `ModuleId` in `flow_plans`. Deleted `FlowPlanKey` and `BoundFlowPlan::single`, and the now-unused `BoundLifecycleRoot::from_flow_id`. Cross queries keep their flow-id filtering, so results and certainty are unchanged.
 
-#### [ ] READ-002 — `value_root` identity-fallback lookup repeated across four sites
+#### [x] READ-002 — `value_root` identity-fallback lookup repeated across four sites
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -89,7 +89,7 @@ call sites. Guardrail: keep `value_root` returning `Option` if any future
 caller must distinguish "no recorded root" from a real root; the helper is
 only the totalized projection.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `FunctionEffect::root_value` (identity fallback over `value_root`, still returning `Option` for the raw lookup) and routed the four cross call sites through it; also converted the two identical lookups inside `effect/mod.rs` (`copy_root`, `parameter_for`) to keep one canonical path.
 
 #### [ ] READ-003 — `ContextAdmission` is a parallel copy of `FifoAdmission` with a 1:1 mapping
 

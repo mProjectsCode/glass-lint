@@ -162,9 +162,7 @@ impl FlowSources {
                         .iter()
                         .filter(|r| r.parameter().is_none())
                     {
-                        let root = target_effect
-                            .value_root(returned.value())
-                            .unwrap_or_else(|| returned.value());
+                        let root = target_effect.root_value(returned.value());
                         let from = SourceKey::new(target.module(), target.function(), root);
                         self.add_edge(from, to);
                     }
@@ -179,9 +177,7 @@ impl FlowSources {
                         {
                             continue;
                         }
-                        let root = effect
-                            .value_root(argument.value())
-                            .unwrap_or_else(|| argument.value());
+                        let root = effect.root_value(argument.value());
                         let from = SourceKey::new(module.id(), effect.id(), root);
                         self.add_edge(from, to);
                     }

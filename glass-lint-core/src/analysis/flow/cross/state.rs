@@ -315,11 +315,7 @@ impl CallContext {
         value_is_root: bool,
         require_value_root: bool,
     ) -> bool {
-        self.matches_source_root(
-            effect.value_root(value).unwrap_or(value),
-            value_is_root,
-            require_value_root,
-        )
+        self.matches_source_root(effect.root_value(value), value_is_root, require_value_root)
     }
 }
 

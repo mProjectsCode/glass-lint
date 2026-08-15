@@ -221,9 +221,7 @@ impl ContextWorklist {
                         if !argument.is_root() {
                             continue;
                         }
-                        let root = effect
-                            .value_root(argument.value())
-                            .unwrap_or_else(|| argument.value());
+                        let root = effect.root_value(argument.value());
                         let source_key = SourceKey::new(module.id(), effect.id(), root);
                         let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
                         for candidate in candidates {
