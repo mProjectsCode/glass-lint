@@ -26,8 +26,9 @@ use crate::{
     api::classification::RuleIndex,
     lint::{ProjectAnalysis, report::ProjectReportAssembler},
     project::{
-        ProjectError, ProjectExecutionError, ProjectInputError, ProjectRelativePath,
-        ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
+        ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
+        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile,
+        tables::SourceTable,
     },
 };
 
@@ -241,8 +242,9 @@ impl<'a> ProjectSession<'a> {
         &mut self,
         path: impl AsRef<str>,
         observer: &dyn ExecutionObserver,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        let path = ProjectRelativePath::new(path.as_ref())?;
+    ) -> Result<Vec<ResolutionRequest>, ProjectPhaseError> {
+        let path = ProjectRelativePath::new(path.as_ref())
+            .map_err(|_| ProjectPhaseError::InvalidTarget(path.as_ref().to_owned()))?;
         self.analyze_source_at_path_with_observer(&path, observer)
     }
 
@@ -250,12 +252,12 @@ impl<'a> ProjectSession<'a> {
         &mut self,
         path: &ProjectRelativePath,
         observer: &dyn ExecutionObserver,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectPhaseError> {
         let source = self
             .sources
             .get(path)
             .cloned()
-            .ok_or_else(|| ProjectInputError::InvalidPath(path.to_string()))?;
+            .ok_or_else(|| ProjectPhaseError::UnknownImporter(path.to_string()))?;
         let mut requests = Vec::new();
         let mut transition = LocalAnalysisTransition {
             state: &self.state,
@@ -274,7 +276,7 @@ impl<'a> ProjectSession<'a> {
     pub(crate) fn analyze_source_at_path(
         &mut self,
         path: &ProjectRelativePath,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectPhaseError> {
         self.analyze_source_at_path_with_observer(path, &NoopExecutionObserver)
     }
 
@@ -283,7 +285,7 @@ impl<'a> ProjectSession<'a> {
         &mut self,
         path: impl AsRef<str>,
         observer: &CountingExecutionObserver,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectPhaseError> {
         self.analyze_source_with_observer(path, observer)
     }
 

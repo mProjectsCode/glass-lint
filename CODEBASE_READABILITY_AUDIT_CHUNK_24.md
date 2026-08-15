@@ -182,7 +182,7 @@ reported request order stays worker-count independent.
 
 **Fix Applied:** Replaced the field-by-field tuple destructure in the final deterministic sort with `(left.key(), left.specifier()).cmp(&(right.key(), right.specifier()))`, keeping the total order worker-count independent.
 
-#### [ ] READ-006 — `ProjectInputError::InvalidPath` is overloaded for a missing-source lookup
+#### [x] READ-006 — `ProjectInputError::InvalidPath` is overloaded for a missing-source lookup
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -208,7 +208,7 @@ the same change. Guardrail: the public `analyze_source`/`analyze_sources`
 signatures and the `ProjectError` boundary must not change; `InvalidPath` must
 keep rejecting malformed paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `analyze_source_at_path*` and the `#[cfg(test)]` observer helpers now return `ProjectPhaseError`; the missing-source lookup reports `UnknownImporter(path)` instead of `InvalidPath`, while `InvalidPath` still rejects malformed paths in `project/input.rs`. Public `analyze_source`/`analyze_sources` signatures are unchanged (`From<ProjectPhaseError>` crosses the `ProjectError` boundary).
 
 #### [ ] READ-007 — `SessionState` carries `cfg(test)` fingerprint knobs and a duplicated fingerprint construction
 
