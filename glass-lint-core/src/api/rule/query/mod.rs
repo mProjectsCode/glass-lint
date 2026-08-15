@@ -15,7 +15,7 @@
 //!
 //! [`EventQuery::call_global`] and the other identity/event combinators replace
 //! the former [`QueryDecl`] builder.
-use std::{collections::BTreeMap, fmt};
+use std::fmt;
 
 use crate::api::{
     classification::MatchKind,
@@ -23,7 +23,10 @@ use crate::api::{
         ModuleSpecifierPattern,
         query::{
             lifecycle::{LifecycleCompletion, LifecycleCondition},
-            value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
+            value::{
+                ArgumentConstraint, ArgumentConstraints, ArgumentIndex, ArgumentMatcher,
+                ValueMatcher,
+            },
         },
     },
 };
@@ -158,8 +161,7 @@ pub struct EventQuery {
     /// Identity specification (global, rooted, module, etc.).
     identity: IdentitySpec,
     /// Argument value constraints (empty for non-call events).
-    constraints: Vec<ArgumentConstraint>,
-    constraint_counts: BTreeMap<ArgumentIndex, usize>,
+    constraints: ArgumentConstraints,
 }
 
 impl EventQuery {
@@ -176,7 +178,7 @@ impl EventQuery {
     }
 
     pub(crate) fn constraints(&self) -> &[ArgumentConstraint] {
-        &self.constraints
+        self.constraints.as_slice()
     }
 
     /// Return the number of argument constraints, kept sorted by argument
@@ -194,8 +196,7 @@ impl EventQuery {
             var: VarId::new(0),
             event,
             identity,
-            constraints: Vec::new(),
-            constraint_counts: BTreeMap::new(),
+            constraints: ArgumentConstraints::new(),
         }
     }
 
@@ -206,16 +207,11 @@ impl EventQuery {
         identity: IdentitySpec,
         constraints: Vec<ArgumentConstraint>,
     ) -> Self {
-        let mut constraint_counts = BTreeMap::new();
-        for constraint in &constraints {
-            *constraint_counts.entry(constraint.arg_index()).or_default() += 1;
-        }
         Self {
             var,
             event,
             identity,
-            constraints,
-            constraint_counts,
+            constraints: ArgumentConstraints::from_constraints(constraints),
         }
     }
 }

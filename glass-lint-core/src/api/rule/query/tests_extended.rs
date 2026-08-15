@@ -73,8 +73,7 @@ fn query_expr_display_shapes_are_compact() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let text = format!("{event}");
     assert!(text.contains("select"));
@@ -91,8 +90,7 @@ fn any_display_shows_branches() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let any = QueryExpr::any(AnyExpr::new(vec![event]).unwrap());
     let text = format!("{any}");
@@ -142,8 +140,7 @@ fn event_query_vars_contains_one() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("f"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     assert_eq!(event.vars(), vec![VarId::new(5)]);
 }
@@ -156,8 +153,7 @@ fn any_query_vars_collects_all_branch_vars() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("f"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let b = QueryExpr::event(EventQuery {
         var: VarId::new(1),
@@ -165,8 +161,7 @@ fn any_query_vars_collects_all_branch_vars() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("g"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let any = QueryExpr::any(AnyExpr::new(vec![a, b]).unwrap());
     let vars = any.vars();

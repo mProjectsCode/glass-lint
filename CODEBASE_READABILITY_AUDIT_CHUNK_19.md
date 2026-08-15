@@ -254,7 +254,7 @@ error for the deferred catalog builder.
 
 **Fix Applied:** `LifecycleQuery` now stores `completion: LifecycleCompletion` and `completion()` returns `&LifecycleCompletion`; `LifecycleStages::build` unwraps via `ok_or(MissingLifecycleCompletion)`. `from_parts_for_test` and all compiler-test callers supply a concrete completion; `normalize.rs` drops `.as_ref()`, `explanation.rs` and the `expression.rs` display no longer probe presence, and the redundant none-checks in `pass4_10.rs` are removed. `condition` stays optional.
 
-#### [ ] READ-007 — Duplicated `Vec<ArgumentConstraint>` + count-map pair synced by a free function
+#### [x] READ-007 — Duplicated `Vec<ArgumentConstraint>` + count-map pair synced by a free function
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -282,7 +282,7 @@ Guardrail: the ordering and the `ExcessivePredicates` /
 and the public `constraints() -> &[ArgumentConstraint]` surface
 (mod.rs:174-176) should be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ArgumentConstraints` (value.rs) owning the sorted constraint vector and per-index count map, exposing `push`/`iter`/`as_slice`/`len`; the free `push_argument_constraint` was deleted. `EventQuery` and `LifecycleEventBuilder` now hold a single `ArgumentConstraints` field, `from_parts_for_test` derives the index via `ArgumentConstraints::from_constraints`, and `constraints()` still returns `&[ArgumentConstraint]`.
 
 ## Systemic Themes
 

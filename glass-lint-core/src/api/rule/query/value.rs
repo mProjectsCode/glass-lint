@@ -270,31 +270,74 @@ impl ArgumentConstraint {
     }
 }
 
-pub(crate) fn push_argument_constraint(
-    constraints: &mut Vec<ArgumentConstraint>,
-    counts: &mut BTreeMap<ArgumentIndex, usize>,
-    index: ArgumentIndex,
-    matcher: impl Into<ArgumentMatcher>,
-) -> Result<(), QueryBuildError> {
-    let existing_count = counts.get(&index).copied().unwrap_or(0);
-    if existing_count >= limits::MAX_PREDICATES_PER_ARGUMENT {
-        return Err(QueryBuildError::ExcessivePredicates {
-            index: index.get(),
-            count: existing_count.saturating_add(1),
-        });
+/// Sorted argument constraints with a per-index count index, owned together.
+///
+/// Invariants (maintained by construction):
+/// - The constraint vector stays sorted by `(index, matcher)`.
+/// - The count map mirrors the vector: per-index and per-group limits are
+///   enforced on push.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub(crate) struct ArgumentConstraints {
+    constraints: Vec<ArgumentConstraint>,
+    counts: BTreeMap<ArgumentIndex, usize>,
+}
+
+impl ArgumentConstraints {
+    pub(crate) fn new() -> Self {
+        Self::default()
     }
-    if existing_count == 0 && counts.len() >= limits::MAX_ARGUMENT_GROUPS {
-        return Err(QueryBuildError::ExcessiveArgumentGroups(
-            counts.len().saturating_add(1),
-        ));
+
+    pub(crate) fn push(
+        &mut self,
+        index: ArgumentIndex,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<(), QueryBuildError> {
+        let existing_count = self.counts.get(&index).copied().unwrap_or(0);
+        if existing_count >= limits::MAX_PREDICATES_PER_ARGUMENT {
+            return Err(QueryBuildError::ExcessivePredicates {
+                index: index.get(),
+                count: existing_count.saturating_add(1),
+            });
+        }
+        if existing_count == 0 && self.counts.len() >= limits::MAX_ARGUMENT_GROUPS {
+            return Err(QueryBuildError::ExcessiveArgumentGroups(
+                self.counts.len().saturating_add(1),
+            ));
+        }
+        *self.counts.entry(index).or_insert(0) += 1;
+        let constraint = ArgumentConstraint::new(index, matcher);
+        let position = self
+            .constraints
+            .binary_search(&constraint)
+            .unwrap_or_else(|position| position);
+        self.constraints.insert(position, constraint);
+        Ok(())
     }
-    *counts.entry(index).or_insert(0) += 1;
-    let constraint = ArgumentConstraint::new(index, matcher);
-    let position = constraints
-        .binary_search(&constraint)
-        .unwrap_or_else(|position| position);
-    constraints.insert(position, constraint);
-    Ok(())
+
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, ArgumentConstraint> {
+        self.constraints.iter()
+    }
+
+    pub(crate) fn as_slice(&self) -> &[ArgumentConstraint] {
+        &self.constraints
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.constraints.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_constraints(mut constraints: Vec<ArgumentConstraint>) -> Self {
+        constraints.sort();
+        let mut counts = BTreeMap::new();
+        for constraint in &constraints {
+            *counts.entry(constraint.arg_index()).or_default() += 1;
+        }
+        Self {
+            constraints,
+            counts,
+        }
+    }
 }
 
 #[cfg(test)]

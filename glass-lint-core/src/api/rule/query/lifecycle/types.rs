@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use smol_str::SmolStr;
 
 use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
@@ -7,7 +5,7 @@ use crate::api::rule::query::{
     EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
     checked_chain, checked_name, limits,
-    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
+    value::{ArgumentConstraints, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 
 macro_rules! define_lifecycle_adapter {
@@ -45,7 +43,7 @@ pub(crate) enum LifecycleEventKind {
     },
     MemberCall {
         member: MemberChain,
-        arguments: Vec<ArgumentConstraint>,
+        arguments: ArgumentConstraints,
     },
 }
 
@@ -80,9 +78,8 @@ impl LifecycleEvent {
         Ok(LifecycleEventBuilder {
             event: LifecycleEventKind::MemberCall {
                 member,
-                arguments: Vec::new(),
+                arguments: ArgumentConstraints::new(),
             },
-            argument_counts: BTreeMap::new(),
         })
     }
 }
@@ -90,7 +87,6 @@ impl LifecycleEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifecycleEventBuilder {
     event: LifecycleEventKind,
-    argument_counts: BTreeMap<crate::api::rule::query::value::ArgumentIndex, usize>,
 }
 
 impl LifecycleEventBuilder {
@@ -99,14 +95,9 @@ impl LifecycleEventBuilder {
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
-        let index = crate::api::rule::query::value::ArgumentIndex::try_from_usize(index)?;
+        let index = ArgumentIndex::try_from_usize(index)?;
         if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
-            crate::api::rule::query::value::push_argument_constraint(
-                arguments,
-                &mut self.argument_counts,
-                index,
-                matcher,
-            )?;
+            arguments.push(index, matcher)?;
         }
         Ok(self)
     }

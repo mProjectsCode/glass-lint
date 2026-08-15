@@ -436,7 +436,7 @@ fn normalize_lifecycle_event(
             arguments,
         } => NormalizedLifecycleEvent::MemberCall {
             member: member.as_str().into(),
-            arguments: CanonicalArgumentConstraints::from_constraints(arguments),
+            arguments: CanonicalArgumentConstraints::from_constraints(arguments.as_slice()),
         },
     }
 }

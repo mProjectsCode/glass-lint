@@ -275,12 +275,7 @@ impl EventQuery {
         if !self.event.supports_arguments() {
             return Err(QueryBuildError::ArgumentsRequireCallEvent);
         }
-        super::value::push_argument_constraint(
-            &mut self.constraints,
-            &mut self.constraint_counts,
-            arg_idx,
-            matcher,
-        )?;
+        self.constraints.push(arg_idx, matcher)?;
         Ok(self)
     }
 

@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
@@ -53,8 +51,7 @@ fn any_expr_accepts_non_empty_branches() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let any = AnyExpr::new(vec![event.clone(), event]).unwrap();
     assert_eq!(any.len(), 2);
@@ -68,8 +65,7 @@ fn all_expr_accepts_non_empty_branches() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let all = AllExpr::new(vec![event]).unwrap();
     assert_eq!(all.len(), 1);
@@ -83,8 +79,7 @@ fn expression_depth_is_bounded_before_compilation() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     for _ in 1..limits::MAX_EXPR_DEPTH {
         nested = QueryExpr::any(AnyExpr::new(vec![nested]).unwrap());
@@ -105,8 +100,7 @@ fn expression_child_limit_plus_one_is_rejected_at_authoring() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     let branches = vec![event; limits::MAX_EXPR_CHILDREN + 1];
     assert!(matches!(
@@ -425,8 +419,7 @@ fn query_expr_diagnostic_names_are_stable() {
         identity: IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-        constraint_counts: BTreeMap::new(),
+        constraints: value::ArgumentConstraints::new(),
     });
     assert_eq!(event.diagnostic_name(), "event");
 

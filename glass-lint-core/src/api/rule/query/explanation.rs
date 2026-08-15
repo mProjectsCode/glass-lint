@@ -56,7 +56,7 @@ fn explain_event(query: &EventQuery) -> String {
             )
         }
     };
-    append_constraints(event, &query.constraints)
+    append_constraints(event, query.constraints.as_slice())
 }
 
 fn explain_identity(identity: &IdentitySpec) -> String {
@@ -228,9 +228,10 @@ fn explain_lifecycle_event(event: &lifecycle::LifecycleEvent) -> String {
             "a write to `{property}` matching {}",
             explain_value_matcher(value)
         ),
-        lifecycle::LifecycleEventKind::MemberCall { member, arguments } => {
-            append_constraints(format!("a member call to `{}`", member.as_str()), arguments)
-        }
+        lifecycle::LifecycleEventKind::MemberCall { member, arguments } => append_constraints(
+            format!("a member call to `{}`", member.as_str()),
+            arguments.as_slice(),
+        ),
     }
 }
 
