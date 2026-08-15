@@ -194,7 +194,7 @@ arguments.
 
 ### api/compiler/validate — immediately-consumed `validate_subject_relation` wrapper
 
-#### [ ] READ-007 — `validate_subject_relation` only discards the classification result
+#### [x] READ-007 — `validate_subject_relation` only discards the classification result
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -212,7 +212,9 @@ the planner calls the underlying `classify_subject_relation` directly
 delete `validate_subject_relation`. Guardrail: preserve the `InternalInvariant`
 classification of the post-normalization failure in normalize.rs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `validate_subject_relation`; normalize.rs now calls
+`classify_subject_relation` directly, keeping the post-normalization failure
+classified as `InternalInvariant`.
 
 ### api/compiler/physical — misleading test-only constructor surface on `PhysicalPlan`
 

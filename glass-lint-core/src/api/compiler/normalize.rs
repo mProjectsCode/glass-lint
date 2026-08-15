@@ -9,7 +9,7 @@ use crate::api::{
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
             NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
         },
-        validate::{QueryCompileError, classify_lifecycle_source, validate_subject_relation},
+        validate::{QueryCompileError, classify_lifecycle_source, classify_subject_relation},
     },
     rule::query::{
         AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
@@ -105,7 +105,7 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: "normalized argument constraint groups are not canonical".into(),
                 });
             }
-            if let Err(error) = validate_subject_relation(ev.event(), ev.subject()) {
+            if let Err(error) = classify_subject_relation(ev.event(), ev.subject()) {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: error.detail().into(),
                 });

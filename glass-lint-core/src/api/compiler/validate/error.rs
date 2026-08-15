@@ -300,16 +300,6 @@ pub(crate) fn is_valid_identity_event_pair(identity: &IdentitySpec, event: &Even
     is_direct_dimension_valid(identity, event)
 }
 
-/// Validate the complete normalized subject relationship before lowering.
-/// This is the single compatibility matrix for direct, returned, and
-/// constructed-member event roots.
-pub(crate) fn validate_subject_relation(
-    event: &EventSpec,
-    subject: &NormalizedSubject,
-) -> Result<(), SubjectRelationError> {
-    classify_subject_relation(event, subject).map(|_| ())
-}
-
 pub(crate) fn classify_subject_relation<'a>(
     event: &'a EventSpec,
     subject: &'a NormalizedSubject,
