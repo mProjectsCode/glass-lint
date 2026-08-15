@@ -24,7 +24,7 @@ use crate::{
     AnalysisLimits, Environment, ParseDiagnostic, ProjectAdmissionLimits, RuleCatalog,
     analysis::{AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, SemanticAnalyzer},
     api::classification::RuleIndex,
-    lint::{ProjectAnalysis, ProjectReportAssembler},
+    lint::{ProjectAnalysis, report::ProjectReportAssembler},
     project::{
         ProjectError, ProjectExecutionError, ProjectInputError, ProjectRelativePath,
         ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,

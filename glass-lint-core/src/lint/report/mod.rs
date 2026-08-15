@@ -140,7 +140,7 @@ pub struct ProjectReportAssembler {
 }
 
 impl ProjectReportAssembler {
-    pub fn link(
+    pub(crate) fn link(
         sources: &SourceTable,
         link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
@@ -173,7 +173,7 @@ impl ProjectReportAssembler {
         }
     }
 
-    pub fn assemble(
+    pub(crate) fn assemble(
         mut self,
         catalog: &RuleCatalog,
         enabled: &[RuleIndex],

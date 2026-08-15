@@ -54,7 +54,7 @@ the CLI already clones `PreparedRuleSelection` into its own `PreparedConfig`
 
 **Fix Applied:** Deleted `LinterConfig::selection()`, dropped the `PreparedRuleSelection::selection` field and its `selection()` accessor (leaving `into_parts()` as the sole way out), and removed `RuleSelection::validate()`; `prepare()`/`resolve()`/`baseline()`/`overrides()` retained.
 
-#### [ ] READ-002 — `ProjectReportAssembler` is declared `pub` but never exported from the crate
+#### [x] READ-002 — `ProjectReportAssembler` is declared `pub` but never exported from the crate
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -84,7 +84,7 @@ must keep returning `ProjectAnalysis`; the link → assemble phase machine and i
 `ProjectReportSession` state holder must not be collapsed, since they mark a
 real lifecycle transition.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `ProjectReportAssembler` from the `lint/mod.rs` re-export (now only `ProjectAnalysis`/`ProjectAnalysisTimings` are re-exported) and made `mod report` reachable (`pub mod report`) so the type is only reachable behind the report module boundary; `ProjectSession::finish` now imports `crate::lint::report::ProjectReportAssembler`. The literal `pub(crate)` form is not usable here because the workspace clippy gate (`redundant_pub_crate`, nursery, `-D warnings`) rejects it for every item in the private `lint` module; the crate-root re-export continues to omit the type.
 
 #### [ ] READ-003 — `LintConfigError` mixes catalog and selection error domains; two of the `Linter::new` mapping arms are unreachable and misleading
 
