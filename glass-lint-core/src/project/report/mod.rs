@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::project::AnalysisReport;
+use crate::project::{AnalysisReport, ProjectRelativePath};
 
 /// Why independently produced reports could not be combined losslessly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,13 +63,7 @@ impl AnalysisReport {
         let expected_schema = combined.schema_version();
         let expected_tool = combined.tool_version().to_owned();
         let mut paths = BTreeSet::new();
-        for file in combined.files() {
-            if !paths.insert(file.path().clone()) {
-                return Err(ReportCombineError::DuplicateFilePath {
-                    path: file.path().clone(),
-                });
-            }
-        }
+        record_report_paths(&combined, &mut paths)?;
         for report in reports {
             if report.schema_version() != expected_schema {
                 return Err(ReportCombineError::SchemaMismatch {
@@ -83,17 +77,25 @@ impl AnalysisReport {
                     actual: report.tool_version().into(),
                 });
             }
-            for file in report.files() {
-                if !paths.insert(file.path().clone()) {
-                    return Err(ReportCombineError::DuplicateFilePath {
-                        path: file.path().clone(),
-                    });
-                }
-            }
+            record_report_paths(&report, &mut paths)?;
             combined = combined.merge(report);
         }
         Ok(combined.finalize())
     }
+}
+
+fn record_report_paths(
+    report: &AnalysisReport,
+    paths: &mut BTreeSet<ProjectRelativePath>,
+) -> Result<(), ReportCombineError> {
+    for file in report.files() {
+        if !paths.insert(file.path().clone()) {
+            return Err(ReportCombineError::DuplicateFilePath {
+                path: file.path().clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

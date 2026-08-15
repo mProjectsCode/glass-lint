@@ -243,7 +243,7 @@ cache-hit/miss behavior observed by tests (`tests/cache_and_session.rs:316, 322`
 
 ### Project report combination (`project/report/mod.rs`)
 
-#### [ ] READ-008 — `AnalysisReport::combine` duplicates the duplicate-path detection loop
+#### [x] READ-008 — `AnalysisReport::combine` duplicates the duplicate-path detection loop
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -264,7 +264,7 @@ call it for the seed and every later report. Guardrail: preserve the exact
 `DuplicateFilePath` error, `Empty` on zero reports, and the schema-before-tool
 check order so combine stays lossless and deterministic.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `record_report_paths` — checks and records a report's file paths into the `BTreeSet`, returning `Result<(), ReportCombineError>` — and call it for the seed and every later report, preserving the exact `DuplicateFilePath` error, `Empty` on zero reports, and the schema-before-tool check order.
 
 ### Project session tests
 
