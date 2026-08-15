@@ -144,15 +144,25 @@ impl EvalState {
         node: impl Into<EvalNode<'a>>,
         lookup: &impl Lookup,
     ) -> ConstValue {
-        if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
+        if !self.consume_node() {
             return ConstValue::Unknown;
         }
-        self.nodes += 1;
-        self.depth += 1;
         let node = node.into();
         let value = self.evaluate_inner(&node, lookup);
         self.depth -= 1;
         value
+    }
+
+    /// Charge the node/depth budget for a nested child node, returning
+    /// whether evaluation may proceed. Mirrors the accounting `evaluate`
+    /// applies to a wrapped node.
+    fn consume_node(&mut self) -> bool {
+        if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
+            return false;
+        }
+        self.nodes += 1;
+        self.depth += 1;
+        true
     }
 
     // Kept as a single dispatch match: each arm delegates to a focused helper
@@ -276,10 +286,16 @@ impl EvalState {
                 }
                 PropOrSpread::Prop(property) => {
                     let (key, value) = match &**property {
-                        Prop::Shorthand(ident) => (
-                            ident.sym.to_smolstr(),
-                            self.evaluate(&Expr::Ident(ident.clone()), lookup),
-                        ),
+                        Prop::Shorthand(ident) => {
+                            let value = if self.consume_node() {
+                                let value = self.lookup_ident(lookup, ident);
+                                self.depth -= 1;
+                                value
+                            } else {
+                                ConstValue::Unknown
+                            };
+                            (ident.sym.to_smolstr(), value)
+                        }
                         Prop::KeyValue(property) => {
                             let Some(key) = self.contextual_property_name(&property.key, lookup)
                             else {

@@ -126,6 +126,21 @@ fn evaluates_finite_arrays_objects_spreads_and_object_assign() {
 }
 
 #[test]
+fn evaluates_shorthand_properties_through_the_lookup() {
+    let mut lookup = TestLookup::default();
+    lookup
+        .values
+        .insert("a".into(), ConstValue::String("x".into()));
+    assert_eq!(
+        evaluate(&expression("({ a })"), &lookup),
+        ConstValue::Object(BTreeMap::from([(
+            "a".into(),
+            ConstValue::String("x".into())
+        )]))
+    );
+}
+
+#[test]
 fn fails_closed_at_container_and_string_limits() {
     let oversized_array = format!(
         "[{}]",

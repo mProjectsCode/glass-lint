@@ -72,7 +72,7 @@ any path.
 
 **Fix Applied:** `literal_member_property_name` now delegates to `contextual_member_property_name(prop, &NoLookup)`; the private `static_property_name` and the unused `evaluate` import in names.rs were deleted. `literal_property_name` was kept as its own pure-syntax path and its doc comment now documents the divergence (no `MAX_STRING_BYTES` bound, arbitrary numeric keys, literal-string computed keys only).
 
-#### [ ] READ-002 — Shorthand object-property arm allocates a cloned `Ident`/`Expr` to reach `lookup_ident`
+#### [x] READ-002 — Shorthand object-property arm allocates a cloned `Ident`/`Expr` to reach `lookup_ident`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -94,7 +94,7 @@ wrapper expression; if that accounting is meant to model the syntactic node,
 charge it explicitly (e.g. a small `consume_node` helper) so budget behavior
 for shorthand properties stays unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The `Prop::Shorthand` arm now calls `self.lookup_ident(lookup, ident)` directly. A new `consume_node` helper (shared with `EvalState::evaluate`) charges the same node/depth increment the wrapped-`Expr::Ident` path used to, so the shorthand budget accounting is unchanged. Added a focused unit test `evaluates_shorthand_properties_through_the_lookup`.
 
 ### [analysis/syntax — name bounds and provenance]
 
