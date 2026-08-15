@@ -67,7 +67,7 @@ single-sourced, deleting the duplicated `build` bodies and the two duplicate
 
 ### [api/rule/query/mod.rs, api/rule/mod.rs]
 
-#### [ ] READ-002 — Module doc names `RuleBuilder::query` as the `IntoQueryDecl` entry point, but that method only accepts a finished `QueryDecl`; two same-named `query` methods collide
+#### [x] READ-002 — Module doc names `RuleBuilder::query` as the `IntoQueryDecl` entry point, but that method only accepts a finished `QueryDecl`; two same-named `query` methods collide
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -101,7 +101,7 @@ silently discarding errors), which moves the deferred-error problem instead of
 fixing the doc mismatch. Guardrails: keep the deferred-vs-immediate error
 semantics and the behaviors asserted in `api/rule/tests.rs`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Rewrote the query module doc to name the real fallible-input entry points (`CatalogRuleBuilder::query` for declarative catalogs, `RuleBuilder::try_query` for immediate propagation, `RuleBuilder::query` for finished `QueryDecl` values), and corrected the `RuleBuilder::try_query` doc comment that wrongly claimed `query` reports fallible-input errors from `build()`.
 
 ### [api/rule/query/declarations.rs, constructors.rs, event.rs; analysis/matching]
 

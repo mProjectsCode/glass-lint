@@ -156,9 +156,9 @@ impl RuleBuilder {
     /// Add one query declaration and return construction errors immediately.
     ///
     /// This is the preferred API for code that can propagate a
-    /// [`QueryBuildError`]. [`Self::query`] remains available for existing
-    /// declarative catalogs and reports the first fallible-input error from
-    /// `build()`.
+    /// [`QueryBuildError`]. [`Self::query`] accepts only a finished
+    /// [`QueryDecl`]; declarative catalogs that need to defer fallible inputs
+    /// should use [`CatalogRuleBuilder::query`] instead.
     pub fn try_query(self, query: impl IntoQueryDecl) -> Result<Self, QueryBuildError> {
         let mut builder = self;
         builder.try_add_query(query)?;

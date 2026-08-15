@@ -5,10 +5,13 @@
 //! layer lowers these into physical execution plans.
 //!
 //! The primary authoring API consists of constructor methods on [`EventQuery`].
-//! Rule authors create event queries and pass them directly to
-//! [`crate::api::rule::RuleBuilder::query`] (via the [`IntoQueryDecl`] adapter)
-//! or convert them with [`EventQuery::into_query`] when composing alternatives
-//! or conjunctions.
+//! Declarative catalogs pass event queries directly to
+//! [`crate::api::rule::CatalogRuleBuilder::query`] via the [`IntoQueryDecl`]
+//! adapter; non-catalog code that propagates errors immediately uses
+//! [`crate::api::rule::RuleBuilder::try_query`].
+//! [`crate::api::rule::RuleBuilder::query`] accepts only a finished
+//! [`QueryDecl`], and [`EventQuery::into_query`] converts an event query when
+//! composing alternatives or conjunctions.
 //!
 //! [`EventQuery::call_global`] and the other identity/event combinators replace
 //! the former [`QueryDecl`] builder.
