@@ -174,7 +174,7 @@ updating binding provenance while assignment aliases append an
 
 ### Collector interning surface
 
-#### [ ] READ-005 — `ScopeCollector::interned_name` is a byte-identical duplicate of `ScopeCollector::name_id`
+#### [x] READ-005 — `ScopeCollector::interned_name` is a byte-identical duplicate of `ScopeCollector::name_id`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -195,7 +195,7 @@ to call `name_id`. Guardrails: the surviving method must keep returning
 charge the budget — interning plus budget charging stays in
 `lookup_or_intern_name`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `interned_name`; `visitor.rs:336` now calls `name_id`, which still returns `None` without interning or charging the budget.
 
 ### Collector state structs
 

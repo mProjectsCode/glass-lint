@@ -129,10 +129,6 @@ impl ScopeCollector<'_> {
             .or_else(|| self.lexical.names.intern(name).ok())
     }
 
-    pub(super) fn interned_name(&self, name: &str) -> Option<NameId> {
-        self.lexical.names.lookup(name)
-    }
-
     pub(super) fn name_path(&mut self, path: &SymbolPath) -> Option<NamePath> {
         let mut resolved = NamePath::new();
         for segment in path.segments() {

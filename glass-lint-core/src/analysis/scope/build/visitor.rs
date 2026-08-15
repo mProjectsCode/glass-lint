@@ -333,7 +333,7 @@ impl ScopeCollector<'_> {
                     scope,
                     receiver,
                     literal_member_property_name(&member.prop)
-                        .and_then(|property| self.interned_name(&property)),
+                        .and_then(|property| self.name_id(&property)),
                 ));
         }
         self.invalidate_member_root(member, assignment.span);
