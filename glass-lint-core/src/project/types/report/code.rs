@@ -5,8 +5,25 @@ pub struct DiagnosticCode(String);
 
 const MAX_DIAGNOSTIC_CODE_LEN: usize = 64;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticKind {
+macro_rules! diagnostic_kinds {
+    ($( $variant:ident ),* $(,)?) => {
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum DiagnosticKind {
+            $(
+                $variant,
+            )*
+        }
+
+        #[cfg(test)]
+        const ALL: &[DiagnosticKind] = &[
+            $(
+                DiagnosticKind::$variant,
+            )*
+        ];
+    };
+}
+
+diagnostic_kinds! {
     AmbiguousStarExport,
     EvidenceCapacityMismatch,
     EffectsBudgetExhausted,

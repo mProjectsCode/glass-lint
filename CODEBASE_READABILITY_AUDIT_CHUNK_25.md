@@ -159,7 +159,7 @@ max-merge for `max_live_alternatives` and saturating-add for the rest in
 
 ### report/code.rs — diagnostic code vocabulary
 
-#### [ ] READ-005 — Canonical-code test table omits `EvidenceCapacityMismatch` and duplicates the enum
+#### [x] READ-005 — Canonical-code test table omits `EvidenceCapacityMismatch` and duplicates the enum
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -183,7 +183,7 @@ its entry. Guardrails: keep asserting that every `as_str` value is a valid
 `DiagnosticCode` under the same validation rules and that `TryFrom<&str>`
 round-trips each code.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `DiagnosticKind` is now declared once by a `macro_rules!` that expands into the enum and a test-only `ALL` slice; the test iterates `ALL`, so every variant (including the previously omitted `EvidenceCapacityMismatch`) is covered by construction, while `as_str`'s match remains exhaustive.
 
 #### [ ] READ-006 — `into_partial` hard-codes a code string that bypasses the `DiagnosticKind` vocabulary
 
