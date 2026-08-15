@@ -102,7 +102,10 @@ fn repeated_scope_queries_preserve_nested_and_cross_scope_results() {
     let function_scope = graph.scope_at(block_use.span).expect("function scope");
     assert_eq!(graph.scope_at(block_use.span), Some(function_scope));
     assert_eq!(graph.scope_kind(program_scope), Some(ScopeKind::Program));
-    assert_eq!(graph.scope_parent(block_scope), Some(program_scope));
+    assert_eq!(
+        graph.scope_ancestors(block_scope).nth(1),
+        Some(program_scope)
+    );
     assert_ne!(function_scope, block_scope);
 
     let cross_scope_span = swc_common::Span::new(block_use.span.lo, program_uses[2].span.hi);

@@ -235,7 +235,7 @@ unwrap `Seq` in the rooted path rather than failing closed.
 
 ### Scope storage / index plumbing
 
-#### [ ] READ-007 — Five hand-rolled scope-ancestor walks
+#### [x] READ-007 — Five hand-rolled scope-ancestor walks
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -261,7 +261,7 @@ Guardrails: preserve the per-caller stop rules — first binding wins
 (bindings.rs:179), first function-binding wins (functions.rs:50) — and do
 not combine facts across different owners in the helper.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ScopeData::ancestors(scope)` (scope-then-parents iterator) and exposed it as `FrozenScopeGraph::scope_ancestors`. `binding_with_scope_at`, `enclosing_function_at`, `has_prior_eval`, `scope_or_ancestor_has_kind`, and `function_binding_at` are now `find`/`any` expressions over the iterator, each preserving its per-caller stop rule and fallback. The now-unused facade `scope_parent` delegators were removed and the scope test asserts parentage via `scope_ancestors`.
 
 #### [ ] READ-009 — Single-use `ScopeGraphInput` data-passing struct
 

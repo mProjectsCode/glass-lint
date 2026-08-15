@@ -47,15 +47,11 @@ impl FrozenScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<FunctionId> {
-        let mut scope = self.scope_at(span)?;
-        loop {
-            if let Some(name) = self.name_id(name)
-                && let Some(function) = self.function_binding(scope, name)
-            {
-                return Some(function);
-            }
-            scope = self.scope_parent(scope)?;
-        }
+        let scope = self.scope_at(span)?;
+        self.scope_ancestors(scope).find_map(|scope| {
+            self.name_id(name)
+                .and_then(|name| self.function_binding(scope, name))
+        })
     }
 
     /// Find the smallest function span containing a source position.

@@ -20,17 +20,21 @@ pub(super) struct ScopeData<M> {
 }
 
 impl<M> ScopeData<M> {
+    /// Yield a scope and then each ancestor scope up to the root.
+    pub(super) fn ancestors(&self, scope: ScopeId) -> impl Iterator<Item = ScopeId> + '_ {
+        std::iter::successors(Some(scope), |scope| self.scopes.scope_parent(*scope))
+    }
+
     pub(super) fn binding_with_scope_at(
         &self,
         name: NameId,
-        mut scope: ScopeId,
+        scope: ScopeId,
     ) -> Option<(ScopeId, &BindingProvenance)> {
-        loop {
-            if let Some(binding) = self.scopes.scope_binding(scope, name) {
-                return Some((scope, binding));
-            }
-            scope = self.scopes.scope_parent(scope)?;
-        }
+        self.ancestors(scope).find_map(|scope| {
+            self.scopes
+                .scope_binding(scope, name)
+                .map(|binding| (scope, binding))
+        })
     }
 
     pub(super) fn parameter_alias_for_scope(
@@ -42,14 +46,9 @@ impl<M> ScopeData<M> {
     }
 
     pub(super) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
-        let mut current = Some(scope);
-        while let Some(scope) = current {
-            if let Some(function) = self.bindings.function_for_scope(scope) {
-                return function;
-            }
-            current = self.scopes.scope_parent(scope);
-        }
-        FunctionId::new(0)
+        self.ancestors(scope)
+            .find_map(|scope| self.bindings.function_for_scope(scope))
+            .unwrap_or(FunctionId::new(0))
     }
 }
 
@@ -59,10 +58,6 @@ pub(super) struct ScopeReadView<'a, M> {
 }
 
 impl<'a, M> ScopeReadView<'a, M> {
-    pub(super) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
-        self.data.scopes.scope_parent(scope)
-    }
-
     pub(super) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
         self.data.scopes.scope_kind(scope)
     }

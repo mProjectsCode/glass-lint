@@ -260,10 +260,6 @@ impl FrozenScopeGraph {
 
     // -- Lexical-scope-index delegation --
 
-    pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
-        self.read_view().scope_parent(scope)
-    }
-
     pub(in crate::analysis) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
         self.read_view().scope_kind(scope)
     }
@@ -274,6 +270,14 @@ impl FrozenScopeGraph {
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.read_view().scope_at(span)
+    }
+
+    /// Yield a scope and then each ancestor scope up to the root.
+    pub(in crate::analysis) fn scope_ancestors(
+        &self,
+        scope: ScopeId,
+    ) -> impl Iterator<Item = ScopeId> + '_ {
+        self.data.ancestors(scope)
     }
 
     pub(in crate::analysis) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
@@ -403,13 +407,8 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn has_prior_eval(&self, scope: ScopeId, span: Span) -> bool {
-        let mut current = Some(scope);
-        while let Some(scope) = current {
-            if self.data.mutations.has_prior_eval(scope, span) {
-                return true;
-            }
-            current = self.scope_parent(scope);
-        }
-        false
+        self.data
+            .ancestors(scope)
+            .any(|scope| self.data.mutations.has_prior_eval(scope, span))
     }
 }

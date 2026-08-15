@@ -170,18 +170,11 @@ impl FrozenScopeGraph {
     /// Test a scope and all parents for a specific scope kind.
     pub(in crate::analysis) fn scope_or_ancestor_has_kind(
         &self,
-        mut scope: ScopeId,
+        scope: ScopeId,
         kind: ScopeKind,
     ) -> bool {
-        loop {
-            if self.scope_kind(scope) == Some(kind) {
-                return true;
-            }
-            let Some(parent) = self.scope_parent(scope) else {
-                return false;
-            };
-            scope = parent;
-        }
+        self.scope_ancestors(scope)
+            .any(|scope| self.scope_kind(scope) == Some(kind))
     }
 
     /// Require a configured global to be unshadowed and dynamically resolvable.
