@@ -262,7 +262,7 @@ fn explain_lifecycle_completion(completion: &lifecycle::LifecycleCompletion) -> 
 fn explain_lifecycle_sink(sink: &lifecycle::LifecycleSink) -> String {
     match sink.kind() {
         lifecycle::LifecycleSinkKind::ArgumentOf { endpoint, index } => {
-            format!("`{}` argument {index}", endpoint.chain())
+            format!("`{}` argument {}", endpoint.chain(), index.get())
         }
         lifecycle::LifecycleSinkKind::AnyArgumentOf { endpoint } => {
             format!("any argument of `{}`", endpoint.chain())

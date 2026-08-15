@@ -7,7 +7,7 @@ use crate::api::rule::query::{
     EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
     checked_chain, limits,
-    value::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
+    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 
 macro_rules! define_lifecycle_adapter {
@@ -303,7 +303,7 @@ define_lifecycle_adapter!(IntoLifecycleQuery, into_lifecycle_query, LifecycleQue
 pub(crate) enum LifecycleSinkKind {
     ArgumentOf {
         endpoint: LifecycleCallEndpoint,
-        index: usize,
+        index: ArgumentIndex,
     },
     AnyArgumentOf {
         endpoint: LifecycleCallEndpoint,
@@ -358,12 +358,10 @@ impl LifecycleSink {
         let target = target(&chain);
         let endpoint = LifecycleCallEndpoint::new(chain, target);
         let kind = match index {
-            Some(index) => {
-                if index > limits::MAX_ARGUMENT_INDEX {
-                    return Err(QueryBuildError::InvalidArgumentIndex(index));
-                }
-                LifecycleSinkKind::ArgumentOf { endpoint, index }
-            }
+            Some(index) => LifecycleSinkKind::ArgumentOf {
+                endpoint,
+                index: ArgumentIndex::try_from_usize(index)?,
+            },
             None => LifecycleSinkKind::AnyArgumentOf { endpoint },
         };
         Ok(Self { kind })

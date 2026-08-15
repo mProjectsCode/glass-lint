@@ -451,7 +451,7 @@ fn normalize_lifecycle_sink(
         crate::api::rule::query::lifecycle::LifecycleSinkKind::ArgumentOf { endpoint, index } => {
             NormalizedLifecycleSink::ArgumentOf {
                 target: endpoint.target().clone(),
-                index: *index,
+                index: index.get(),
             }
         }
         crate::api::rule::query::lifecycle::LifecycleSinkKind::AnyArgumentOf { endpoint } => {

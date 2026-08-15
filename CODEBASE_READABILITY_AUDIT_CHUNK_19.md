@@ -29,7 +29,7 @@ from the canonical ordering invariant applied to events and sinks.
 
 ### [api/rule/query/lifecycle/types.rs]
 
-#### [ ] READ-001 — Raw `usize` sink argument index duplicates the `ArgumentIndex` semantic newtype
+#### [x] READ-001 — Raw `usize` sink argument index duplicates the `ArgumentIndex` semantic newtype
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -59,7 +59,7 @@ unchanged so the fix stays inside the chunk; guardrail: preserve the
 `InvalidArgumentIndex(index)` error and the `index.get()` conversions at the
 two `ArgumentOf { index }` consumers (`normalize.rs:454`, `explanation.rs:264`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LifecycleSinkKind::ArgumentOf` now stores `ArgumentIndex`; `build_call_sink` converts via `ArgumentIndex::try_from_usize`, deleting the manual bound check. Compiler/normalized/flow layers keep `usize`; `normalize.rs` and `explanation.rs` use `index.get()`.
 
 #### [ ] READ-005 — `LifecycleEvent::property_write` stores an untrimmed property, breaking the chunk's name-normalization convention
 

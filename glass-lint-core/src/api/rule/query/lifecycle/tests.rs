@@ -300,7 +300,7 @@ fn lifecycle_sink_argument_of_holds_chain_and_index() {
     assert_eq!(sink.chain(), "parent.appendChild");
     assert!(matches!(
         sink.kind(),
-        LifecycleSinkKind::ArgumentOf { index: 0, .. }
+        LifecycleSinkKind::ArgumentOf { index, .. } if index.get() == 0
     ));
 }
 
