@@ -166,7 +166,7 @@ decision.
 
 ### [Compiler: evidence descriptor]
 
-#### [ ] READ-005 — `NormalizedEmission` and `EvidenceDescriptor` are parallel `{kind, symbol}` types with a manual field-by-field copy duplicated per root
+#### [x] READ-005 — `NormalizedEmission` and `EvidenceDescriptor` are parallel `{kind, symbol}` types with a manual field-by-field copy duplicated per root
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -194,6 +194,8 @@ Guardrail: keep the per-root descriptor shape — `optimize_roots`'s dedup rule
 constructs roots with distinct descriptors at 377-437; `tests/rule.rs:58` asserts a
 per-root descriptor) deliberately treat differing evidence descriptors as distinct
 roots.
+
+**Fix Applied:** Added `From<&NormalizedEmission> for EvidenceDescriptor` as the single canonical conversion and used it once in `plan_normalized_roots_into`, threading the descriptor through `plan_root`/`plan_event` so the manual field-by-field `EvidenceDescriptor { kind, symbol: symbol.to_owned() }` copy per root is gone. Each root still carries its own cloned per-root descriptor, so the `optimize_roots` dedup rule and the physical tests that assert distinct descriptors are unchanged.
 
 **Fix Applied:** None so far.
 

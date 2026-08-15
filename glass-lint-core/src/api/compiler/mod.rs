@@ -53,7 +53,9 @@ use smol_str::SmolStr;
 use crate::api::{
     classification::MatchKind,
     compiler::{
-        normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
+        normalized::{NormalizedEmission, NormalizedQuery},
+        physical::PhysicalPlan,
+        validate::validate_query_decl,
     },
     rule::{
         CompilerInvariantDiagnostic, MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
@@ -128,6 +130,15 @@ impl IdentityConstraint {
 pub(crate) struct EvidenceDescriptor {
     pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
+}
+
+impl From<&NormalizedEmission> for EvidenceDescriptor {
+    fn from(emission: &NormalizedEmission) -> Self {
+        Self {
+            kind: emission.kind(),
+            symbol: emission.symbol().to_owned(),
+        }
+    }
 }
 
 // ── Lowering: declaration types → compiler IR ────────────────────────────

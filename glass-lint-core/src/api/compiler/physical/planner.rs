@@ -1,13 +1,10 @@
 #[cfg(test)]
 use super::PhysicalPlan;
 use super::{PhysicalPlanValidationError, PhysicalRoot, RootBudget};
-use crate::api::{
-    classification::MatchKind,
-    compiler::{
-        normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot},
-        object_flow::CompiledObjectFlow,
-        rule::{EvidenceDescriptor, IdentityConstraint},
-    },
+use crate::api::compiler::{
+    normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot},
+    object_flow::CompiledObjectFlow,
+    rule::{EvidenceDescriptor, IdentityConstraint},
 };
 
 /// Plan a normalized query into a [`PhysicalPlan`].
@@ -26,30 +23,29 @@ pub(crate) fn plan_normalized_roots_into(
     budget: &mut RootBudget,
     roots: &mut Vec<PhysicalRoot>,
 ) -> Result<(), PhysicalPlanValidationError> {
-    let emission = nq.emission();
-    plan_root(nq.root(), emission.kind(), emission.symbol(), budget, roots)
+    let evidence = EvidenceDescriptor::from(nq.emission());
+    plan_root(nq.root(), &evidence, budget, roots)
 }
 
 fn plan_root(
     root: &NormalizedRoot,
-    kind: MatchKind,
-    symbol: &str,
+    evidence: &EvidenceDescriptor,
     budget: &mut RootBudget,
     roots: &mut Vec<PhysicalRoot>,
 ) -> Result<(), PhysicalPlanValidationError> {
     match root {
         NormalizedRoot::Event(event) => {
             budget.reserve()?;
-            roots.push(plan_event(event, kind, symbol)?);
+            roots.push(plan_event(event, evidence)?);
         }
         NormalizedRoot::Any(branches) => {
             for branch in branches {
-                plan_root(branch, kind, symbol, budget, roots)?;
+                plan_root(branch, evidence, budget, roots)?;
             }
         }
         NormalizedRoot::Lifecycle(lifecycle) => {
             budget.reserve()?;
-            roots.push(plan_lifecycle(lifecycle, symbol)?);
+            roots.push(plan_lifecycle(lifecycle, &evidence.symbol)?);
         }
     }
     Ok(())
@@ -57,16 +53,11 @@ fn plan_root(
 
 fn plan_event(
     event: &NormalizedEvent,
-    kind: MatchKind,
-    symbol: &str,
+    evidence: &EvidenceDescriptor,
 ) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
     let relation =
         crate::api::compiler::validate::classify_subject_relation(event.event(), event.subject())
             .map_err(|_| PhysicalPlanValidationError::ImpossibleDimensions)?;
-    let evidence = EvidenceDescriptor {
-        kind,
-        symbol: symbol.to_owned(),
-    };
 
     match relation {
         crate::api::compiler::validate::SubjectRelation::Direct { identity } => {
@@ -74,14 +65,14 @@ fn plan_event(
                 Ok(PhysicalRoot::indexed_scan(
                     IdentityConstraint::from(identity),
                     event.event().clone(),
-                    evidence,
+                    evidence.clone(),
                 ))
             } else {
                 Ok(PhysicalRoot::constrained_scan(
                     IdentityConstraint::from(identity),
                     event.event().clone(),
                     event.arguments().clone(),
-                    evidence,
+                    evidence.clone(),
                 ))
             }
         }
@@ -95,7 +86,7 @@ fn plan_event(
             object_slot,
             member.clone(),
             event.clone(),
-            evidence,
+            evidence.clone(),
         ),
         crate::api::compiler::validate::SubjectRelation::Instance {
             constructor,
@@ -105,7 +96,7 @@ fn plan_event(
             IdentityConstraint::from(constructor),
             object_slot,
             member.clone(),
-            evidence,
+            evidence.clone(),
         ),
     }
 }
