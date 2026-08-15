@@ -82,7 +82,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
 
     let lc_b = lifecycle(
@@ -94,7 +94,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
 
     let d_a = QueryDecl::from_parts_for_test(

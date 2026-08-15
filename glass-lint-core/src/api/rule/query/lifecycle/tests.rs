@@ -18,7 +18,7 @@ fn explicit_completion_and_conditions_build() {
         .unwrap();
     assert_eq!(lc.sources.len(), 1);
     assert!(lc.condition.is_some());
-    assert!(lc.completion.is_some());
+    assert_eq!(lc.completion, LifecycleCompletion::configuration());
 }
 
 #[test]

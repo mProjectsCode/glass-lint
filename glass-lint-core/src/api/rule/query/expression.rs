@@ -193,10 +193,9 @@ impl fmt::Display for QueryExpr {
             QueryExprKind::All(all) => write_list(f, "all", all.iter()),
             QueryExprKind::Lifecycle(lifecycle) => write!(
                 f,
-                "lifecycle sources={} condition={} completion={}",
+                "lifecycle sources={} condition={}",
                 lifecycle.sources().len(),
                 lifecycle.condition().is_some(),
-                lifecycle.completion().is_some()
             ),
         }
     }

@@ -389,32 +389,29 @@ fn normalize_lifecycle_root(
                 )
             }
         });
-    let completion = lc
-        .completion()
-        .as_ref()
-        .map(|completion| match completion.kind() {
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
-                NormalizedLifecycleCompletion::Configuration
-            }
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks) => {
-                NormalizedLifecycleCompletion::AnySink(
-                    sinks
-                        .iter()
-                        .map(normalize_lifecycle_sink)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                )
-            }
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AllSinks(sinks) => {
-                NormalizedLifecycleCompletion::AllSinks(
-                    sinks
-                        .iter()
-                        .map(normalize_lifecycle_sink)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                )
-            }
-        });
+    let completion = Some(match lc.completion().kind() {
+        crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
+            NormalizedLifecycleCompletion::Configuration
+        }
+        crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks) => {
+            NormalizedLifecycleCompletion::AnySink(
+                sinks
+                    .iter()
+                    .map(normalize_lifecycle_sink)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        }
+        crate::api::rule::query::lifecycle::LifecycleCompletionKind::AllSinks(sinks) => {
+            NormalizedLifecycleCompletion::AllSinks(
+                sinks
+                    .iter()
+                    .map(normalize_lifecycle_sink)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        }
+    });
 
     Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle {
         sources,

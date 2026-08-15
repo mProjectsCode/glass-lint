@@ -21,7 +21,7 @@ fn lifecycle_has_flow_requirements() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let d = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),
@@ -72,7 +72,7 @@ fn lifecycle_is_not_flattened_or_sorted() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let d = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),

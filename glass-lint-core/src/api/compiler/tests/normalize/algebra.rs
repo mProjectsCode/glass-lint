@@ -30,7 +30,7 @@ fn lifecycle_normalizes_to_lifecycle_root() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let d = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),

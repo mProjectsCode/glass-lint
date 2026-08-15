@@ -218,7 +218,7 @@ after) equivalent.
 
 ### [api/rule/query/mod.rs] (chunk boundary — `LifecycleQuery`, `EventQuery`)
 
-#### [ ] READ-003 — Nullable `Option<LifecycleCompletion>` on the built `LifecycleQuery` obscures a guaranteed invariant
+#### [x] READ-003 — Nullable `Option<LifecycleCompletion>` on the built `LifecycleQuery` obscures a guaranteed invariant
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -252,7 +252,7 @@ pass4_10.rs:13-17 and 29-33. Guardrail: preserve the `Configuration`-requires-
 condition rule in the builder and the fail-closed `MissingLifecycleCompletion`
 error for the deferred catalog builder.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LifecycleQuery` now stores `completion: LifecycleCompletion` and `completion()` returns `&LifecycleCompletion`; `LifecycleStages::build` unwraps via `ok_or(MissingLifecycleCompletion)`. `from_parts_for_test` and all compiler-test callers supply a concrete completion; `normalize.rs` drops `.as_ref()`, `explanation.rs` and the `expression.rs` display no longer probe presence, and the redundant none-checks in `pass4_10.rs` are removed. `condition` stays optional.
 
 #### [ ] READ-007 — Duplicated `Vec<ArgumentConstraint>` + count-map pair synced by a free function
 

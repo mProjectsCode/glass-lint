@@ -10,12 +10,6 @@ use crate::api::rule::query::{
 };
 
 fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
-    if lc.sources().is_empty() {
-        return Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle must have at least one source".into(),
-        });
-    }
-
     for src in lc.sources() {
         validate_event_query(src)?;
 
@@ -24,12 +18,6 @@ fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
                 detail: error.detail().into(),
             });
         }
-    }
-
-    if lc.condition().is_none() && lc.completion().is_none() {
-        return Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle must have at least a condition or completion".into(),
-        });
     }
 
     Ok(())

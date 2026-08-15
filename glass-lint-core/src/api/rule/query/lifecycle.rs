@@ -93,17 +93,14 @@ impl LifecycleStages {
         sources.sort();
         sources.dedup();
 
-        if let Some(ref completion) = completion {
-            match completion.kind() {
-                LifecycleCompletionKind::AnySink(_) | LifecycleCompletionKind::AllSinks(_) => {}
-                LifecycleCompletionKind::Configuration => {
-                    if condition.is_none() {
-                        return Err(QueryBuildError::MissingLifecycleCondition);
-                    }
+        let completion = completion.ok_or(QueryBuildError::MissingLifecycleCompletion)?;
+        match completion.kind() {
+            LifecycleCompletionKind::AnySink(_) | LifecycleCompletionKind::AllSinks(_) => {}
+            LifecycleCompletionKind::Configuration => {
+                if condition.is_none() {
+                    return Err(QueryBuildError::MissingLifecycleCondition);
                 }
             }
-        } else {
-            return Err(QueryBuildError::MissingLifecycleCompletion);
         }
 
         Ok(LifecycleQuery {

@@ -308,8 +308,8 @@ pub struct LifecycleQuery {
     sources: Vec<EventQuery>,
     /// Optional configuration condition (requirements).
     condition: Option<LifecycleCondition>,
-    /// Optional completion mode (sink or configuration).
-    completion: Option<LifecycleCompletion>,
+    /// Completion mode (sink or configuration).
+    completion: LifecycleCompletion,
 }
 
 impl LifecycleQuery {
@@ -326,8 +326,8 @@ impl LifecycleQuery {
         self.condition.as_ref()
     }
 
-    pub fn completion(&self) -> Option<&LifecycleCompletion> {
-        self.completion.as_ref()
+    pub fn completion(&self) -> &LifecycleCompletion {
+        &self.completion
     }
 
     #[cfg(test)]
@@ -335,7 +335,7 @@ impl LifecycleQuery {
         symbol: impl Into<String>,
         sources: Vec<EventQuery>,
         condition: Option<LifecycleCondition>,
-        completion: Option<LifecycleCompletion>,
+        completion: LifecycleCompletion,
     ) -> Self {
         Self {
             symbol: symbol.into(),

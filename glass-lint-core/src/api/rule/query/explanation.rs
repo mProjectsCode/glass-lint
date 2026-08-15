@@ -201,10 +201,7 @@ fn explain_lifecycle(lifecycle: &LifecycleQuery) -> String {
         || "no configuration condition".into(),
         explain_lifecycle_condition,
     );
-    let completion = lifecycle.completion().map_or_else(
-        || "no completion condition".into(),
-        explain_lifecycle_completion,
-    );
+    let completion = explain_lifecycle_completion(lifecycle.completion());
     format!(
         "a lifecycle object produced by {sources}; it requires {condition}; it completes when {completion}"
     )

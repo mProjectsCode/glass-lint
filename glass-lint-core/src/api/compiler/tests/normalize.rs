@@ -47,7 +47,7 @@ fn lifecycle(
     symbol: &str,
     sources: Vec<EventQuery>,
     condition: Option<crate::api::rule::LifecycleCondition>,
-    completion: Option<crate::api::rule::LifecycleCompletion>,
+    completion: crate::api::rule::LifecycleCompletion,
 ) -> LifecycleQuery {
     LifecycleQuery::from_parts_for_test(symbol, sources, condition, completion)
 }

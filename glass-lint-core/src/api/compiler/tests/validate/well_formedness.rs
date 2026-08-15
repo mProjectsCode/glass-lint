@@ -296,7 +296,7 @@ fn lifecycle_source_must_be_member_call() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let decl = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),
@@ -330,7 +330,7 @@ fn lifecycle_source_must_be_rooted() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let decl = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),
@@ -369,7 +369,7 @@ fn valid_lifecycle_passes_lifecycle_validation() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration()),
+        crate::api::rule::LifecycleCompletion::configuration(),
     );
     let decl = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lc),
