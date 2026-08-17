@@ -138,8 +138,7 @@ impl FunctionSummary {
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
     ) -> Vec<FunctionSinkSummary> {
-        let cref = stream.call_effect(call_id);
-        let Some(shape) = cref.shape() else {
+        let Some(shape) = stream.call_shape(call_id) else {
             return Vec::new();
         };
         let args = shape.effective_args();

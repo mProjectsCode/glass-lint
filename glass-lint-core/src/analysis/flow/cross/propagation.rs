@@ -115,8 +115,7 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_receiver(&mut self, event: FactId) {
-        let cref = self.stream.call_effect(event);
-        let Some(shape) = cref.shape() else {
+        let Some(shape) = self.stream.call_shape(event) else {
             return;
         };
         let call_args = shape.effective_args();
@@ -147,8 +146,7 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_argument(&mut self, event: FactId, argument: usize) {
-        let cref = self.stream.call_effect(event);
-        let Some(shape) = cref.shape() else {
+        let Some(shape) = self.stream.call_shape(event) else {
             return;
         };
         let candidates = self.flow_plan.sink_candidates_for_call(&shape);

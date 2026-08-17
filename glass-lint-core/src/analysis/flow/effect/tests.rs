@@ -19,8 +19,9 @@ fn chain_resolves_direct_call_with_rooted_chain() {
         .iter()
         .find(|f| matches!(f.payload(), FactPayload::Call(_)))
         .expect("call fact should exist");
-    let cref = stream.call_effect(fact.id());
-    let shape = cref.shape().expect("call fact should have a shape");
+    let shape = stream
+        .call_shape(fact.id())
+        .expect("call fact should have a shape");
     let names = stream.names();
     let chain = shape.chain().expect("direct call should have a chain");
     assert!(
@@ -47,8 +48,9 @@ fn chain_falls_back_to_callee_name_for_alias_call() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let alias_call = call_facts[0];
-    let cref = stream.call_effect(alias_call.id());
-    let shape = cref.shape().expect("call fact should have a shape");
+    let shape = stream
+        .call_shape(alias_call.id())
+        .expect("call fact should have a shape");
     let chain = shape
         .chain()
         .expect("alias call should have a chain via callee_name fallback");
@@ -71,8 +73,9 @@ fn rooted_is_false_for_non_global_call() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id());
-    let shape = cref.shape().expect("call fact should have a shape");
+    let shape = stream
+        .call_shape(call_fact.id())
+        .expect("call fact should have a shape");
     assert!(!shape.rooted(), "local function call should not be rooted");
 }
 
@@ -87,8 +90,9 @@ fn effective_args_unwraps_call_invocation() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id());
-    let shape = cref.shape().expect("call fact should have a shape");
+    let shape = stream
+        .call_shape(call_fact.id())
+        .expect("call fact should have a shape");
     let effective = shape.effective_args();
     assert_eq!(
         effective.len(),
@@ -115,8 +119,9 @@ fn effective_args_unwraps_apply_invocation() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id());
-    let shape = cref.shape().expect("call fact should have a shape");
+    let shape = stream
+        .call_shape(call_fact.id())
+        .expect("call fact should have a shape");
     let effective = shape.effective_args();
     assert_eq!(
         effective.len(),
@@ -133,12 +138,10 @@ fn effective_args_unwraps_apply_invocation() {
 }
 
 #[test]
-fn call_fact_returns_none_for_unknown_id() {
+fn call_shape_returns_none_for_unknown_id() {
     let (stream, _effects) = collect_effects("const x = 1;");
     let unknown = FactId::from_test(u32::MAX);
-    let cref = stream.call_effect(unknown);
-    assert!(cref.call_fact().is_none());
-    assert!(cref.shape().is_none());
+    assert!(stream.call_shape(unknown).is_none());
 }
 
 #[test]

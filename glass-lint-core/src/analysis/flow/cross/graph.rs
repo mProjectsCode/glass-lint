@@ -27,8 +27,7 @@ impl QualifiedCallGraph {
                     continue;
                 }
                 for call in effect.calls() {
-                    let cref = stream.call_effect(call.event());
-                    let Some(shape) = cref.shape() else {
+                    let Some(shape) = stream.call_shape(call.event()) else {
                         continue;
                     };
                     let provenance = shape.provenance();

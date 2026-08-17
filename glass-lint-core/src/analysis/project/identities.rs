@@ -34,8 +34,7 @@ impl ProjectSemanticModel {
         let stream = module.local().facts().stream();
         for effect in module.local().effects().iter_effects() {
             for call in effect.calls() {
-                let cref = stream.call_effect(call.event());
-                let Some(shape) = cref.shape() else {
+                let Some(shape) = stream.call_shape(call.event()) else {
                     continue;
                 };
                 let Some(identity) = self.call_result_identity(importer, &shape, session) else {

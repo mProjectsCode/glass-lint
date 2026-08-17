@@ -142,7 +142,6 @@ impl FlowSources {
                     continue;
                 }
                 for call in effect.calls() {
-                    let cref = stream.call_effect(call.event());
                     let Some(target) =
                         call_graph.get(QualifiedEvent::new(module.id(), call.event()))
                     else {
@@ -152,8 +151,8 @@ impl FlowSources {
                         continue;
                     };
 
-                    let result = cref
-                        .shape()
+                    let result = stream
+                        .call_shape(call.event())
                         .map_or(ValueId::UNKNOWN, |shape| shape.result());
                     let to = SourceKey::new(module.id(), effect.id(), result);
 
@@ -220,8 +219,7 @@ impl FlowSources {
                     continue;
                 }
                 for call in effect.calls() {
-                    let cref = stream.call_effect(call.event());
-                    let Some(shape) = cref.shape() else {
+                    let Some(shape) = stream.call_shape(call.event()) else {
                         continue;
                     };
                     let args = shape.effective_args();

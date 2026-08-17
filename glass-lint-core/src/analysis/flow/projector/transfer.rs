@@ -20,16 +20,14 @@ impl ObjectFlowProjector<'_, '_, '_> {
         if target == ValueId::UNKNOWN {
             return;
         }
-        if let Some(fact_id) = self.inputs.calls_by_result.get(&source).copied() {
-            let cref = self.inputs.stream.call_effect(fact_id);
-            if let Some(shape) = cref.shape()
-                && let Some((object, states)) =
-                    self.match_source(&shape, shape.effective_args(), fact_id)
-            {
-                let aliases = self.value_aliases(target);
-                self.flow_state.admit_object(&aliases, object, states);
-                return;
-            }
+        if let Some(fact_id) = self.inputs.calls_by_result.get(&source).copied()
+            && let Some(shape) = self.inputs.stream.call_shape(fact_id)
+            && let Some((object, states)) =
+                self.match_source(&shape, shape.effective_args(), fact_id)
+        {
+            let aliases = self.value_aliases(target);
+            self.flow_state.admit_object(&aliases, object, states);
+            return;
         }
         if let Some(object) = self.object_for(source) {
             self.bind_value(target, object);

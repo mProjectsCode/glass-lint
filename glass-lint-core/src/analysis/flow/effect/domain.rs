@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen},
-    model::{fact::CallEvent, scope::FunctionId, value::ValueId},
+    model::{scope::FunctionId, value::ValueId},
     syntax::SymbolCallProvenance,
 };
 
@@ -77,12 +77,6 @@ pub(in crate::analysis) struct ReturnProjection {
     pub(in crate::analysis::flow::effect) provenance: SymbolCallProvenance,
 }
 
-#[derive(Clone, Copy)]
-pub(in crate::analysis) struct CallEffectRef<'stream> {
-    stream: &'stream FactStream<Frozen>,
-    event: FactId,
-}
-
 pub(in crate::analysis) struct CallShape<'a> {
     chain: Option<&'a NamePath>,
     rooted: bool,
@@ -133,27 +127,13 @@ impl EffectCall {
 }
 
 impl FactStream<Frozen> {
-    /// Creates a call-effect view for `event` while retaining the stream's
-    /// borrow and the existing fail-closed behavior for unknown fact IDs.
-    pub(in crate::analysis) fn call_effect(&self, event: FactId) -> CallEffectRef<'_> {
-        CallEffectRef {
-            stream: self,
-            event,
-        }
-    }
-}
-
-impl CallEffectRef<'_> {
-    pub(super) fn call_fact(&self) -> Option<&CallEvent> {
-        let fact = self.stream.fact(self.event)?;
+    /// Resolve a call fact into its matching shape, failing closed for unknown
+    /// IDs and non-call facts.
+    pub(in crate::analysis) fn call_shape(&self, event: FactId) -> Option<CallShape<'_>> {
+        let fact = self.fact(event)?;
         let FactPayload::Call(call) = fact.payload() else {
             return None;
         };
-        Some(call)
-    }
-
-    pub(in crate::analysis) fn shape(&self) -> Option<CallShape<'_>> {
-        let call = self.call_fact()?;
         let chain = call
             .unwrap()
             .and_then(|call| call.chain_path.as_ref())
@@ -165,8 +145,8 @@ impl CallEffectRef<'_> {
         };
         let callee_chain = if chain.is_none() {
             call.callee_name()
-                .and_then(|id| self.stream.resolve_name(id))
-                .and_then(|name| self.stream.names().lookup_path(&SymbolPath::from(name)))
+                .and_then(|id| self.resolve_name(id))
+                .and_then(|name| self.names().lookup_path(&SymbolPath::from(name)))
         } else {
             None
         };

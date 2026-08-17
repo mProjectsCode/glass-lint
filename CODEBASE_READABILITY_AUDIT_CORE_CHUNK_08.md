@@ -155,7 +155,7 @@ fact sequence.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — `CallEffectRef` is a two-step borrow wrapper whose only production method is `shape()`; `call_fact` is test-only
+#### [x] READ-004 — `CallEffectRef` is a two-step borrow wrapper whose only production method is `shape()`; `call_fact` is test-only
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -188,7 +188,10 @@ borrow must continue to allow `&mut self` projector calls after shape creation
 projector), and the failing-path unit test asserts `stream.call_shape(unknown)
 .is_none()`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `FactStream::call_effect` and `CallEffectRef` with
+the owner method `FactStream::call_shape`. Production callers and the unknown
+fact test now use the direct fail-closed lookup; chain resolution and borrow
+behavior remain unchanged.
 
 ### Shared argument matching (`flow/matcher.rs`)
 

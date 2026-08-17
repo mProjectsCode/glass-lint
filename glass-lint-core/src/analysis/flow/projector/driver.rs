@@ -245,8 +245,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let FactPayload::Call(call) = fact.payload() else {
             return;
         };
-        let cref = self.inputs.stream.call_effect(fact.id());
-        let Some(shape) = cref.shape() else {
+        let Some(shape) = self.inputs.stream.call_shape(fact.id()) else {
             if let Some(function) = call.target_function() {
                 self.record_helper_sink(function, call.args(), fact.id());
             }
