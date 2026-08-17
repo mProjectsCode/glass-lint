@@ -17,6 +17,58 @@ pub struct AnalysisOperationCounts {
 }
 
 impl AnalysisOperationCounts {
+    pub(crate) fn record_files(&mut self, value: usize) {
+        self.files = value;
+    }
+
+    pub(crate) fn record_requests(&mut self, value: usize) {
+        self.requests = value;
+    }
+
+    pub(crate) fn record_edges(&mut self, value: usize) {
+        self.edges = value;
+    }
+
+    pub(crate) fn record_exports(&mut self, value: usize) {
+        self.exports = value;
+    }
+
+    pub(crate) fn record_scc_rounds(&mut self, value: usize) {
+        self.scc_rounds = value;
+    }
+
+    pub(crate) fn record_effect_projections(&mut self, value: usize) {
+        self.effect_projections = value;
+    }
+
+    pub(crate) fn record_evidence(&mut self, value: usize) {
+        self.evidence = value;
+    }
+
+    pub(crate) fn record_max_live_alternatives(&mut self, value: usize) {
+        self.max_live_alternatives = value;
+    }
+
+    pub(crate) fn record_trace_nodes(&mut self, value: usize) {
+        self.trace_nodes = value;
+    }
+
+    pub(crate) fn record_trace_heads(&mut self, value: usize) {
+        self.trace_heads = value;
+    }
+
+    pub(crate) fn record_coalescing_comparisons(&mut self, value: usize) {
+        self.coalescing_comparisons = value;
+    }
+
+    pub(crate) fn record_fixed_point_iterations(&mut self, value: usize) {
+        self.fixed_point_iterations = value;
+    }
+
+    pub(crate) fn record_rendered_traces(&mut self, value: usize) {
+        self.rendered_traces = value;
+    }
+
     pub fn files(&self) -> usize {
         self.files
     }
@@ -73,70 +125,6 @@ impl AnalysisOperationCounts {
     /// Number of traces reconstructed into user-facing findings.
     pub fn rendered_traces(&self) -> usize {
         self.rendered_traces
-    }
-}
-
-/// Crate-private phase accumulator for the finalized operation-count DTO.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct AnalysisOperationCountsBuilder {
-    counts: AnalysisOperationCounts,
-}
-
-impl AnalysisOperationCountsBuilder {
-    pub(crate) fn record_files(&mut self, value: usize) {
-        self.counts.files = value;
-    }
-
-    pub(crate) fn record_requests(&mut self, value: usize) {
-        self.counts.requests = value;
-    }
-
-    pub(crate) fn record_edges(&mut self, value: usize) {
-        self.counts.edges = value;
-    }
-
-    pub(crate) fn record_exports(&mut self, value: usize) {
-        self.counts.exports = value;
-    }
-
-    pub(crate) fn record_scc_rounds(&mut self, value: usize) {
-        self.counts.scc_rounds = value;
-    }
-
-    pub(crate) fn record_effect_projections(&mut self, value: usize) {
-        self.counts.effect_projections = value;
-    }
-
-    pub(crate) fn record_evidence(&mut self, value: usize) {
-        self.counts.evidence = value;
-    }
-
-    pub(crate) fn record_max_live_alternatives(&mut self, value: usize) {
-        self.counts.max_live_alternatives = value;
-    }
-
-    pub(crate) fn record_trace_nodes(&mut self, value: usize) {
-        self.counts.trace_nodes = value;
-    }
-
-    pub(crate) fn record_trace_heads(&mut self, value: usize) {
-        self.counts.trace_heads = value;
-    }
-
-    pub(crate) fn record_coalescing_comparisons(&mut self, value: usize) {
-        self.counts.coalescing_comparisons = value;
-    }
-
-    pub(crate) fn record_fixed_point_iterations(&mut self, value: usize) {
-        self.counts.fixed_point_iterations = value;
-    }
-
-    pub(crate) fn record_rendered_traces(&mut self, value: usize) {
-        self.counts.rendered_traces = value;
-    }
-
-    pub(crate) fn finish(self) -> AnalysisOperationCounts {
-        self.counts
     }
 }
 

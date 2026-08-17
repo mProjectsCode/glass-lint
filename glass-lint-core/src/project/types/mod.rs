@@ -16,7 +16,6 @@ pub use input::{
     SourceText,
 };
 pub(crate) use input::{LinkedModuleTarget, ModuleId};
-pub(crate) use report::AnalysisOperationCountsBuilder;
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
     DiagnosticCode, DiagnosticKind, EvidenceConstructionError, EvidenceRole, EvidenceStep,

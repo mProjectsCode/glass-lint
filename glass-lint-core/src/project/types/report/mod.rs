@@ -16,4 +16,4 @@ pub use evidence::{
 pub use file_report::FileReport;
 pub use finding::{Finding, MatchCertainty};
 pub use location::SourceLocation;
-pub use operations::{AnalysisOperationCounts, AnalysisOperationCountsBuilder};
+pub use operations::AnalysisOperationCounts;

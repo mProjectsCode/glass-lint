@@ -7,8 +7,7 @@ use crate::{
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
-        ReportCompletion, SourceFile, SourceLocation, SourceText,
-        types::{AnalysisOperationCountsBuilder, DiagnosticCode},
+        ReportCompletion, SourceFile, SourceLocation, SourceText, types::DiagnosticCode,
     },
 };
 
@@ -33,7 +32,7 @@ fn operation_counts(
     effect_projections: usize,
     evidence: usize,
 ) -> AnalysisOperationCounts {
-    let mut counts = AnalysisOperationCountsBuilder::default();
+    let mut counts = AnalysisOperationCounts::default();
     counts.record_files(files);
     counts.record_requests(requests);
     counts.record_edges(edges);
@@ -41,7 +40,7 @@ fn operation_counts(
     counts.record_scc_rounds(scc_rounds);
     counts.record_effect_projections(effect_projections);
     counts.record_evidence(evidence);
-    counts.finish()
+    counts
 }
 
 fn operation_counts_with_path(
@@ -52,14 +51,14 @@ fn operation_counts_with_path(
     fixed_point_iterations: usize,
     rendered_traces: usize,
 ) -> AnalysisOperationCounts {
-    let mut counts = AnalysisOperationCountsBuilder::default();
+    let mut counts = AnalysisOperationCounts::default();
     counts.record_max_live_alternatives(max_live_alternatives);
     counts.record_trace_nodes(trace_nodes);
     counts.record_trace_heads(trace_heads);
     counts.record_coalescing_comparisons(coalescing_comparisons);
     counts.record_fixed_point_iterations(fixed_point_iterations);
     counts.record_rendered_traces(rendered_traces);
-    counts.finish()
+    counts
 }
 
 fn finding() -> Finding {

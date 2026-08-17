@@ -72,7 +72,7 @@ always reflects the current files/diagnostics after `finalize`.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `AnalysisOperationCountsBuilder` duplicates the whole DTO as a write-side proxy
+#### [x] READ-002 — `AnalysisOperationCountsBuilder` duplicates the whole DTO as a write-side proxy
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -105,7 +105,10 @@ getters immutable, and preserve the saturating `AddAssign` used by
 `AnalysisReport::merge` plus the `max_live_alternatives`-via-`max` rule
 (operations.rs:143-164).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `AnalysisOperationCountsBuilder` and moved its
+crate-private recording methods onto `AnalysisOperationCounts`. Callers now
+mutate and pass the DTO directly; its defaulting, getters, and saturating merge
+behavior remain unchanged.
 
 ### Diagnostic construction
 

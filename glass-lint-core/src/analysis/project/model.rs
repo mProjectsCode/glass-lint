@@ -435,8 +435,8 @@ impl ProjectSemanticModel {
     }
 
     /// Return deterministic phase and evidence operation counts.
-    pub(crate) fn operation_counts(&self) -> crate::project::types::AnalysisOperationCountsBuilder {
-        let mut counts = crate::project::types::AnalysisOperationCountsBuilder::default();
+    pub(crate) fn operation_counts(&self) -> crate::project::types::AnalysisOperationCounts {
+        let mut counts = crate::project::types::AnalysisOperationCounts::default();
         counts.record_files(self.linked.modules.len());
         counts.record_requests(
             self.linked

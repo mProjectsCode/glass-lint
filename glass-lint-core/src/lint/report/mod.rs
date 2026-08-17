@@ -154,7 +154,7 @@ impl ProjectReportAssembler {
             session.record_parse_failure(path, failure);
         }
         let linking = linking_start.elapsed();
-        let link_counts = project.operation_counts().finish();
+        let link_counts = project.operation_counts();
 
         tracing::info!(
             target: "glass_lint::project::link",

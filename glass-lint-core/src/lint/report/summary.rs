@@ -31,7 +31,7 @@ pub(super) fn assemble_project_report(
         env!("CARGO_PKG_VERSION").into(),
         files,
         diagnostics,
-        operations.finish(),
+        operations,
         if session.is_complete() {
             ReportCompletion::Complete
         } else {
