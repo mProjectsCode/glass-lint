@@ -252,7 +252,7 @@ they bound different quantities.
 
 ### Documentation and newtypes
 
-#### [ ] READ-006 — Declaration and IR emptiness policies are two implementations of one rule
+#### [x] READ-006 — Declaration and IR emptiness policies are two implementations of one rule
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -278,7 +278,10 @@ asserting `IdentityConstraint::from(spec).is_empty() == is_identity_empty(spec)`
 for every variant. Recorded here only so this chunk's compiler-surface coverage
 is complete; do not double-apply the fix.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolved by the shared implementation in commit `fd7de45a`
+(`fix chunk 21 read 002`), which centralizes the identity emptiness policy and
+adds parity coverage. No duplicate implementation is introduced in this
+cross-reference.
 
 ### Compiler boundaries
 
