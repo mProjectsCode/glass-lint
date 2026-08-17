@@ -84,6 +84,7 @@ pub use query::{
 pub use taxonomy::Confidence;
 
 pub use crate::Severity;
+use crate::rule_id::RuleName;
 
 #[derive(Debug, Clone)]
 /// Validated provider rule with canonical query declarations.
@@ -92,7 +93,7 @@ pub use crate::Severity;
 /// after which the source declarations are not retained.
 pub struct Rule {
     /// Provider-local stable rule name.
-    id: String,
+    id: RuleName,
     /// Human-readable rule description.
     description: String,
     /// Report severity.
@@ -126,6 +127,10 @@ impl Rule {
     #[must_use]
     /// Borrow the provider-local stable rule name.
     pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    pub(crate) fn id_name(&self) -> &RuleName {
         &self.id
     }
 
@@ -268,9 +273,7 @@ impl RuleBuilder {
         if id.is_empty() {
             return Err(RuleBuildError::MissingId);
         }
-        if !crate::RuleId::valid_name(&id) {
-            return Err(RuleBuildError::InvalidId(id));
-        }
+        let id = RuleName::new(id).map_err(RuleBuildError::InvalidId)?;
         Ok(Rule {
             id,
             description,

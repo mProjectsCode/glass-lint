@@ -108,7 +108,7 @@ impl RuleCatalog {
         let rules_and_ids = rules
             .into_iter()
             .map(|rule| {
-                let rule_id = RuleId::from_provider_and_name(&provider, rule.id())?;
+                let rule_id = RuleId::from_valid_provider_and_name(&provider, rule.id_name());
                 Ok((rule_id, rule))
             })
             .collect::<Result<Vec<_>, ProviderCatalogError>>()?;

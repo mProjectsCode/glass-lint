@@ -222,7 +222,7 @@ and lifecycle-builder visibility remain unchanged.
 
 ### Rule identifier validation
 
-#### [ ] READ-005 — The provider-local rule-name check runs twice: `RuleBuilder::build` and `RuleCatalog::new`
+#### [x] READ-005 — The provider-local rule-name check runs twice: `RuleBuilder::build` and `RuleCatalog::new`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -254,7 +254,11 @@ from the namespaced `provider:name` form; the catalog must still reject an
 invalid provider argument that produces an invalid namespaced id; update
 fixtures/providers only if the `Rule::id()` accessor spelling changes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the crate-internal `RuleName` semantic type. `RuleBuilder`
+constructs it after trimming and validating the provider-local name, while
+`RuleCatalog` validates its provider once and combines it with that validated
+name. `RuleId` remains the namespaced identity type and the public `Rule::id()`
+string view is unchanged.
 
 ### Test-only accessors and dead weight
 

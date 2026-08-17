@@ -11,6 +11,23 @@ use serde::{Deserialize, Serialize};
 /// Canonical `provider:name` rule identifier.
 pub struct RuleId(String);
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct RuleName(String);
+
+impl RuleName {
+    pub fn new(value: String) -> Result<Self, String> {
+        if RuleId::valid_name(&value) {
+            Ok(Self(value))
+        } else {
+            Err(value)
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl RuleId {
     /// Validate the name portion used by provider-local rule builders.
     ///
@@ -37,6 +54,10 @@ impl RuleId {
             )));
         }
         Ok(Self(format!("{provider}:{name}")))
+    }
+
+    pub(crate) fn from_valid_provider_and_name(provider: &str, name: &RuleName) -> Self {
+        Self(format!("{provider}:{}", name.as_str()))
     }
 
     /// Parse and validate a namespaced rule ID.
