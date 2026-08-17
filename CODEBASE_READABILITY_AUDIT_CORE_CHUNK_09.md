@@ -106,7 +106,7 @@ behavior.
 
 ### Projector state machine (`mod.rs`)
 
-#### [ ] READ-003 — `ProjectionPathMachine` is a named namespace, not an owner
+#### [x] READ-003 — `ProjectionPathMachine` is a named namespace, not an owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -137,7 +137,12 @@ gains operations. Guardrails: preserve the per-fact order restore → transfer �
 capture → finalize-pending → join, and the strict generation-based rejection of
 foreign path tokens (tests.rs:77-90).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added narrow machine-owned operations for batch lifecycle,
+pending-state finalization and queueing, and binding representative lookup.
+The projector now delegates those invariants through `ProjectionPathMachine`
+while control-stack and frontier storage remain in their owning types. Path
+token generation and restore/transfer/capture/finalize/join ordering are
+unchanged. Verified with projector tests, clippy, `make fmt`, and `make ci`.
 
 #### [x] READ-004 — `PendingFlowStateFinal` is a single-use intermediate that re-decomposes its key
 

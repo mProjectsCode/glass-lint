@@ -2,9 +2,8 @@ use std::collections::BTreeSet;
 
 use super::{
     AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot, FlowStateTable,
-    LocalFlowProjectionOutcome, ObjectFlowProjector, PendingFlowKey, PendingState,
-    ProjectionInputs, ProjectionPathMachine, ProjectionRunState, PropertyWriteUpdate,
-    loops::LoopFixedPoint, state::LoopSeed,
+    LocalFlowProjectionOutcome, ObjectFlowProjector, ProjectionInputs, ProjectionPathMachine,
+    ProjectionRunState, PropertyWriteUpdate, loops::LoopFixedPoint, state::LoopSeed,
 };
 use crate::{
     analysis::{
@@ -88,7 +87,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         if finalize && incoming.is_empty() {
             return;
         }
-        self.paths.frontier.begin_batch(incoming.len());
+        self.paths.begin_batch(incoming.len());
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
             match self.restore_path(environment) {
@@ -96,7 +95,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 PathRestoration::Failed => continue,
                 PathRestoration::Ready => {}
             }
-            self.paths.frontier.select_path(path_index);
+            self.paths.select_path(path_index);
             transfer(self);
             if self.run.reachable {
                 outgoing.push(self.environment());
@@ -109,7 +108,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         }
         let paths = self.paths.frontier.take_paths();
         self.join_paths(paths);
-        self.paths.frontier.end_batch();
+        self.paths.end_batch();
     }
 
     fn transfer_fact(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -325,13 +324,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn finalize_pending(&mut self) {
-        let Some(active_paths) = self.paths.frontier.active_paths() else {
+        let Some(finalized) = self.paths.finalize_pending(self.run.alternatives_complete) else {
             return;
         };
-        let finalized = self
-            .paths
-            .pending
-            .finalize(active_paths, self.run.alternatives_complete);
         for (event, certainty, states) in finalized {
             for pending in states {
                 self.emit_state_final(&pending.state, event, certainty);
@@ -340,16 +335,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn queue_state(&mut self, state: FlowState, event: FactId) {
-        let Some(path) = self.paths.frontier.active_path() else {
-            return;
-        };
-        self.paths
-            .pending
-            .entry(PendingFlowKey {
-                flow: state.flow_id(),
-                event,
-            })
-            .push(PendingState { path, state });
+        self.paths.queue_state(state, event);
     }
 
     fn record_property_write(
@@ -412,7 +398,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             values.push(resolved);
         }
         if let Some(slot) = self.inputs.stream.values().binding_slot(value) {
-            let representative = *self.paths.binding_slots.entry(slot).or_insert(value);
+            let representative = self.paths.binding_representative(slot, value);
             if !values.contains(&representative) {
                 values.push(representative);
             }

@@ -211,6 +211,42 @@ impl ProjectionPathMachine {
             binding_slots: BTreeMap::new(),
         }
     }
+
+    fn begin_batch(&mut self, count: usize) {
+        self.frontier.begin_batch(count);
+    }
+
+    fn select_path(&mut self, index: usize) -> bool {
+        self.frontier.select_path(index)
+    }
+
+    fn end_batch(&mut self) {
+        self.frontier.end_batch();
+    }
+
+    fn finalize_pending(
+        &mut self,
+        alternatives_complete: AlternativeCompleteness,
+    ) -> Option<Vec<(FactId, MatchCertainty, Vec<PendingState>)>> {
+        let active_paths = self.frontier.active_paths()?;
+        Some(self.pending.finalize(active_paths, alternatives_complete))
+    }
+
+    fn queue_state(&mut self, state: FlowState, event: FactId) {
+        let Some(path) = self.frontier.active_path() else {
+            return;
+        };
+        self.pending
+            .entry(PendingFlowKey {
+                flow: state.flow_id(),
+                event,
+            })
+            .push(PendingState { path, state });
+    }
+
+    fn binding_representative(&mut self, slot: BindingSlot, value: ValueId) -> ValueId {
+        *self.binding_slots.entry(slot).or_insert(value)
+    }
 }
 
 #[derive(Debug)]
