@@ -221,7 +221,7 @@ by the matcher evaluator.
 
 ### [api::compiler::physical]
 
-#### [ ] READ-005 — Physical ObjectSlot is written in the compiled plan but never read by production execution
+#### [x] READ-005 — Physical ObjectSlot is written in the compiled plan but never read by production execution
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -258,6 +258,11 @@ if the plan must retain an artifact-local slot, add a comment on `PhysicalRoot`
 explaining why execution ignores it. Guardrail: keep the fail-closed `u32::MAX`
 rejection and the plan's `PartialOrd/Ord` determinism (the remaining root fields
 fully determine a root); never expose the slot value.
+
+**Fix Applied:** Removed the unused physical `ObjectSlot` field, conversion, and
+display implementation from returned and instance subject roots. Their
+constructors still reject the `u32::MAX` sentinel before constructing a root;
+planner validation, execution, and explanations now carry only consumed fields.
 
 ## Systemic Themes
 

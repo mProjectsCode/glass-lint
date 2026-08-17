@@ -53,40 +53,18 @@ pub(crate) enum PhysicalRoot {
     },
     ReturnedSubject {
         producer: IdentityConstraint,
-        object_slot: ObjectSlot,
         member: SymbolPath,
         event: EventSpec,
         evidence: EvidenceDescriptor,
     },
     InstanceSubject {
         constructor: IdentityConstraint,
-        object_slot: ObjectSlot,
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     },
     Lifecycle {
         flow: CompiledObjectFlow,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct ObjectSlot(u32);
-
-impl TryFrom<NormalizedObjectSlot> for ObjectSlot {
-    type Error = PhysicalPlanValidationError;
-
-    fn try_from(slot: NormalizedObjectSlot) -> Result<Self, Self::Error> {
-        let value = slot.get();
-        (value != u32::MAX)
-            .then_some(Self(value))
-            .ok_or(PhysicalPlanValidationError::ImpossibleDimensions)
-    }
-}
-
-impl std::fmt::Display for ObjectSlot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
 }
 
 impl PhysicalRoot {
@@ -123,9 +101,11 @@ impl PhysicalRoot {
         event: EventSpec,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
+        if object_slot.get() == u32::MAX {
+            return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+        }
         Ok(Self::ReturnedSubject {
             producer,
-            object_slot: ObjectSlot::try_from(object_slot)?,
             member,
             event,
             evidence,
@@ -138,9 +118,11 @@ impl PhysicalRoot {
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
+        if object_slot.get() == u32::MAX {
+            return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+        }
         Ok(Self::InstanceSubject {
             constructor,
-            object_slot: ObjectSlot::try_from(object_slot)?,
             member,
             evidence,
         })
@@ -200,7 +182,6 @@ impl PhysicalRoot {
             }
             Self::ReturnedSubject {
                 producer,
-                object_slot: _,
                 member,
                 event,
                 evidence,
@@ -223,7 +204,6 @@ impl PhysicalRoot {
             }
             Self::InstanceSubject {
                 constructor,
-                object_slot: _,
                 member,
                 evidence,
                 ..
@@ -457,19 +437,17 @@ fn explain_root(root: &PhysicalRoot) -> String {
             producer,
             member,
             event,
-            object_slot,
             evidence,
         } => format!(
-            "returned_subject producer={producer:?} member={member} event={event:?} slot={object_slot} evidence={:?}:{}",
+            "returned_subject producer={producer:?} member={member} event={event:?} evidence={:?}:{}",
             evidence.kind, evidence.symbol
         ),
         PhysicalRoot::InstanceSubject {
             constructor,
             member,
-            object_slot,
             evidence,
         } => format!(
-            "instance_subject constructor={constructor:?} member={member} slot={object_slot} evidence={:?}:{}",
+            "instance_subject constructor={constructor:?} member={member} evidence={:?}:{}",
             evidence.kind, evidence.symbol
         ),
         PhysicalRoot::Lifecycle { flow } => format!("lifecycle {flow:?}"),
