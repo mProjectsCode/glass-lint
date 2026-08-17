@@ -16,7 +16,7 @@ use crate::{
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
-            resolver::ExportResolver,
+            resolver,
             state::{ExportLookupCache, ExportTable},
         },
         semantic::status::AnalysisStatus,
@@ -332,13 +332,15 @@ impl ProjectSemanticModel {
         authored_export: &SmolStr,
         cache: &mut ExportLookupCache,
     ) -> ExportResolution {
-        ExportResolver::from_maps(
+        resolver::with_export_resolver(
             &self.linked.modules,
             &self.linked.resolutions,
             &self.linked.exports,
             cache,
+            |resolver| {
+                resolver.resolve_imported_identity(importer, authored_module, authored_export)
+            },
         )
-        .resolve_imported_identity(importer, authored_module, authored_export)
     }
 
     pub(in crate::analysis) fn effect(

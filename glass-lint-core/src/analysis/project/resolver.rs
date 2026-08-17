@@ -1,6 +1,6 @@
 //! Shared bounded export lookup for the linker and post-link semantic model.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use smol_str::{SmolStr, ToSmolStr};
 
@@ -16,42 +16,9 @@ use crate::{
     project::{ResolvedTargetKind, is_internal_module_request as is_internal_request},
 };
 
-/// Borrowed lookup view shared by transient linking and the final model.
-pub(super) struct ProjectLookupView<'a> {
-    modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
-    resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-}
-
-impl<'a> ProjectLookupView<'a> {
-    pub(super) fn new(
-        modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
-        resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    ) -> Self {
-        Self {
-            modules,
-            resolutions,
-        }
-    }
-}
-
-impl ProjectLookupView<'_> {
-    fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
-        self.modules.get(&module)
-    }
-
-    fn request_target(
-        &self,
-        module: ModuleId,
-        request: ModuleRequestId,
-    ) -> Option<&LinkedModuleTarget> {
-        self.modules.get(&module)?;
-        self.resolutions
-            .get(&QualifiedRequestId::new(module, request))
-    }
-}
-
 pub(super) struct ExportResolver<'a> {
-    project: ProjectLookupView<'a>,
+    modules: &'a BTreeMap<ModuleId, ProjectModule>,
+    resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     exports: &'a ExportTable,
     cache: &'a mut ExportLookupCache,
 }
@@ -76,20 +43,39 @@ impl ExportLookupContext {
     }
 }
 
-impl<'a> ExportResolver<'a> {
-    pub(super) fn from_maps(
-        modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
-        resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-        exports: &'a ExportTable,
-        cache: &'a mut ExportLookupCache,
-    ) -> Self {
-        Self {
-            project: ProjectLookupView::new(modules, resolutions),
-            exports,
-            cache,
-        }
+impl ExportResolver<'_> {
+    fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
+        self.modules.get(&module)
     }
 
+    fn request_target(
+        &self,
+        module: ModuleId,
+        request: ModuleRequestId,
+    ) -> Option<&LinkedModuleTarget> {
+        self.modules.get(&module)?;
+        self.resolutions
+            .get(&QualifiedRequestId::new(module, request))
+    }
+}
+
+pub(super) fn with_export_resolver<T>(
+    modules: &BTreeMap<ModuleId, ProjectModule>,
+    resolutions: &BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    exports: &ExportTable,
+    cache: &mut ExportLookupCache,
+    operation: impl FnOnce(&mut ExportResolver<'_>) -> T,
+) -> T {
+    let mut resolver = ExportResolver {
+        modules,
+        resolutions,
+        exports,
+        cache,
+    };
+    operation(&mut resolver)
+}
+
+impl ExportResolver<'_> {
     /// Resolve an authored module/export pair across all matching requests.
     /// Conflicting request answers remain unknown rather than source-order
     /// dependent.
@@ -100,7 +86,6 @@ impl<'a> ExportResolver<'a> {
         authored_export: &SmolStr,
     ) -> ExportResolution {
         let Some(interface) = self
-            .project
             .module(importer)
             .map(|module| module.local().interface())
         else {
@@ -152,7 +137,7 @@ impl<'a> ExportResolver<'a> {
         request: ModuleRequestId,
         exported: &SmolStr,
     ) -> Option<ExportResolution> {
-        match self.project.request_target(module, request) {
+        match self.request_target(module, request) {
             Some(LinkedModuleTarget::Internal { id }) => {
                 self.lookup_export(&QualifiedExportId::new(*id, exported.clone()))
             }
@@ -166,7 +151,9 @@ impl<'a> ExportResolver<'a> {
         let mut context = ExportLookupContext::new();
         self.lookup_export_inner(id, &mut context)
     }
+}
 
+impl ExportResolver<'_> {
     fn lookup_export_inner(
         &mut self,
         id: &QualifiedExportId,
@@ -195,7 +182,6 @@ impl<'a> ExportResolver<'a> {
             return None;
         }
         let is_unknown = self
-            .project
             .module(id.module())
             .map(|module| module.local().interface().is_unknown())?;
         if is_unknown {
@@ -216,7 +202,6 @@ impl<'a> ExportResolver<'a> {
         let module = id.module();
         let export_name = id.name().clone();
         let star_exports = self
-            .project
             .module(module)
             .map(|module| {
                 module
@@ -230,7 +215,7 @@ impl<'a> ExportResolver<'a> {
         let mut candidate = None;
         let mut saw_unknown = false;
         for request_index in star_exports {
-            let Some(project_module) = self.project.module(module) else {
+            let Some(project_module) = self.module(module) else {
                 saw_unknown = true;
                 continue;
             };
@@ -242,7 +227,7 @@ impl<'a> ExportResolver<'a> {
                 saw_unknown = true;
                 continue;
             }
-            let candidate_export = match self.project.request_target(module, request_index) {
+            let candidate_export = match self.request_target(module, request_index) {
                 Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export_inner(
                     &QualifiedExportId::new(*target, export_name.clone()),
                     context,

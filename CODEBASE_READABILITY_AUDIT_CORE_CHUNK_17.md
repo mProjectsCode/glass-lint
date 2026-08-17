@@ -111,7 +111,7 @@ budget state must not survive into the immutable model; `edge_count` (from
 
 ### Export lookup layer (`analysis/project/resolver.rs`, `linker/mod.rs`, `model.rs`)
 
-#### [ ] READ-003 — `ExportResolver` wiring is duplicated across the two owners and `ProjectLookupView` is a single-consumer view
+#### [x] READ-003 — `ExportResolver` wiring is duplicated across the two owners and `ProjectLookupView` is a single-consumer view
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -144,7 +144,12 @@ the two distinct fallback behaviors (`target_to_export_resolution` with the
 absent-target/`is_internal_request` fallback vs
 `linked_target_to_export_resolution` for a known target) must stay separate.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the single-consumer `ProjectLookupView` and stored the
+module and resolution maps directly on `ExportResolver`. Added one shared
+`with_export_resolver` construction helper used by both the transient linker
+and post-link model; each owner still passes its own bounded lookup cache.
+The absent-target authored-specifier fallback and known-target conversion
+remain separate.
 
 ### Projection public surface (`analysis/project/projection.rs`, `analysis/project/model.rs`)
 

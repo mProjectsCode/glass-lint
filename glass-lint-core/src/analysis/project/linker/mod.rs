@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::BudgetTracker;
 
-use super::resolver::ExportResolver;
+use super::resolver::{self, ExportResolver};
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
@@ -49,12 +49,13 @@ impl ProjectLinker {
         &mut self,
         operation: impl FnOnce(&mut ExportResolver<'_>) -> T,
     ) -> T {
-        operation(&mut ExportResolver::from_maps(
+        resolver::with_export_resolver(
             &self.modules,
             &self.resolutions,
             &self.exports,
             &mut self.lookup_session,
-        ))
+            operation,
+        )
     }
 
     /// Build a linker from pre-validated modules and resolutions.
