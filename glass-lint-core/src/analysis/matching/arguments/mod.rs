@@ -6,11 +6,12 @@ use crate::{
     analysis::{
         facts::{FactPayload, FactStream, Frozen, SemanticFacts},
         matching::{
-            LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
-            evidence::EvidenceGroup,
+            LinkedOccurrenceView, ModuleExportKey, ModuleIdentityMap, Occurrence,
+            OccurrenceIndexes, evidence::EvidenceGroup,
         },
-        model::value::ValueId,
+        model::value::{Value, ValueId},
         project::model::ExportResolution,
+        syntax::SymbolCallProvenance,
     },
     api::{
         classification::{RuleEvidenceError, RuleEvidenceTable, RuleIndex},
@@ -266,6 +267,44 @@ impl<'a> MatcherProjectOverlay<'a> {
             identities,
             result_identities,
         }
+    }
+
+    fn module_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
+        let (module, export) = provenance.module_export_parts()?;
+        self.identities?.get(&ModuleExportKey::new(module, export))
+    }
+
+    fn result_identity(&self, value: ValueId) -> Option<&ExportResolution> {
+        self.result_identities?.get(&value)
+    }
+
+    fn effective_identity(
+        &self,
+        value: ValueId,
+        provenance: &SymbolCallProvenance,
+    ) -> Option<&ExportResolution> {
+        self.result_identity(value)
+            .or_else(|| self.module_identity(provenance))
+    }
+
+    fn static_string<'b>(
+        &'b self,
+        value: ValueId,
+        provenance: &SymbolCallProvenance,
+        local_value: Option<&'b Value>,
+    ) -> Option<&'b str> {
+        self.effective_identity(value, provenance)
+            .and_then(ExportResolution::static_string_value)
+            .or_else(|| match local_value? {
+                Value::StaticString(value) => Some(value.as_str()),
+                _ => None,
+            })
+    }
+
+    fn call_provenance(&self, raw: &SymbolCallProvenance, callee: ValueId) -> SymbolCallProvenance {
+        self.effective_identity(callee, raw)
+            .and_then(ExportResolution::to_call_provenance)
+            .unwrap_or_else(|| raw.clone())
     }
 }
 

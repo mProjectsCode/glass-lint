@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
@@ -7,12 +5,10 @@ use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo, FactPayload, SemanticFact},
         matching::{
-            MatcherProjectOverlay, ModuleExportKey, ModuleIdentityMap,
+            MatcherProjectOverlay,
             arguments::identity::{call_identity_matches, member_identity_matches},
         },
-        model::value::{Value, ValueId, ValueTable},
-        project::model::ExportResolution,
-        syntax::SymbolCallProvenance,
+        model::value::ValueTable,
     },
     api::compiler::{
         normalized::CanonicalArgumentConstraints,
@@ -94,64 +90,7 @@ impl EvaluationOperations {
 pub(super) struct MatcherEvaluator<'a> {
     names: &'a NameTable,
     values: &'a ValueTable,
-    identity: EffectiveIdentityResolver<'a>,
-}
-
-/// Resolves one local value through the project overlay in its canonical
-/// precedence order: call-result identity, module identity, then local value
-/// data. Consumers choose the representation they need after this lookup.
-struct EffectiveIdentityResolver<'a> {
-    identities: Option<&'a ModuleIdentityMap>,
-    result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-}
-
-impl<'a> From<MatcherProjectOverlay<'a>> for EffectiveIdentityResolver<'a> {
-    fn from(overlay: MatcherProjectOverlay<'a>) -> Self {
-        Self {
-            identities: overlay.identities,
-            result_identities: overlay.result_identities,
-        }
-    }
-}
-
-impl EffectiveIdentityResolver<'_> {
-    fn module_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
-        let (module, export) = provenance.module_export_parts()?;
-        self.identities?.get(&ModuleExportKey::new(module, export))
-    }
-
-    fn result_identity(&self, value: ValueId) -> Option<&ExportResolution> {
-        self.result_identities?.get(&value)
-    }
-
-    fn effective_identity(
-        &self,
-        value: ValueId,
-        provenance: &SymbolCallProvenance,
-    ) -> Option<&ExportResolution> {
-        self.result_identity(value)
-            .or_else(|| self.module_identity(provenance))
-    }
-
-    fn static_string<'b>(
-        &'b self,
-        value: ValueId,
-        provenance: &SymbolCallProvenance,
-        local_value: Option<&'b Value>,
-    ) -> Option<&'b str> {
-        self.effective_identity(value, provenance)
-            .and_then(ExportResolution::static_string_value)
-            .or_else(|| match local_value? {
-                Value::StaticString(value) => Some(value.as_str()),
-                _ => None,
-            })
-    }
-
-    fn call_provenance(&self, raw: &SymbolCallProvenance, callee: ValueId) -> SymbolCallProvenance {
-        self.effective_identity(callee, raw)
-            .and_then(ExportResolution::to_call_provenance)
-            .unwrap_or_else(|| raw.clone())
-    }
+    identity: MatcherProjectOverlay<'a>,
 }
 
 impl<'a> MatcherEvaluator<'a> {
@@ -163,7 +102,7 @@ impl<'a> MatcherEvaluator<'a> {
         Self {
             names,
             values,
-            identity: EffectiveIdentityResolver::from(project),
+            identity: project,
         }
     }
 

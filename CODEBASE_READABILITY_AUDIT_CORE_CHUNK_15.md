@@ -64,7 +64,7 @@ survive).
 
 ### Constrained evaluation preparation (`arguments/mod.rs`, `arguments/evaluator.rs`)
 
-#### [ ] READ-001 — `EffectiveIdentityResolver` is a field-for-field copy of `MatcherProjectOverlay` joined by a one-way `From`
+#### [x] READ-001 — `EffectiveIdentityResolver` is a field-for-field copy of `MatcherProjectOverlay` joined by a one-way `From`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
