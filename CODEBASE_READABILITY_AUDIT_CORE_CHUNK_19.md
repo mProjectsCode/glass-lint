@@ -291,7 +291,7 @@ existing iterators.
 
 ### Value matcher composition
 
-#### [ ] READ-007 — `ValueMatcher`'s seed/transform transition silently overwrites the current kind
+#### [x] READ-007 — `ValueMatcher`'s seed/transform transition silently overwrites the current kind
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -324,7 +324,10 @@ chains a predicate off `any_value()` today, the rejection is safe to ship, but
 pin the guard with a negative unit test asserting `any_value().try_equals(..)`
 errors rather than silently converting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Static-string predicate methods now reject a non-static-string
+seed with `StaticStringMatcherRequired` instead of silently replacing the
+matcher kind. Added a negative test for `any_value().try_equals(...)`; existing
+static-string chains remain unchanged.
 
 ## Systemic Themes
 

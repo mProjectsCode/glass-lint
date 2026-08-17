@@ -59,6 +59,14 @@ fn value_matcher_try_equals_rejects_empty_values() {
 }
 
 #[test]
+fn value_matcher_predicates_require_a_static_string_seed() {
+    assert_eq!(
+        ValueMatcher::any_value().try_equals("value"),
+        Err(QueryBuildError::StaticStringMatcherRequired)
+    );
+}
+
+#[test]
 fn value_matcher_starts_with_any_creates_prefix_predicate() {
     let m = ValueMatcher::static_string()
         .starts_with_any(["https://"])

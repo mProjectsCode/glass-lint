@@ -9,6 +9,7 @@ pub enum QueryBuildError {
     EmptyIdentityName,
     EmptyModuleSpecifier,
     EmptyStaticValue,
+    StaticStringMatcherRequired,
     EmptyEvidenceSymbol,
     MalformedChain(String),
     InvalidArgumentIndex(usize),
@@ -37,6 +38,9 @@ impl fmt::Display for QueryBuildError {
             Self::EmptyIdentityName => write!(f, "identity name must not be empty"),
             Self::EmptyModuleSpecifier => write!(f, "module specifier must not be empty"),
             Self::EmptyStaticValue => write!(f, "static value must not be empty"),
+            Self::StaticStringMatcherRequired => {
+                f.write_str("static-string predicates require a static-string matcher")
+            }
             Self::EmptyEvidenceSymbol => write!(f, "evidence symbol must not be empty"),
             Self::MalformedChain(chain) => write!(f, "malformed member chain: {chain}"),
             Self::InvalidArgumentIndex(idx) => write!(

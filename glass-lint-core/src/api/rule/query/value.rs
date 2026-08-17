@@ -112,10 +112,16 @@ where
 }
 
 impl ValueMatcher {
-    #[must_use]
-    fn with_static_predicate(mut self, kind: StaticStringPredicateKind) -> Self {
-        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::new(kind));
-        self
+    fn with_static_predicate(
+        self,
+        kind: StaticStringPredicateKind,
+    ) -> Result<Self, QueryBuildError> {
+        if !matches!(&self.kind, ValueMatcherKind::StaticString(_)) {
+            return Err(QueryBuildError::StaticStringMatcherRequired);
+        }
+        Ok(Self {
+            kind: ValueMatcherKind::StaticString(StaticStringPredicate::new(kind)),
+        })
     }
 
     #[must_use]
@@ -135,7 +141,7 @@ impl ValueMatcher {
     }
 
     pub fn try_equals(self, value: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(self.with_static_predicate(StaticStringPredicateKind::Exact(canonical_exact(value)?)))
+        self.with_static_predicate(StaticStringPredicateKind::Exact(canonical_exact(value)?))
     }
 
     pub fn equals_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
@@ -143,7 +149,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Ok(self.with_static_predicate(StaticStringPredicateKind::Exact(bounded_strings(values)?)))
+        self.with_static_predicate(StaticStringPredicateKind::Exact(bounded_strings(values)?))
     }
 
     pub fn starts_with_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
@@ -151,7 +157,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Ok(self.with_static_predicate(StaticStringPredicateKind::Prefix(bounded_strings(values)?)))
+        self.with_static_predicate(StaticStringPredicateKind::Prefix(bounded_strings(values)?))
     }
 
     pub fn contains_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
@@ -159,11 +165,9 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Ok(
-            self.with_static_predicate(StaticStringPredicateKind::ContainsAny(bounded_strings(
-                values,
-            )?)),
-        )
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAny(bounded_strings(
+            values,
+        )?))
     }
 
     pub fn contains_all<I, S>(self, values: I) -> Result<Self, QueryBuildError>
@@ -171,11 +175,9 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Ok(
-            self.with_static_predicate(StaticStringPredicateKind::ContainsAll(bounded_strings(
-                values,
-            )?)),
-        )
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAll(bounded_strings(
+            values,
+        )?))
     }
 }
 
