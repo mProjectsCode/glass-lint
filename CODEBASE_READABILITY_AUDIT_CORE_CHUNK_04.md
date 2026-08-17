@@ -74,7 +74,9 @@ read-first helper, and keeping charge order identical preserves `NameTable`
 insertion order so `NameId`/budget exhaustion behavior — and therefore artifact
 identity — is unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved both helpers onto `ScopeCollector` and updated their
+callers to use the owner methods. Recognition, fail-closed `Function` lookup,
+and mutable-object recording guards are unchanged.
 
 #### [ ] READ-002 — Reversible-history identity guard and error type conflate two distinct failure causes that only the test suite can reach
 
@@ -248,7 +250,7 @@ and do not make the table positional.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — Two free helpers mutate `ScopeCollector` beside an inherent sibling with the same role
+#### [x] READ-006 — Two free helpers mutate `ScopeCollector` beside an inherent sibling with the same role
 
 - **Severity:** Low
 - **Fix Complexity:** Low

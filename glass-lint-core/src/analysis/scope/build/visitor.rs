@@ -362,7 +362,7 @@ impl ScopePass for ScopeCollector<'_> {
             self.record_declaration_metadata(scope, var_decl.kind, declarator, init);
             self.reset_pat_locals(scope, &declarator.name);
             let derived_function_pattern =
-                collect_derived_function_pattern(self, &declarator.name, init, scope);
+                self.collect_derived_function_pattern(&declarator.name, init, scope);
             self.record_declaration_provenance(
                 scope,
                 &declarator.name,
@@ -486,7 +486,7 @@ impl ScopeCollector<'_> {
     ) {
         let mutable_object =
             init.is_some_and(|init| expression_is_mutable_static_object(self, init, kind));
-        record_mutable_static_object(self, scope, mutable_object, declarator);
+        self.record_mutable_static_object(scope, mutable_object, declarator);
         self.record_pending_function_name(scope, &declarator.name, init);
         self.record_function_alias(scope, &declarator.name, init);
     }
@@ -647,41 +647,41 @@ impl ScopeCollector<'_> {
             });
         }
     }
-}
 
-fn collect_derived_function_pattern(
-    collector: &mut ScopeCollector,
-    pattern: &Pat,
-    init: Option<&Expr>,
-    scope: ScopeId,
-) -> bool {
-    let (Pat::Object(object), Some(init)) = (pattern, init) else {
-        return false;
-    };
-    if !function_prototype_builtin(init).is_some_and(|name| collector.is_unbound(name)) {
-        return false;
-    }
-    for property in &object.props {
-        if let ObjectPatProp::KeyValue(property) = property
-            && literal_property_name(&property.key).as_deref() == Some("constructor")
-            && let Some(target) = collector.name_path(&"Function".into())
-        {
-            collector.collect_value_aliases(&property.value, &target, scope);
+    fn collect_derived_function_pattern(
+        &mut self,
+        pattern: &Pat,
+        init: Option<&Expr>,
+        scope: ScopeId,
+    ) -> bool {
+        let (Pat::Object(object), Some(init)) = (pattern, init) else {
+            return false;
+        };
+        if !function_prototype_builtin(init).is_some_and(|name| self.is_unbound(name)) {
+            return false;
         }
+        for property in &object.props {
+            if let ObjectPatProp::KeyValue(property) = property
+                && literal_property_name(&property.key).as_deref() == Some("constructor")
+                && let Some(target) = self.name_path(&"Function".into())
+            {
+                self.collect_value_aliases(&property.value, &target, scope);
+            }
+        }
+        true
     }
-    true
-}
 
-fn record_mutable_static_object(
-    collector: &mut ScopeCollector,
-    scope: ScopeId,
-    mutable_object: bool,
-    declarator: &swc_ecma_ast::VarDeclarator,
-) {
-    if mutable_object
-        && let Pat::Ident(ident) = &declarator.name
-        && let Some(name) = collector.scoped_name(scope, ident.id.sym.as_ref())
-    {
-        collector.artifacts.record_mutable_static_object(name);
+    fn record_mutable_static_object(
+        &mut self,
+        scope: ScopeId,
+        mutable_object: bool,
+        declarator: &swc_ecma_ast::VarDeclarator,
+    ) {
+        if mutable_object
+            && let Pat::Ident(ident) = &declarator.name
+            && let Some(name) = self.scoped_name(scope, ident.id.sym.as_ref())
+        {
+            self.artifacts.record_mutable_static_object(name);
+        }
     }
 }
