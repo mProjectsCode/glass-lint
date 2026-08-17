@@ -8,7 +8,10 @@ use crate::analysis::{
         BindingProvenance, ScopeId, ScopedName,
         build::{
             ScopeCollectionArtifacts, ScopeCollector,
-            bindings::{for_each_pat_binding, register_declaration_binding, var_binding_scope},
+            bindings::{
+                for_each_pat_binding, intern_checked, register_declaration_binding,
+                var_binding_scope,
+            },
             compact_pat::{CompactPat, compact_pat},
             plan::ScopePlan,
             traversal::ScopePass,
@@ -94,17 +97,21 @@ impl ScopeCollector<'_> {
     pub(super) fn intern_provenance_strings(&mut self, provenance: &BindingProvenance) {
         match provenance {
             BindingProvenance::StaticString(value) => {
-                self.budget.try_charge();
-                if self.lexical.names.intern(value.as_str()).is_err() {
-                    self.lexical.name_exhausted = true;
-                }
+                intern_checked(
+                    &mut self.lexical.names,
+                    &mut self.lexical.name_exhausted,
+                    self.budget,
+                    value.as_str(),
+                );
             }
             BindingProvenance::StaticStringArray(values) => {
                 for value in values {
-                    self.budget.try_charge();
-                    if self.lexical.names.intern(value.as_str()).is_err() {
-                        self.lexical.name_exhausted = true;
-                    }
+                    intern_checked(
+                        &mut self.lexical.names,
+                        &mut self.lexical.name_exhausted,
+                        self.budget,
+                        value.as_str(),
+                    );
                 }
             }
             _ => {}

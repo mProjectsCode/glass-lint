@@ -29,7 +29,7 @@ collection re-implementing what the raw-`Pat` walk already does, (5) triplicated
 
 ### Scope collection subsystems
 
-#### [ ] READ-001 — The charge-intern-exhausted name-interning triplet is repeated seven times with no single owner
+#### [x] READ-001 — The charge-intern-exhausted name-interning triplet is repeated seven times with no single owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low

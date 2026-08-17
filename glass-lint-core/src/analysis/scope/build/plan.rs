@@ -17,8 +17,8 @@ use crate::analysis::{
         build::{
             ScopeShape, ScopeShapeTable,
             bindings::{
-                for_each_import_binding, for_each_pat_binding, register_declaration_binding,
-                var_binding_scope,
+                for_each_import_binding, for_each_pat_binding, intern_checked,
+                register_declaration_binding, var_binding_scope,
             },
             traversal::{ScopeEntry, ScopePass},
         },
@@ -61,10 +61,7 @@ impl ScopePlanner<'_> {
             "apply",
             "bind",
         ] {
-            budget.try_charge();
-            if names.intern(name).is_err() {
-                name_exhausted = true;
-            }
+            intern_checked(&mut names, &mut name_exhausted, budget, name);
         }
         let mut scopes = LexicalScopes::new();
         let program = scopes.push(LexicalScope::new(program_span, 0, ScopeKind::Program, None));
@@ -170,28 +167,34 @@ impl ScopePass for ScopePlanner<'_> {
     }
 
     fn visit_ident(&mut self, ident: &Ident) {
-        self.budget.try_charge();
-        if self.names.intern(ident.sym.as_ref()).is_err() {
-            self.name_exhausted = true;
-        }
+        intern_checked(
+            &mut self.names,
+            &mut self.name_exhausted,
+            self.budget,
+            ident.sym.as_ref(),
+        );
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
         if let Some(property) = crate::analysis::syntax::literal_member_property_name(&member.prop)
         {
-            self.budget.try_charge();
-            if self.names.intern(property.as_str()).is_err() {
-                self.name_exhausted = true;
-            }
+            intern_checked(
+                &mut self.names,
+                &mut self.name_exhausted,
+                self.budget,
+                property.as_str(),
+            );
         }
     }
 
     fn visit_prop_name(&mut self, property: &PropName) {
         if let Some(property) = crate::analysis::syntax::literal_property_name(property) {
-            self.budget.try_charge();
-            if self.names.intern(property.as_str()).is_err() {
-                self.name_exhausted = true;
-            }
+            intern_checked(
+                &mut self.names,
+                &mut self.name_exhausted,
+                self.budget,
+                property.as_str(),
+            );
         }
     }
 

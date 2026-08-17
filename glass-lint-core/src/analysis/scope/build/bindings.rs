@@ -17,6 +17,22 @@ use crate::analysis::{
     syntax::{collect_pat_bindings, module_export_name},
 };
 
+pub(super) fn intern_checked(
+    names: &mut NameTable,
+    name_exhausted: &mut bool,
+    budget: &SemanticBudget,
+    name: &str,
+) -> Option<glass_lint_datastructures::NameId> {
+    budget.try_charge();
+    names.intern(name).map_or_else(
+        |_| {
+            *name_exhausted = true;
+            None
+        },
+        Some,
+    )
+}
+
 /// Register one declaration binding: charge the semantic budget, intern the
 /// name, fail closed on exhaustion, then insert into the owning scope.
 ///
@@ -32,9 +48,7 @@ pub(super) fn register_declaration_binding(
     provenance: BindingProvenance,
 ) {
     let name = name.into();
-    budget.try_charge();
-    let Ok(name_id) = names.intern(name.as_str()) else {
-        *name_exhausted = true;
+    let Some(name_id) = intern_checked(names, name_exhausted, budget, name.as_str()) else {
         return;
     };
     if let Some(scope_data) = scopes.get_mut(scope) {
