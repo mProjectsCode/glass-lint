@@ -18,8 +18,6 @@ pub enum ProviderCatalogError {
     InvalidRuleId(String),
     /// A rule failed validation or matcher/query compilation.
     InvalidRule(RuleId, RuleCompilationError),
-    /// A fully-qualified rule ID occurs in more than one catalog.
-    DuplicateRule(RuleId),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,7 +79,6 @@ impl fmt::Display for ProviderCatalogError {
         match self {
             Self::InvalidRuleId(id) => write!(f, "invalid rule ID `{id}`"),
             Self::InvalidRule(id, message) => write!(f, "invalid rule `{id}`: {message}"),
-            Self::DuplicateRule(id) => write!(f, "duplicate rule `{id}`"),
         }
     }
 }
@@ -129,7 +126,7 @@ impl RuleCatalog {
     /// Fully-qualified IDs are validated before any record is moved into the
     /// result, so a duplicate-ID error returns without a partially mutated
     /// destination.
-    pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, ProviderCatalogError> {
+    pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, RuleId> {
         let mut records = Vec::new();
         let mut seen = BTreeSet::new();
 
@@ -137,7 +134,7 @@ impl RuleCatalog {
         for catalog in catalogs {
             for record in catalog.records {
                 if !seen.insert(record.rule_id.clone()) {
-                    return Err(ProviderCatalogError::DuplicateRule(record.rule_id));
+                    return Err(record.rule_id);
                 }
                 records.push(record);
             }

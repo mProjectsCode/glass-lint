@@ -36,7 +36,7 @@ conversion. Findings are ordered by the breadth of the change each implies.
 
 ### Error surface and conversion (`lint/catalog`, `lint/linter`, `lint/selection`)
 
-#### [ ] READ-001 — `LintConfigError::InvalidRule` is never constructed and its sibling `unreachable!` panics on a public path
+#### [x] READ-001 — `LintConfigError::InvalidRule` is never constructed and its sibling `unreachable!` panics on a public path
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -74,6 +74,11 @@ at the same time. Guardrails: `DuplicateRule`, `UnknownRule`, and
 asserting the returned `RuleId` directly; and integration tests that assert
 `LintConfigError::UnknownRule` (`tests/integration/linter.rs:208,248`,
 `linter/tests.rs:97`) stay unchanged.
+
+**Fix Applied:** Removed the unreachable `LintConfigError::InvalidRule` and
+the duplicate provider-level combine error. `RuleCatalog::combine` now returns
+the duplicate `RuleId` directly, eliminating the production `unreachable!`
+mapping while preserving duplicate, unknown-rule, and selector errors.
 
 #### [ ] READ-002 — `map_compiled_catalog_error` hand-translates `CompiledCatalogError` when a canonical `From` would delete the mapper and the redundant rebuild
 

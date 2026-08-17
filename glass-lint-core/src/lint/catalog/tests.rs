@@ -19,10 +19,7 @@ fn make_catalog(provider: &str) -> RuleCatalog {
 fn combined_catalog_rejects_duplicate_namespaced_ids() {
     let error = RuleCatalog::combine([make_catalog("same"), make_catalog("same")]).unwrap_err();
 
-    assert_eq!(
-        error,
-        ProviderCatalogError::DuplicateRule(RuleId::parse("same:request").unwrap())
-    );
+    assert_eq!(error, RuleId::parse("same:request").unwrap());
 }
 
 #[test]

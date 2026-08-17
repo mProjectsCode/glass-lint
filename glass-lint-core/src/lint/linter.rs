@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rayon::ThreadPoolBuilder;
 
 use crate::{
-    AnalysisLimits, Environment, ProjectAdmissionLimits, ProviderCatalogError, RuleId,
+    AnalysisLimits, Environment, ProjectAdmissionLimits, RuleId,
     analysis::ArtifactCacheHandle,
     api::classification::RuleIndex,
     lint::{
@@ -151,10 +151,8 @@ impl Linter {
                 catalogs,
                 selection,
             } => {
-                let catalog = RuleCatalog::combine(catalogs).map_err(|error| match error {
-                    ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
-                    _ => unreachable!("combining validated catalogs can only fail on duplicates"),
-                })?;
+                let catalog =
+                    RuleCatalog::combine(catalogs).map_err(LintConfigError::DuplicateRule)?;
                 let enabled = selection.resolve(&catalog)?;
                 (catalog, enabled)
             }
