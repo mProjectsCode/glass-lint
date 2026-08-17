@@ -181,7 +181,7 @@ builder setter. `analyze_program` now supplies `MAX_NAMES` through a shared
 explicit-limit helper, while exhaustion tests pass their cap directly; default
 analysis and exhaustion diagnostics remain unchanged.
 
-#### [ ] READ-004 — `check_fact_construction_incompleteness` duplicates the budget limit that `SemanticBudget` already owns
+#### [x] READ-004 — `check_fact_construction_incompleteness` duplicates the budget limit that `SemanticBudget` already owns
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -214,7 +214,10 @@ points (`analyze_program` at `:165`, `with_test_collection` at `:420`,
 `resolution` tests) continue to derive from
 `AnalysisLimits::semantic_operations()` or `UNLIMITED_SEMANTIC_OPS`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `SemanticBudget::limit()` and made completion checking
+read the semantic limit directly from the resolver-owned budget. Removed the
+duplicated `AnalysisLimits` plumbing from completion assessment; effect-limit
+handling at the freeze boundary is unchanged.
 
 ### Status model (`semantic/status.rs`)
 

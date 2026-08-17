@@ -42,6 +42,10 @@ impl SemanticBudget {
     pub fn used(&self) -> usize {
         self.used.get()
     }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
 }
 
 impl Default for SemanticBudget {

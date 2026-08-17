@@ -206,12 +206,11 @@ impl<'a> SemanticAnalyzer<'a> {
 fn check_fact_construction_incompleteness(
     stream: &FactStream<Building>,
     resolver: &Resolver,
-    limits: &AnalysisLimits,
     budget: &SemanticBudget,
 ) -> Option<IncompleteReason> {
     if budget.exhausted() {
         return Some(IncompleteReason::SemanticBudgetExhausted {
-            limit: limits.semantic_operations(),
+            limit: budget.limit(),
             used: budget.used(),
         });
     }
@@ -277,7 +276,6 @@ impl AnalysisCompletion {
         issues: &[ScopeCollectionIssue],
         stream: &FactStream<Building>,
         resolver: &Resolver,
-        limits: &AnalysisLimits,
     ) -> Self {
         let mut policy = Self::new();
         if !issues.is_empty() {
@@ -287,7 +285,6 @@ impl AnalysisCompletion {
         policy.record_failure(check_fact_construction_incompleteness(
             stream,
             resolver,
-            limits,
             resolver.budget(),
         ));
         policy.record_failure(check_invalid_parser_span(stream));
@@ -327,8 +324,8 @@ impl<'a> ResolvedProgram<'a> {
         }
     }
 
-    fn assess_completion(&self, limits: &AnalysisLimits) -> AnalysisCompletion {
-        AnalysisCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
+    fn assess_completion(&self) -> AnalysisCompletion {
+        AnalysisCompletion::assess(&self.issues, &self.built.stream, &self.resolver)
     }
 
     fn derive_export_origins(
@@ -401,7 +398,7 @@ impl<'a> ResolvedProgram<'a> {
         limits: &AnalysisLimits,
         program_span: Span,
     ) -> SemanticArtifact {
-        let completion = self.assess_completion(limits);
+        let completion = self.assess_completion();
         self.seal(
             environment,
             completion,
