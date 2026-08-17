@@ -1,10 +1,9 @@
 //! Logical query composition constructors.
 
 use super::{
-    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
-    IdentitySpec, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId,
-    checked_chain, checked_module_export, explain_expression, lifecycle::IntoLifecycleQuery,
-    limits,
+    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
+    MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId, checked_chain,
+    checked_module_export, explain_expression, lifecycle::IntoLifecycleQuery, limits,
 };
 
 impl QueryDecl {
@@ -224,15 +223,12 @@ impl QueryDecl {
             if !selection.event.event().supports_arguments() {
                 return Err(QueryBuildError::ArgumentsRequireCallEvent);
             }
-            match req.kind {
-                EventRequirementKind::Argument { index, matcher } => {
-                    branches.push(QueryExpr::require(QueryPredicate::Argument {
-                        call: var,
-                        index,
-                        matcher,
-                    }));
-                }
-            }
+            let EventRequirement { index, matcher } = req;
+            branches.push(QueryExpr::require(QueryPredicate::Argument {
+                call: var,
+                index,
+                matcher,
+            }));
         }
 
         let expression = QueryExpr::all(AllExpr::new(branches)?);

@@ -84,7 +84,7 @@ evidence remains governed solely by the session-supplied limit.
 
 ### Query declarations (`api/rule/query/mod.rs`, `composition.rs`)
 
-#### [ ] READ-002 — `EventRequirementKind` is a single-variant enum that exists only to bridge into `QueryPredicate::Argument`
+#### [x] READ-002 — `EventRequirementKind` is a single-variant enum that exists only to bridge into `QueryPredicate::Argument`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -113,7 +113,11 @@ and delete `EventRequirementKind`; `QueryDecl::all` then maps the pair to
 rejection inside `QueryDecl::all` (composition.rs:224-226). Add
 `EventRequirementKind` back only when a second requirement kind actually ships.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the single-variant `EventRequirementKind` into
+`EventRequirement`'s `index` and `matcher` fields. `EventRequirement::argument`
+keeps the same public signature and bounded-index error behavior, while
+`QueryDecl::all` maps the constructed requirement directly to the argument
+predicate.
 
 #### [ ] READ-005 — `EventSelection` is a one-field wrapper around `VarId`; the bound-variable numbering is implicit
 

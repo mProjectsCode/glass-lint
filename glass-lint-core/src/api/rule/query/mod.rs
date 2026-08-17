@@ -430,16 +430,8 @@ impl EmissionDecl {
 /// argument index and canonicalizes them during normalization.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EventRequirement {
-    pub(crate) kind: EventRequirementKind,
-}
-
-/// Interior kind for [`EventRequirement`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum EventRequirementKind {
-    Argument {
-        index: ArgumentIndex,
-        matcher: ArgumentMatcher,
-    },
+    pub(crate) index: ArgumentIndex,
+    pub(crate) matcher: ArgumentMatcher,
 }
 
 impl EventRequirement {
@@ -454,10 +446,8 @@ impl EventRequirement {
     ) -> Result<Self, QueryBuildError> {
         let idx = ArgumentIndex::try_from_usize(index)?;
         Ok(Self {
-            kind: EventRequirementKind::Argument {
-                index: idx,
-                matcher: matcher.into(),
-            },
+            index: idx,
+            matcher: matcher.into(),
         })
     }
 }
