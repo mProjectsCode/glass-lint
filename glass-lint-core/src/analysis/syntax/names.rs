@@ -48,16 +48,28 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
 /// Unwrap expression wrappers that preserve the inner expression's identity.
 /// Empty sequences have no effective expression and therefore return `None`.
 pub(in crate::analysis) fn unwrap_transparent_expr(expr: &Expr) -> Option<&Expr> {
+    unwrap_transparent_expr_inner(expr, true)
+}
+
+/// Unwrap identity-preserving wrappers while retaining sequences as structural
+/// terminals for callers that render authored expression names.
+fn unwrap_name_expr(expr: &Expr) -> Option<&Expr> {
+    unwrap_transparent_expr_inner(expr, false)
+}
+
+fn unwrap_transparent_expr_inner(expr: &Expr, unwrap_sequences: bool) -> Option<&Expr> {
     match expr {
-        Expr::Paren(paren) => unwrap_transparent_expr(&paren.expr),
-        Expr::Seq(sequence) => sequence
+        Expr::Paren(paren) => unwrap_transparent_expr_inner(&paren.expr, unwrap_sequences),
+        Expr::Seq(sequence) if unwrap_sequences => sequence
             .exprs
             .last()
-            .and_then(|expr| unwrap_transparent_expr(expr)),
-        Expr::TsAs(value) => unwrap_transparent_expr(&value.expr),
-        Expr::TsNonNull(value) => unwrap_transparent_expr(&value.expr),
-        Expr::TsSatisfies(value) => unwrap_transparent_expr(&value.expr),
-        Expr::TsTypeAssertion(value) => unwrap_transparent_expr(&value.expr),
+            .and_then(|expr| unwrap_transparent_expr_inner(expr, unwrap_sequences)),
+        Expr::TsAs(value) => unwrap_transparent_expr_inner(&value.expr, unwrap_sequences),
+        Expr::TsNonNull(value) => unwrap_transparent_expr_inner(&value.expr, unwrap_sequences),
+        Expr::TsSatisfies(value) => unwrap_transparent_expr_inner(&value.expr, unwrap_sequences),
+        Expr::TsTypeAssertion(value) => {
+            unwrap_transparent_expr_inner(&value.expr, unwrap_sequences)
+        }
         _ => Some(expr),
     }
 }
@@ -161,15 +173,12 @@ pub(in crate::analysis) fn effective_terminal_expr(expr: &Expr) -> Option<Transp
 
 /// Render supported rooted expression shapes as a dotted syntax chain.
 pub fn expression_name(expr: &Expr) -> Option<SymbolPath> {
+    let expr = unwrap_name_expr(expr)?;
     let terminal = effective_terminal_expr(expr)?;
     match terminal {
         TransparentTerminal::Expr(expr) => match expr {
             Expr::Ident(ident) => Some(SymbolPath::from(ident.sym.as_ref())),
             Expr::This(_) => Some(SymbolPath::from("this")),
-            Expr::TsAs(value) => expression_name(&value.expr),
-            Expr::TsNonNull(value) => expression_name(&value.expr),
-            Expr::TsSatisfies(value) => expression_name(&value.expr),
-            Expr::TsTypeAssertion(value) => expression_name(&value.expr),
             _ => None,
         },
         TransparentTerminal::Member(member) => member_expression_chain(member),

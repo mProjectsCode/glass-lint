@@ -8,7 +8,10 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{Callee, Expr, Ident, Lit};
 
-use crate::analysis::{model::module::COMMONJS_REQUIRE, syntax::is_dynamic_import};
+use crate::analysis::{
+    model::module::COMMONJS_REQUIRE,
+    syntax::{is_dynamic_import, unwrap_transparent_expr},
+};
 
 const INTEROP_WRAPPERS: &[&str] = &[
     "__toESM",
@@ -152,14 +155,10 @@ pub(super) fn recognize_module_expression<C: ModuleRequestContext + ?Sized>(
     context: &mut C,
     policy: ModuleRequestPolicy,
 ) -> Option<RecognizedModuleRequest> {
+    let expr = unwrap_transparent_expr(expr)?;
     match expr {
         Expr::Call(call) => recognize_module_call(call, context, policy),
         Expr::Member(member) => recognize_module_expression(&member.obj, context, policy),
-        Expr::Paren(paren) => recognize_module_expression(&paren.expr, context, policy),
-        Expr::Seq(sequence) => sequence
-            .exprs
-            .last()
-            .and_then(|expr| recognize_module_expression(expr, context, policy)),
         _ => None,
     }
 }

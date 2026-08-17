@@ -111,7 +111,7 @@ unchanged; add a test that a new field stays `None` through `resolve_ident`,
 
 ### Module requests (`analysis::module_request`) and call/expression resolution
 
-#### [ ] READ-003 — Transparent expression peeling is re-implemented in three resolvers
+#### [x] READ-003 — Transparent expression peeling is re-implemented in three resolvers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -155,7 +155,12 @@ Member-object descent separate because it descends receivers, not callables; pin
 newly accepted TS-wrapped shapes with a positive test and require/dynamic-import
 negatives so the acceptance is deliberate rather than accidental.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the shared `unwrap_transparent_expr` implementation for
+parentheses, sequence-last, and TypeScript assertion wrappers, and routed
+`resolve_expr`, `rooted_expr_chain`, and `recognize_module_expression` through it.
+`expression_name` reuses the same recursive implementation while retaining its
+intentional sequence-terminal behavior. Added a TypeScript-wrapped dynamic-import
+positive test and a dynamic require-name negative test.
 
 #### [x] READ-004 — `.bind` call shape detection is repeated across four modules
 

@@ -1,6 +1,7 @@
 use swc_ecma_ast::{Program, Stmt};
 
 use super::*;
+use crate::{parse::SourceLanguage, project::SourceFile};
 
 #[derive(Default)]
 struct TestContext {
@@ -27,6 +28,26 @@ impl ModuleRequestContext for TestContext {
 
 fn expression(source: &str) -> Expr {
     let parsed = crate::parse_test_source(&format!("{source};"), "module-request.js")
+        .expect("test expression should parse");
+    let Program::Script(script) = parsed.program else {
+        panic!("test expression should parse as a script");
+    };
+    let Stmt::Expr(statement) = script.body.into_iter().next().unwrap() else {
+        panic!("test source should contain one expression");
+    };
+    *statement.expr
+}
+
+fn typescript_expression(source: &str) -> Expr {
+    let source = SourceFile::with_language(
+        "module-request.ts",
+        format!("{source};"),
+        SourceLanguage::TypeScript,
+    )
+    .expect("test source should be valid");
+    let parsed = crate::parse::SourceParser::new(&source)
+        .expect("test expression should parse")
+        .parse()
         .expect("test expression should parse");
     let Program::Script(script) = parsed.program else {
         panic!("test expression should parse as a script");
@@ -68,6 +89,29 @@ fn dynamic_import_and_interop_require_use_explicit_kinds() {
         .expect("interop wrapper should preserve the require request");
     assert_eq!(wrapped.module(), "sdk");
     assert_eq!(wrapped.kind(), ModuleRequestKind::WrappedRequire);
+}
+
+#[test]
+fn transparent_typescript_wrappers_preserve_module_request_shapes() {
+    let wrapped = typescript_expression("(import('sdk') as any)");
+    let request = recognize_module_expression(
+        &wrapped,
+        &mut TestContext::default(),
+        ModuleRequestPolicy::alias_with_dynamic_import(),
+    )
+    .expect("typescript-wrapped dynamic import should be recognized");
+    assert_eq!(request.kind(), ModuleRequestKind::DynamicImport);
+    assert_eq!(request.module(), "sdk");
+
+    let wrapped = typescript_expression("(require(name) as any)");
+    assert!(
+        recognize_module_expression(
+            &wrapped,
+            &mut TestContext::default(),
+            ModuleRequestPolicy::alias_with_dynamic_import(),
+        )
+        .is_none()
+    );
 }
 
 #[test]

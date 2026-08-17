@@ -11,7 +11,7 @@ use crate::analysis::{
         syntax_constant,
     },
     scope::ScopeId,
-    syntax::UnknownReason,
+    syntax::{UnknownReason, unwrap_transparent_expr},
 };
 
 struct ResolutionSeed {
@@ -249,20 +249,18 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> ResolvedValue {
+        let Some(expr) = unwrap_transparent_expr(expr) else {
+            return Self::unknown();
+        };
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident),
             Expr::Member(member) => self.resolve_member(member),
-            Expr::Paren(paren) => self.resolve_expr(&paren.expr),
             Expr::Assign(assignment) => match &assignment.left {
                 swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
                     ident,
                 )) => self.resolve_ident(&ident.id),
                 _ => self.resolve_expr(&assignment.right),
             },
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .map_or_else(Self::unknown, |last| self.resolve_expr(last)),
             Expr::Lit(Lit::Str(value)) => self.resolve_string_literal(value),
             Expr::Lit(Lit::Num(value)) => syntax_constant::non_negative_integer(value.value)
                 .map_or_else(Self::unknown, |value| self.static_number(value)),
@@ -281,10 +279,6 @@ impl Resolver<'_> {
             Expr::Object(_) | Expr::Bin(_) => self.intern_evaluated(expr),
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::Await(await_expr) => self.resolve_expr(&await_expr.arg),
-            Expr::TsAs(value) => self.resolve_expr(&value.expr),
-            Expr::TsNonNull(value) => self.resolve_expr(&value.expr),
-            Expr::TsSatisfies(value) => self.resolve_expr(&value.expr),
-            Expr::TsTypeAssertion(value) => self.resolve_expr(&value.expr),
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => Self::unknown(),
         }

@@ -9,7 +9,9 @@ use crate::analysis::{
         ConstValue, Expr, MemberExpr, ResolvedValue, Resolver, SymbolCallProvenance, Value,
         ValueId, syntax_constant,
     },
-    syntax::{TransparentTerminal, UnknownReason, effective_terminal_expr},
+    syntax::{
+        TransparentTerminal, UnknownReason, effective_terminal_expr, unwrap_transparent_expr,
+    },
 };
 
 impl Resolver<'_> {
@@ -24,6 +26,7 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
+        let expr = unwrap_transparent_expr(expr)?;
         let terminal = effective_terminal_expr(expr)?;
         match terminal {
             TransparentTerminal::Expr(expr) => match expr {
@@ -38,14 +41,6 @@ impl Resolver<'_> {
                             .is_dummy()
                             .then(|| SymbolPath::from(ident.sym.as_ref()))
                     }),
-                Expr::Seq(sequence) => sequence
-                    .exprs
-                    .last()
-                    .and_then(|expr| self.rooted_expr_chain(expr)),
-                Expr::TsAs(value) => self.rooted_expr_chain(&value.expr),
-                Expr::TsNonNull(value) => self.rooted_expr_chain(&value.expr),
-                Expr::TsSatisfies(value) => self.rooted_expr_chain(&value.expr),
-                Expr::TsTypeAssertion(value) => self.rooted_expr_chain(&value.expr),
                 _ => None,
             },
             TransparentTerminal::Member(member) => {
