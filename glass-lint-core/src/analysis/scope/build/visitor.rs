@@ -410,12 +410,15 @@ impl ScopePass for ScopeCollector<'_> {
         let parameters = Self::function_parameters(&fn_decl.function);
         self.budget.try_charge();
         if let Some(name_id) = self.lookup_or_intern_name(fn_decl.ident.sym.as_ref()) {
-            let parent = self
+            let Some(parent) = self
                 .lexical
                 .scopes
                 .get(scope)
                 .and_then(crate::analysis::model::scope::LexicalScope::parent)
-                .unwrap_or_default();
+                .or_else(|| self.lexical.scopes.program_scope())
+            else {
+                return;
+            };
             self.functions.function_scopes.insert(
                 ScopedName::new(parent, name_id),
                 super::FunctionBinding { scope, parameters },

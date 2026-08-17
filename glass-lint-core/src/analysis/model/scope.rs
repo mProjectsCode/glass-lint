@@ -13,20 +13,20 @@ pub use provenance::{
 
 // ── Identifiers ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+/// Index into [`LexicalScopes`]. Scope storage is an unbounded `Vec`, so this
+/// id uses `usize` rather than the bounded `u32` arena-id convention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScopeId(usize);
 
 impl ScopeId {
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(index: usize) -> Self {
-        Self(index)
-    }
-
     #[cfg(test)]
     pub(in crate::analysis) const fn index_for_test(self) -> usize {
         self.0
     }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(ScopeId, usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScopedName {
@@ -55,12 +55,10 @@ impl BindingId {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(BindingId, u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BindingVersion(u32);
@@ -69,12 +67,10 @@ impl BindingVersion {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(BindingVersion, u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionId(u32);
@@ -83,12 +79,10 @@ impl FunctionId {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(FunctionId, u32);
 
 impl From<FunctionId> for u32 {
     fn from(id: FunctionId) -> Self {

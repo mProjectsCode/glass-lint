@@ -6,6 +6,9 @@ use crate::analysis::model::{
     scope::{BindingKey, BindingSlot},
 };
 
+/// Identity in the bounded value arena. Arena-backed ids use `u32` throughout
+/// the analysis model; the allocator rejects growth beyond the configured
+/// bound before an id can be produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(u32);
 
@@ -19,12 +22,10 @@ impl ValueId {
     pub(in crate::analysis) const fn raw(self) -> u32 {
         self.0
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(ValueId, u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedObjectId(u32);
@@ -33,12 +34,10 @@ impl ResolvedObjectId {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(ResolvedObjectId, u32);
 
 /// Identity allocated by one object-flow projection run. It is intentionally
 /// distinct from [`ResolvedObjectId`], whose allocator belongs to `ValueTable`.
@@ -49,12 +48,10 @@ impl FlowObjectId {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
-        Self::new(raw)
-    }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(FlowObjectId, u32);
 
 /// Opaque collection of a static object's property/value pairs.
 ///

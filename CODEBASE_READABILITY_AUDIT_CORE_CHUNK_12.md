@@ -191,7 +191,7 @@ continue to use `intern_value_with_binding`.
 
 ### Scope and binding identity model
 
-#### [ ] READ-004 — Parallel ID newtypes drifted in width, sentinel, and test surface
+#### [x] READ-004 — Parallel ID newtypes drifted in width, sentinel, and test surface
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -229,6 +229,11 @@ originate from their allocating collections (`LexicalScopes`, `BindingIndex`,
 `ValueTable`, `ModuleInterface`); `ValueId::UNKNOWN` must remain index 0; do
 not re-width `ScopeId`/`ModuleRequestId` to `u32`, which would add a
 `usize::try_from` at every `Vec` index without a capacity bound to enforce.
+
+**Fix Applied:** Removed `ScopeId`'s fabricating `Default` implementation and
+made its program-scope fallback explicit. Documented the `usize` direct-vector
+and `u32` bounded-arena conventions, and centralized the repeated test-only ID
+constructors in one hidden test macro.
 
 ## Systemic Themes
 

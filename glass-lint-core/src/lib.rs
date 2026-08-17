@@ -12,6 +12,18 @@
 //! bounded reports, and diagnostics. Host policy and rule catalogs are passed
 //! in through explicit configuration rather than embedded in this crate.
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! impl_test_id_constructor {
+    ($id:ident, $raw:ty) => {
+        impl $id {
+            pub(in $crate::analysis) const fn from_test(raw: $raw) -> Self {
+                Self(raw)
+            }
+        }
+    };
+}
+
 mod analysis;
 mod api;
 mod config;

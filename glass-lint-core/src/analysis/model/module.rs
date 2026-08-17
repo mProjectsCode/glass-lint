@@ -107,18 +107,18 @@ pub struct ModuleInterface {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Index into the request `Vec`; direct vector-index ids use `usize` because
+/// the collection has no bounded-arena contract.
 pub struct ModuleRequestId(usize);
 
 impl ModuleRequestId {
-    #[cfg(test)]
-    fn from_test(index: usize) -> Self {
-        Self(index)
-    }
-
     fn index(self) -> usize {
         self.0
     }
 }
+
+#[cfg(test)]
+crate::impl_test_id_constructor!(ModuleRequestId, usize);
 
 impl ImportedBinding {
     pub fn named(imported: impl Into<SmolStr>) -> Self {
