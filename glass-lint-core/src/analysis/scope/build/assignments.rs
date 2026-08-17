@@ -229,17 +229,7 @@ impl ScopeCollector<'_> {
     /// checkpoint. O(delta) — only the entries changed since the
     /// checkpoint are rolled back.
     pub(super) fn restore(&mut self, checkpoint: &CollectorCheckpoint) -> bool {
-        let assignment_result = self
-            .assignment
-            .path
-            .assignment_environment
-            .restore(checkpoint.cursor);
-        let writes_result = self
-            .assignment
-            .path
-            .assignment_writes
-            .restore(checkpoint.writes);
-        if assignment_result.is_err() || writes_result.is_err() {
+        if self.assignment.path.restore_checkpoint(checkpoint).is_err() {
             self.record_checkpoint_failure();
             return false;
         }

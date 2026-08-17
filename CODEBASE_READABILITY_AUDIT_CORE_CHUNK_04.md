@@ -131,7 +131,7 @@ foreign-history tests passing.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — The two-part restore sequence is duplicated across path-state and collector levels
+#### [x] READ-003 — The two-part restore sequence is duplicated across path-state and collector levels
 
 - **Severity:** Low
 - **Fix Complexity:** Low
