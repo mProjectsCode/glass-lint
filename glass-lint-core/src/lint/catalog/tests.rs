@@ -75,7 +75,7 @@ fn catalog_mapping_preserves_compiler_error_categories() {
 
     for (compiled, expected) in cases {
         assert_eq!(
-            map_compiled_catalog_error(compiled),
+            ProviderCatalogError::from(compiled),
             ProviderCatalogError::InvalidRule(rule_id.clone(), expected)
         );
     }

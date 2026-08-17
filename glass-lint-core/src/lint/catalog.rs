@@ -44,34 +44,36 @@ impl fmt::Display for RuleCompilationError {
     }
 }
 
-fn map_compiled_catalog_error(error: CompiledCatalogError) -> ProviderCatalogError {
-    let (rule_id, diagnostic) = match error {
-        CompiledCatalogError::InvalidMatcher { rule_id, message } => {
-            (rule_id, RuleCompilationError::InvalidMatcher(message))
-        }
-        CompiledCatalogError::InvalidQuery {
-            rule_id,
-            diagnostic,
-        } => (
-            rule_id,
-            RuleCompilationError::InvalidQuery(diagnostic.to_string()),
-        ),
-        CompiledCatalogError::CompilerInvariant {
-            rule_id,
-            diagnostic,
-        } => (
-            rule_id,
-            RuleCompilationError::CompilerInvariant(diagnostic.to_string()),
-        ),
-        CompiledCatalogError::InvalidPhysicalPlan {
-            rule_id,
-            diagnostic,
-        } => (
-            rule_id,
-            RuleCompilationError::InvalidPhysicalPlan(diagnostic.to_string()),
-        ),
-    };
-    ProviderCatalogError::InvalidRule(rule_id, diagnostic)
+impl From<CompiledCatalogError> for ProviderCatalogError {
+    fn from(error: CompiledCatalogError) -> Self {
+        let (rule_id, diagnostic) = match error {
+            CompiledCatalogError::InvalidMatcher { rule_id, message } => {
+                (rule_id, RuleCompilationError::InvalidMatcher(message))
+            }
+            CompiledCatalogError::InvalidQuery {
+                rule_id,
+                diagnostic,
+            } => (
+                rule_id,
+                RuleCompilationError::InvalidQuery(diagnostic.to_string()),
+            ),
+            CompiledCatalogError::CompilerInvariant {
+                rule_id,
+                diagnostic,
+            } => (
+                rule_id,
+                RuleCompilationError::CompilerInvariant(diagnostic.to_string()),
+            ),
+            CompiledCatalogError::InvalidPhysicalPlan {
+                rule_id,
+                diagnostic,
+            } => (
+                rule_id,
+                RuleCompilationError::InvalidPhysicalPlan(diagnostic.to_string()),
+            ),
+        };
+        Self::InvalidRule(rule_id, diagnostic)
+    }
 }
 
 impl fmt::Display for ProviderCatalogError {
@@ -109,10 +111,10 @@ impl RuleCatalog {
                 let rule_id = RuleId::from_provider_and_name(&provider, rule.id())?;
                 Ok((rule_id, rule))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, ProviderCatalogError>>()?;
 
         // Compile once into immutable records (no declarations retained).
-        let records = compile_records(&rules_and_ids).map_err(map_compiled_catalog_error)?;
+        let records = compile_records(&rules_and_ids).map_err(ProviderCatalogError::from)?;
 
         Ok(Self { records })
     }

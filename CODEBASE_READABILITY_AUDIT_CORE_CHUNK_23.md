@@ -80,7 +80,7 @@ the duplicate provider-level combine error. `RuleCatalog::combine` now returns
 the duplicate `RuleId` directly, eliminating the production `unreachable!`
 mapping while preserving duplicate, unknown-rule, and selector errors.
 
-#### [ ] READ-002 — `map_compiled_catalog_error` hand-translates `CompiledCatalogError` when a canonical `From` would delete the mapper and the redundant rebuild
+#### [x] READ-002 — `map_compiled_catalog_error` hand-translates `CompiledCatalogError` when a canonical `From` would delete the mapper and the redundant rebuild
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -116,6 +116,11 @@ the resolved open question (Open Questions — Resolved), do not retrofit the
 structured `CompilerInvariantDiagnostic`/`PhysicalPlanDiagnostic` payloads onto
 this boundary — no consumer reads them here and the report schema can never see
 a compile failure.
+
+**Fix Applied:** Moved the mechanical conversion into the canonical
+`From<CompiledCatalogError> for ProviderCatalogError` implementation and
+removed the one-off mapper; the stable flat error vocabulary and messages are
+unchanged.
 
 ### Selector parsing (`lint/selection`)
 
