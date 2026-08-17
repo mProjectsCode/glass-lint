@@ -93,9 +93,14 @@ narrowing) whose shared owner is the leaf of a three-deep module tree.
 `use super::private_network_match` from `evidence.rs` and a single `use`/`mod`
 from `query/view.rs` — and delete the two re-export statements (`view.rs:5`,
 `query/mod.rs:16`). Guardrails: keep the `localhost → IPv4 → IPv6` precedence in
-`private_network_match`, the boundary special-cases (`\\`, `?`) that the tests
-in `query/view/tests.rs` pin, the selection in `resolve_private_network`, and
-the `PRIVATE_NETWORK_EVIDENCE_SYMBOL` narrowing contract in `display_span`.
+`private_network_match`, the token-boundary policy the `query/view/tests.rs`
+cases pin (regex shapes return `None`, `query/view/tests.rs:3-15`; URL hosts
+still match, `query/view/tests.rs:17-23`, including the `\\`/`?` rejections at
+`private_network.rs:46,94-95`), the selection in `resolve_private_network`
+(`view.rs:278-285`), and the `PRIVATE_NETWORK_EVIDENCE_SYMBOL` narrowing
+contract in `display_span` (`evidence.rs:190-191`), which the integration test
+`private_network_findings_cover_only_the_address`
+(`tests/integration/matching/declarative/lifecycle.rs:129-143`) pins.
 
 ### Occurrence key family (`analysis/matching/occurrence`)
 
@@ -105,7 +110,7 @@ the `PRIVATE_NETWORK_EVIDENCE_SYMBOL` narrowing contract in `display_span`.
 - **Fix Complexity:** Low
 - **Theme:** ENCAPSULATE
 - **Category:** API
-- **Location:** `glass-lint-core/src/analysis/matching/occurrence.rs:377-422`; `query/mod.rs:150-165`; `build.rs:229-236`
+- **Location:** `glass-lint-core/src/analysis/matching/occurrence.rs:377-381,403-422`; `query/mod.rs:150-165`; `build.rs:229-236`; `indexes.rs:71`
 
 The three lookup keys have converging but inconsistent surfaces.
 `ModuleExportKey` exposes flat `module()`/`export()` accessors
@@ -146,9 +151,9 @@ package pattern match arm using `module.matches(...)` against the module text.
 `MemberCall | MemberRead | PropertyWrite` match that `members()`
 (`view.rs:96-105`) already performs, returning only the first component. It is
 used in exactly two places — `resolve_module_namespace` (`view.rs:241`) and
-`resolve_package_namespace` (`view.rs:251`) — where ending the same variable is
-needed, and no variant carries a member path without also carrying the
-paths collection, so `member()` is always `members().map(|(m, _)| m)`.
+`resolve_package_namespace` (`view.rs:251`) — where only the first component of
+the pair is needed, and no variant carries a member path without also carrying
+the paths collection, so `member()` is always `members().map(|(m, _)| m)`.
 
 **Recommendation:** Delete `member()` and replace its two call sites with
 `self.members()?.0`. Guardrails: keep the `name`-free behavior of namespace
@@ -202,7 +207,7 @@ is broken and the wording refers to a symbol that no longer exists.
 
 **Recommendation:** Update the link to
 `[`BorrowedPackageOccurrenceIter`]` and reword to name the actual consumer
-(the scan in `BorrowedPackageOccurrenceIter::next`, `occurrence.rs:320-364`).
+(the scan in `BorrowedPackageOccurrenceIter::next`, `occurrence.rs:323-364`).
 Guardrails: none beyond the doc text; no behavior changes.
 
 ## Systemic Themes
@@ -211,23 +216,27 @@ Guardrails: none beyond the doc text; no behavior changes.
   roots participate in occurrence-index evaluation is asserted both by the
   `IndexedRootIter` filter (`query/mod.rs:34-41`) and by the consuming match's
   `unreachable!` guard (`query/mod.rs:94-96`); the projection planner also
-  matches `physical_roots()` for a disjoint purpose (`project/projection.rs:216-227`),
-  so future root kinds must be considered in three places (also see the note in
-  READ-001).
+  matches `physical_roots()` for a disjoint purpose
+  (`project/projection.rs:216-227`), where a new kind is absorbed by the `_`
+  arm. A new root kind therefore needs explicit handling in the indexed-query
+  pair (see READ-001) plus a deliberate decision in the planner's own dispatch.
 - **Movement of helpers across module trees is done by re-export ceremony**
   rather than placement. `private_network_match` is the clearest instance
-  (README-002); the `EventIndexView`/`IndexedRootIter`/`OccurrenceSelection`
+  (READ-002); the `EventIndexView`/`IndexedRootIter`/`OccurrenceSelection`
   visibility is otherwise tightly scoped to `crate::analysis::matching`, which
   is good.
 - **The `OccurrenceIndex` key-alias family is uneven.** `Occurrences`
   (`SmolStr`), `NameOccurrences` (`NameId`), and `ModuleOccurrences`
   (`ModuleExportKey`) get aliases (`occurrence.rs:367-368,445`), while the most
   frequently written instantiation, `OccurrenceIndex<NamePath>`, is spelled out
-  raw in `MemberIndexes` (`indexes.rs:62-71`), `EventIndexView`
-  (`query/view.rs:29,31-32,43,54`), and the resolve paths. This is cosmetic — no
-  invariant is enforced or leaked — so it is not filed; the owner of the alias
-  family should decide once whether `NamePath`-keyed and `InstanceMemberKey`/
-  `ReturnedMemberKey`-keyed indexes deserve the same treatment.
+  raw in `MemberIndexes`' and `ConstructionIndexes`' field and accessor
+  signatures (`indexes.rs:62-67,115,119,127,131,135,189,251`) and in
+  `EventIndexView`'s field and resolve-helper signatures
+  (`query/view.rs:29,31,36,38,43,54,96,146`). This is cosmetic — no invariant is
+  enforced or leaked — so it is not filed; the owner of the alias family should
+  decide once whether `NamePath`-keyed and `InstanceMemberKey`/
+  `ReturnedMemberKey`-keyed indexes deserve the same treatment (see Open
+  Questions — Resolved).
 - **`EventIndexView`'s `_ => None` fallbacks are the fail-closed contract.**
   The `_` arms in `resolve_any`/`resolve_literal`/`resolve_private_network`/
   `resolve_package_specifier` (`view.rs:195,274,283,295`) silently answer `None`
@@ -241,22 +250,42 @@ Guardrails: none beyond the doc text; no behavior changes.
   `ModuleExportKey::wildcard`, `is_boundary` + `Ipv4Addr` direct parse) and are
   not re-reported.
 
-## Open Questions
+## Open Questions — Resolved
 
-- Is `InstanceMemberKey`'s nested `identity()` kept because a caller
-  legitimately needs the composed `ModuleExportKey` for overlay/identity lookups
-  beyond the module/export text comparison at `query/mod.rs:155-161`? Current
-  callers only extract module and export, so flattening or flat accessors appear
-  safe; a future instance-identity constraint that needs the whole key would
-  change that.
-- Should the `OccurrenceIndex<NamePath>` usages gain an alias (completing the
-  family) or should the existing aliases be removed in favor of spelling out
-  `OccurrenceIndex<Key>` everywhere? The audit leaves this to the alias-family
-  owner as noted in Systemic Themes.
-- `resolve_any`'s `Construct` fallback consults `global_constructors` after the
-  named-constructor index (a documented asymmetry from the prior audit, Open
-  Questions there); it remains policy, not a provable inconsistency, and is
-  unchanged here.
+1. **`InstanceMemberKey`'s nested `identity()` is not load-bearing.** No caller
+   needs the composed `ModuleExportKey`: the key is constructed only at
+   `build.rs:229-236`, stored in `MemberIndexes::instance_calls`
+   (`indexes.rs:71`), and read only by the `occurrences_for_instance` closure,
+   which extracts module/export text (`query/mod.rs:155-156,160-161`) and the
+   member (`query/mod.rs:157,162`). Overlay and identity-map lookups never see
+   an `InstanceMemberKey` — `resolve_module_key` builds a fresh `ModuleExportKey`
+   from the query identity (`view.rs:222`) and `LinkedOccurrenceView::identity_for`
+   operates on module-export keys only (`matching/mod.rs:92-99`). Flat
+   `module()`/`export()` accessors (READ-003) are therefore safe.
+2. **An alias for `OccurrenceIndex<NamePath>` is the minimal consistent
+   completion; the decision stays with the alias-family owner.** The raw
+   spelling outnumbers the aliased keys: `OccurrenceIndex<NamePath>` appears in
+   20 places (`indexes.rs:62-67,115,119,127,131,135,189,251`;
+   `view.rs:29,31,36,38,43,54,96,146`) against one alias each for the
+   `SmolStr`/`NameId`/`ModuleExportKey` keys
+   (`occurrence.rs:367-368,445`), while `InstanceMemberKey` and
+   `ReturnedMemberKey` are each instantiated once (`indexes.rs:69-71`). Adding
+   `PathOccurrences = OccurrenceIndex<NamePath>` next to the existing aliases
+   completes the family without changing any invariant; removing the existing
+   aliases instead would churn every call site for no readability gain. Purely
+   cosmetic, so it is noted here rather than filed.
+3. **The `Construct` global fallback is deliberate per-event policy, not a
+   provable inconsistency.** Both events record the same dual name indexes —
+   calls intern the callee name (`build.rs:181-183`) and the global provenance
+   name (`build.rs:184-188`); constructors do the same (`build.rs:295-298`,
+   `build.rs:303-308`). The asymmetry exists only in the query-side lookup: the
+   `Construct` arm adds a raw-text fallback to `global_constructors` after the
+   named-constructor index (`view.rs:183-191`), while the `Call` arm stops at
+   the interned-name lookup (`view.rs:179-182`). Because every recorded name
+   originates from file text in the same `NameTable`, the fallback's reachable
+   window is at most a raw-text hit that the interned lookup missed, which
+   cannot change a witness's certainty; it is policy, not a demonstrable
+   inconsistency, and is unchanged here.
 
 ## Coverage
 
@@ -285,5 +314,6 @@ selection laziness (`Regionless`-free, fail-closed `None` in
 `ScannedOccurrences`, or `EventIndexCapabilities` symbols remain in code;
 confirmed the `unreachable!` at `query/mod.rs:95`; confirmed `members()`/`member()`
 duplicate matches and dead `_names`; confirmed the double re-export chain for
-`private_network_match`; and confirmed `git status --short` shows only this
-audit file as new.
+`private_network_match`; and confirmed `git status --short` shows no uncommitted
+source changes — the audit file itself is committed, and the only working-tree
+changes are the sibling chunk-01..15 audit files from parallel sessions.

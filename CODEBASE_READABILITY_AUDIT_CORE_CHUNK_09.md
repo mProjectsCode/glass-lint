@@ -39,7 +39,7 @@ Dependent ordering: all findings are independent; no fix blocks another.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/flow/projector/driver.rs:234-302` (with `PathRestoration` at `:37-41` and `PathAdmission` at `:28-34`; callers at `:97-102`, `:310-313`, and `loops.rs:93`)
+- **Location:** `glass-lint-core/src/analysis/flow/projector/driver.rs:234-302` (with `PathRestoration` at `:37-41` and `PathAdmission` at `:28-34`; callers at `:97-101`, `:310-321`, and `loops.rs:93`)
 
 `restore_path` (driver.rs:234-244) and `admit_path` (driver.rs:285-302) both
 perform the identical charge → `flow_state.restore` → mark-incomplete sequence,
@@ -48,20 +48,23 @@ insert into the `seen` snapshot set). The two outcome enums
 `PathRestoration { Ready, Failed, Exhausted }` and
 `PathAdmission { Admitted, Duplicate, RestoreFailed, Exhausted }` encode the
 same restoration outcome under different names (`Failed` ≡ `RestoreFailed`),
-so two callers (`transfer_paths_with`, `LoopFixedPoint::admit`) maintain two
-parallel matchers over the same restore semantics. Any future change to the
-restore or budget behavior must now be made twice.
+so three matcher sites (`transfer_paths_with`, driver.rs:97-101;
+`join_paths`, driver.rs:310-321; `LoopFixedPoint::collect_admitted`,
+loops.rs:107-111) match on the same restore semantics through two type
+systems. Any future change to the restore or budget behavior must now be
+made twice.
 
 **Recommendation:** Keep `restore_path` as the single owner of charge → restore
 → reachable bookkeeping, and implement `admit_path` on top of it: map
 `RestorePath::Ready` to the `seen`-set check (yielding `Admitted`/
 `Duplicate`), and map `Exhausted`/`Failed` to `PathAdmission::Exhausted`/
 `RestoreFailed`. Delete the duplicated `charge_operation`/`restore`/mark body
-from `admit_path`; `loops.rs:93` callers need no change. Guardrails: restore
-`, run.reachable` must not be set twice per admitted path (`join_paths`
-already sets it after the admission pass, driver.rs:329), `Exhausted` must
-still `break` out of both loops, and `Duplicate`/`Failed` must still `continue`
-without a downward effect.
+from `admit_path`; `admit_path` keeps its signature and return enum, so callers
+(`join_paths`, loops.rs) need no change. Guardrails: the delegated restore must
+not disturb the post-pass `run.reachable` collapse that `join_paths` already
+performs (driver.rs:329), `Exhausted` must still `break` out of both admission
+loops, and `Duplicate`/`Failed` must still have no downward effect (no push of
+an unreachable environment and no witness).
 
 **Fix Applied:** None so far.
 
@@ -75,16 +78,17 @@ without a downward effect.
 
 Both `pub(super) fn mark_incomplete` (:65-67) and
 `pub(super) fn mark_control_stack_incomplete` (:69-71) are byte-for-byte
-forwarders to `self.run.mark_incomplete()`. The first name is used at 6 call
-sites, the second at 14 (control.rs:51-272, driver.rs:203, driver.rs:229,
-loops.rs:120); the semantic difference exists only in the name — the
-completion model records the same `Alternatives` incompleteness for both.
+forwarders to `self.run.mark_incomplete()`. The shorter name has a single call
+site (loops.rs:144), while the longer name covers 15 sites (12 in control.rs at
+lines 51, 61, 71, 96, 105, 134, 149, 185, 218, 235, 247, and 272; driver.rs:203;
+driver.rs:229; loops.rs:120); the semantic difference exists only in the name —
+the completion model records the same `Alternatives` incompleteness for both.
 Two entry points that degrade to the same state are a maintenance and naming
 trap: a future fix that wants failures distinguished (e.g., a distinct
-`FlowCompletionReason`) would have to migrate half a dozen sites blind.
+`FlowCompletionReason`) would have to migrate all 15 control-stack sites blind.
 
 **Recommendation:** Keep one method (the shorter name `mark_incomplete`) and
-delete the twin, updating the 14 `mark_control_stack_incomplete` call sites in
+delete the twin, updating the 15 `mark_control_stack_incomplete` call sites in
 the same change. If control-stack failures should ever be distinguished from
 budget failures, add a dedicated `FlowCompletionReason` bit at that point
 rather than a parallel forwarding method. Guardrail: all call sites must still
@@ -141,8 +145,8 @@ and the only consumer of `PendingFlowStateFinal` is `finalize_pending`
 re-copies `key.event` as its own `event` field and drops `key.flow`, which is
 re-derivable from any member `PendingState.state.flow_id()`. The three
 associated types exist because `finalize` hands a grouped, certainty-tagged
-result to the emitter on the projector; the keyboard/state pair is genuine
-storage, but the final wrapper is a transient tuple that re-states the key.
+result to the emitter on the projector; the key/state pair is genuine storage,
+but the final wrapper is a transient tuple that re-states the key.
 
 **Recommendation:** Fold `PendingFlowStateFinal` into the finalize returns —
 either yield `(FactId, MatchCertainty, Vec<PendingState>)` per group, or have
@@ -168,16 +172,21 @@ must be computed once per `(flow, event)` group from active-path coverage and
 (control.rs:213, paired with `has_finally = true`) and is only read inside the
 `else` branch of `end_try` (control.rs:254), which runs exclusively in the
 `!has_finally` path where `normal_exit` is always `None`. `start_finally` also
-clones that entire vector twice (`normal.clone()` for `normal_exit`, then
-`incoming = normal`), so every `finally` block pays a full `Vec` clone for a
-field that never affects output; the finally exit logic is fully served by the
+pays an extra full `Vec` clone to populate it (`normal.clone()` at control.rs:213,
+added on top of the necessary `try_exit.clone()` at control.rs:210 that makes
+`normal` owned; `incoming = normal` is a move, not a clone), so every
+`finally` block pays a `Vec` clone for a field that never affects output; the
+finally exit logic is fully served by the
 numeric `normal_count` and the `after[..normal_len]` slice (control.rs:239-251).
 The `catch_exit.unwrap_or_else(|| normal_exit.unwrap_or_default())` fallback is
 therefore dead defensiveness in a branch where both options are empty.
 
-**Recommendation:** Delete the `normal_exit` field from `ControlFrame::Try`,
-remove the assignment and the second `normal.clone()` in `start_finally`, and
-collapse control.rs:254 to `paths.extend(catch_exit.unwrap_or_default())`,
+**Recommendation:** Delete the `normal_exit` field from `ControlFrame::Try`
+(state.rs:241), along with its `None` initializer (control.rs:171) and its two
+entries in the `Try` destructure patterns (control.rs:201, control.rs:228);
+remove the assignment `*normal_exit = Some(normal.clone())` in `start_finally`
+(control.rs:213); and collapse control.rs:254 to
+`paths.extend(catch_exit.unwrap_or_default())`,
 asserting the `!has_finally` pairing (e.g., `debug_assert!(normal_count == 0)`)
 if desired. Guardrail: `normal_count` and the `after[..normal_len]` finally
 indexing (control.rs:240-251) must remain untouched, and `try`/`catch` shapes
@@ -200,8 +209,9 @@ it always equals `history.len()`, which `ParentLinkedHistory` already exposes
 (via `node_count`, history.rs:56-58). Its doc comment (:39-43) claims the count
 "includ[es]... comparison charges" used to bound "CPU work from join
 comparisons," but no code ever charges a join comparison to the log; comparison
-work is separately counted in `ProjectionRunState.coalescing_comparisons` and
-bounded by the run's operation budget (driver.rs:315, :482-489). The comment
+work is tracked as a metric in `ProjectionRunState.coalescing_comparisons`
+(driver.rs:314-317), while the join loop's total work is bounded by
+`charge_operation` (mod.rs:482-489) — never by the mutation log. The comment
 describes a protocol that does not exist, and the two mutable counters
 (`charges` vs the log length) are two drift-prone witnesses of one value.
 
@@ -252,7 +262,8 @@ path may not change, and the two predicates must remain distinguishable
   implement on `ObjectFlowProjector`; the cross-`impl` pattern is consistent.
   The aggregated boundedness contract (`FlowCompletion::from_sources`,
   mod.rs:54-89) is a legitimate multi-owner coordination point and should
-  stay a free/assisted function, not be flattened into one owner.
+  stay an associated function on `FlowCompletion`, not be flattened into one
+  owner.
 - **The weak ownership seam is "non-field state," not the projector shell.**
   `ProjectionPathMachine` and the pending-state family (READ-003, READ-004)
   are where the path machinery lives in name only; fixes should concentrate
@@ -283,24 +294,53 @@ path may not change, and the two predicates must remain distinguishable
   in evidence, `TraceArena::is_exhausted`) and funnelled to one completion
   value; this aggregation point is the correct shape and is well documented.
 
-## Open Questions
+## Open Questions (resolved)
 
-- **Flow `MutationLog` vs scope `OwnedHistory`:** scope's wrapper adds a
-  per-history owner tag and returns `ForeignCheckpoint`/`StateDesync` errors,
-  while the flow wrapper returns a bare `bool` and carries the stale
-  "comparison charges" claim. Should the owner-guard live in
-  `ParentLinkedHistory` itself and be shared, or are the two phases' failure
-  contracts intentionally different (flow prefers fail-closed `bool` to avoid
-  propagating errors through the transfer loop)? Not resolved in this chunk.
-- **`PendingFlowStates::finalize` ownership:** is emitting inside the pending
-  group (READ-004 callback) preferable to returning a transient group struct,
-  or does the returned vector keep the certainty computation testable in
-  isolation? Current tests only exercise final certainty through full runs.
-- **`ProjectionRunState.reachable` mirrors each environment's flag.** It is a
-  per-path cached hint guarded by `restore_path`/`join_paths`, but it is a
-  second store of the same truth as `FlowEnvironment.reachable`; confirming it
-  can never diverge from the frontier contents would let one of them be
-  deleted. Not a finding because both are cheap and the divergence risk is low.
+- **Flow `MutationLog` vs scope `OwnedHistory` — resolved: the failure
+  contracts are intentionally different; keep the owner-guard out of
+  `ParentLinkedHistory`.** Scope runs many independent histories (`OwnedHistory`
+  per `AssignmentEnvironment` and per `WriteSet`,
+  `analysis/scope/build/history.rs:121-124` and `:247-252`), so a checkpoint
+  captured against one history must be rejected when restored against another;
+  the per-history `HistoryOwner` tag (`:24`, `:49-52`, `:55-58`) and the
+  `ForeignCheckpoint`/`StateDesync` errors (`:36-40`, `:83-101`) catch exactly
+  that. Flow owns exactly one `MutationLog` for the whole run
+  (`FlowStateTable.log`, `tables.rs:84`, created in `FlowStateTable::new`,
+  `tables.rs:107`), so every `FlowEnvironment` checkpoint necessarily comes from
+  that same log and a foreign checkpoint is structurally impossible. The
+  fail-closed `bool` (`history.rs:77-88`) is intentional: `restore_path` and
+  `admit_path` already turn restore failure into `mark_incomplete` plus
+  `Failed`/`Exhausted` (driver.rs:234-244, :285-302), so threading errors
+  through the transfer loop would add nothing. Adding the guard to
+  `ParentLinkedHistory` would cost a per-transition owner comparison on the hot
+  restore path and force a signature change on both wrappers for no observable
+  gain.
+- **`PendingFlowStates::finalize` ownership — resolved: keep the returned,
+  grouped result; within READ-004, prefer the "yield
+  `(FactId, MatchCertainty, Vec<PendingState>)` per group" branch over the
+  callback.** `finalize` is a pure transform (`&mut self` plus two value
+  inputs, mod.rs:344-349) whose certainty derivation depends only on active-path
+  coverage and `AlternativeCompleteness` (mod.rs:356-369). Returning the grouped
+  result keeps that logic directly unit-testable and keeps evidence concerns out
+  of the pending module, whereas a callback would couple pending storage to the
+  projector's emission through a closure that only full runs could exercise.
+  Confirmed that no unit test calls `finalize` or `queue_state` directly today
+  — final certainty is exercised only through full runs
+  (tests.rs:316-481, tests_extended.rs:261), which argues for keeping the pure
+  return shape so the computation can be unit-tested without a run.
+- **`ProjectionRunState.reachable` mirrors each environment's flag — resolved:
+  keep it; it is a per-path live cursor, not a redundant store of snapshot
+  truth, and it cannot diverge at any read site.** During `transfer_paths_with`
+  the frontier is drained into a local `incoming` vec (driver.rs:91) and only
+  refilled afterward (driver.rs:109), so the environment currently being
+  transferred is not in the frontier; `run.reachable` is the projector's only
+  signal of the current path's reachability, read at driver.rs:105 and via
+  `transfer_call` (driver.rs:247) and `capture` (driver.rs:271). Every read is
+  dominated by the `restore_path` write for that same path in the same
+  iteration (driver.rs:242), plus the deliberate `= true` at a function `Enter`
+  (driver.rs:222). Deleting it would mean threading per-path reachability
+  through the transfer closure and into `capture` — a wide refactor with no
+  boundedness or determinism win. Confirmed not a finding.
 
 ## Coverage
 

@@ -64,12 +64,16 @@ narrow `RuleCatalog::combine` to return its only possible failure directly
 (e.g. `Result<Self, RuleId>` for the duplicate id) so
 `Linter::new` becomes `RuleCatalog::combine(catalogs).map_err(LintConfigError::DuplicateRule)?`
 with no match on `ProviderCatalogError` and no panic arm; remove
-`ProviderCatalogError::DuplicateRule` and its Display arm at the same time.
-Guardrails: `DuplicateRule`, `UnknownRule`, and `InvalidSelector` retain their
-messages and ordering on `LintConfigError`; `RuleCatalog::new`'s
-`InvalidRuleId`/`InvalidRule` errors keep flowing through `ProviderCatalogError`;
-integration tests that assert `LintConfigError::UnknownRule`
-(`tests/integration/linter.rs:208,248`) stay unchanged.
+`ProviderCatalogError::DuplicateRule` and its Display arm (`catalog.rs:22,84`)
+at the same time. Guardrails: `DuplicateRule`, `UnknownRule`, and
+`InvalidSelector` retain their messages and ordering on `LintConfigError`;
+`RuleCatalog::new`'s `InvalidRuleId`/`InvalidRule` errors keep flowing through
+`ProviderCatalogError`; the only `combine` callers (`linter.rs:154`,
+`catalog/tests.rs:20,30`) are updated together, with
+`combined_catalog_rejects_duplicate_namespaced_ids` (`catalog/tests.rs:19-26`)
+asserting the returned `RuleId` directly; and integration tests that assert
+`LintConfigError::UnknownRule` (`tests/integration/linter.rs:208,248`,
+`linter/tests.rs:97`) stay unchanged.
 
 #### [ ] READ-002 — `map_compiled_catalog_error` hand-translates `CompiledCatalogError` when a canonical `From` would delete the mapper and the redundant rebuild
 
@@ -83,11 +87,12 @@ integration tests that assert `LintConfigError::UnknownRule`
 `CompiledCatalogError` variant, lifts the `rule_id` out of each payload, and
 rebuilds it as `ProviderCatalogError::InvalidRule(rule_id, RuleCompilationError)`
 (`catalog.rs:51-76`), used once at `compile_records(...).map_err(map_compiled_catalog_error)`
-(`catalog.rs:118`). The rebuild is the same destructure/reassemble round trip
-the selection layer otherwise avoids, and `RuleCompilationError`
-(`catalog.rs:27-36`) is a full parallel model of the four `CompiledCatalogError`
-variant kinds (`InvalidMatcher`/`InvalidQuery`/`CompilerInvariant`/
-`InvalidPhysicalPlan`) that also discards the structured
+(`catalog.rs:118`). The rebuild is a hand-written destructure/reassemble of
+every variant's payload — exactly the mechanical conversion a `From` impl (or
+the existing `Display` on `CompiledCatalogError`, `error.rs:206-236`) would
+own. `RuleCompilationError` (`catalog.rs:27-36`) is a full parallel model of
+the four `CompiledCatalogError` variant kinds (`InvalidMatcher`/`InvalidQuery`/
+`CompilerInvariant`/`InvalidPhysicalPlan`) that also discards the structured
 `CompilerInvariantDiagnostic`/`PhysicalPlanDiagnostic` payloads into `String`
 and drops the variant context from `Display` (all four arms write only the
 message, `catalog.rs:44`).
@@ -95,12 +100,17 @@ message, `catalog.rs:44`).
 **Recommendation:** Give the conversion its canonical owner: implement
 `impl From<CompiledCatalogError> for ProviderCatalogError` in `lint/catalog`
 and change `RuleCatalog::new` to `compile_records(&rules_and_ids).map_err(ProviderCatalogError::from)?`,
-deleting the free function. Guardrails: keep the `stderr`-visible message text
-stable (provider-prefixed `rule \`{id}\`: ...`), keep the flat
+deleting the free function. Guardrails: keep the `ProviderCatalogError::InvalidRule`
+Display shape (`invalid rule \`{id}\`: {message}`, `catalog.rs:83`) and the
+flat message text stable — that is the string callers see; keep the flat
 `RuleCompilationError` vocabulary as the stable provider-boundary shape (it is
-the public type callers match on), and where the structured diagnostics matter
-for future serialization, keep the question open (see Open Questions) rather
-than re-adding field access mid-refactor.
+the payload type of the exported `ProviderCatalogError::InvalidRule`, exported
+at `lib.rs:41`); update `catalog_mapping_preserves_compiler_error_categories`
+(`catalog/tests.rs:44-85`) to `ProviderCatalogError::from(compiled)`; and, per
+the resolved open question (Open Questions — Resolved), do not retrofit the
+structured `CompilerInvariantDiagnostic`/`PhysicalPlanDiagnostic` payloads onto
+this boundary — no consumer reads them here and the report schema can never see
+a compile failure.
 
 ### Selector parsing (`lint/selection`)
 
@@ -127,15 +137,18 @@ theme chunk 19 reports for the authoring side (`Rule::build` vs
 `RuleCatalog::new`).
 
 **Recommendation:** Detect `*` presence before parsing: for selectors without a
-wildcard, validate with `RuleId::parse` only and store no pattern; for wildcard
+wildcard, validate with `RuleId::parse` only and store no pattern (a
+`has_wildcard` flag or `Option<RulePattern>` in `RuleSelector`); for wildcard
 selectors, build `RulePattern` (whose grammar already handles the literal
 checks) and skip the `RuleId::parse` pass. Keep `RuleSelector::matches`'s
 exact branch as the sole matching path for non-wildcards. Guardrails: preserve
 the `InvalidSelector` failure mode for malformed wildcards and the empty
 selector, keep the `?[]{}\` rejection in `RuleSelector::parse`
-(`selection.rs:196-199`), and preserve the deterministic `UnknownRule` vs
+(`selection.rs:196-201`), and preserve the deterministic `UnknownRule` vs
 `InvalidSelector` distinction in `validate_override_matches`
-(`selection.rs:358-375`).
+(`selection.rs:358-375`); the exact-matching unit tests (`selection/tests.rs:7-29`)
+and the wildcard-part validation tests (`selection/tests.rs:101-109`) pin both
+grammars and must pass unchanged.
 
 #### [ ] READ-004 — `RuleState` declares a lowercase-string serde vocabulary that no site uses; only the bool shim is reachable
 
@@ -146,28 +159,33 @@ selector, keep the `?[]{}\` rejection in `RuleSelector::parse`
 - **Location:** `glass-lint-core/src/lint/selection.rs:30-36,44-47,161-185`
 
 `RuleState` derives serde with `rename_all = "lowercase"`
-(`selection.rs:32`), yet its only serialization site — `RuleOverride`'s
+(`selection.rs:31-32`), yet its only serialization site — `RuleOverride`'s
 `state` field — bypasses that representation entirely with
 `#[serde(rename = "enabled", with = "rule_state_as_bool")]`
 (`selection.rs:44-47`), so the derived vocabulary is unreachable and the two
 grammars ("enabled"/"disabled" vs `true`/`false`) must be held in sync by hand.
 `rule_state_as_bool` (`selection.rs:161-185`) is a private inline `mod`
-referenced only through a serde attribute whose `pub(super)` functions are also
-broader than their single consumer needs. The two-variant enum exists to give
-the boolean meaning, which is good vocabulary, but the model currently asserts
-two incompatible serializations for one field.
+referenced only through that serde attribute; its `pub(super)` functions have
+exactly the visibility the attribute needs (the derive on `RuleOverride`
+resolves the `with` path from the parent `selection` module, so the functions
+must be visible there), so the shim is not over-exposed — the defect is the
+dead lowercase derive, not the shim. The two-variant enum exists to give the
+boolean meaning, which is good vocabulary, but the model currently asserts two
+incompatible serializations for one field.
 
-**Recommendation:** Let `RuleOverride` own its serialization outright: either
-implement `Serialize`/`Deserialize` for `RuleOverride` (keep field name
-`enabled` and the `deserialize_selector` validation) and delete the
-`RuleState` derive plus `rule_state_as_bool`, or convert the field to a plain
-`enabled: bool` and keep `RuleState` only as a conversion API. Choose one
-canonical wire shape (the CLI schema currently expects `enabled: true|false`).
-Guardrails: config round-trips in `glass-lint-cli/src/config.rs` and the
-`CoreConfig.overrides` file format must keep serializing booleans, selector
-validation must still reject invalid selectors at deserialize time, and the
-`RuleOverride::new`/`state()` public surface stays intact for linter tests
-(`linter/tests.rs:89`).
+**Recommendation:** Choose one wire shape and delete the other: remove the dead
+`rename_all = "lowercase"` serde derive from `RuleState` (`selection.rs:31-32`)
+and keep `rule_state_as_bool` as the single representation of the `state`
+field, so `RuleOverride`'s derived serialization is the only vocabulary in
+play. If the boolean meaning is better modeled as data, the further step is
+converting the field to a plain `enabled: bool` with `RuleState` kept only as a
+conversion API — but the minimal change is removing the unreachable derive.
+Guardrails: the `CoreConfig.overrides` wire shape (each override as a
+`selector` string plus `enabled: true|false`, the shape CLI config files
+document) must keep serializing booleans, selector validation must still reject
+invalid selectors at deserialize time (`deserialize_selector`,
+`selection.rs:152-159`), and the `RuleOverride::new`/`state()` public surface
+stays intact for linter tests (`linter/tests.rs:89`).
 
 ### Module visibility (`lint/batch`, `lint/report`)
 
@@ -177,14 +195,15 @@ validation must still reject invalid selectors at deserialize time, and the
 - **Fix Complexity:** Low
 - **Theme:** ENCAPSULATE
 - **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/lint/batch.rs:111,245`; `glass-lint-core/src/lint/report/mod.rs:111,120,124,130`
+- **Location:** `glass-lint-core/src/lint/batch.rs:111,245`; `glass-lint-core/src/lint/report/mod.rs:66,111,120,124,130`
 
 Several items are declared `pub(super)` even though every consumer lives in the
 declaring module or its child modules, where plain privacy already suffices:
 `CompletedBatch` (`batch.rs:111`, referenced only inside `batch.rs` and
-`batch/tests.rs`), `BatchDriver::new` (`batch.rs:245`, used only by
-`batch/tests.rs` via `use super::*`), and `ProjectReportSession`'s
-`status_diagnostics`/`is_complete`/`reconstruct_trace`/`trace_node_count`
+`batch/tests.rs`), `BatchDriver::new` (`batch.rs:245`, used within `batch.rs`
+by `BatchResults::new` at `batch.rs:358` and by `batch/tests.rs` via
+`use super::*`), and `ProjectReportSession` itself (`report/mod.rs:66`) plus
+its `status_diagnostics`/`is_complete`/`reconstruct_trace`/`trace_node_count`
 (`report/mod.rs:111,120,124,130`, consumed only by the sibling modules
 `diagnostics.rs`, `evidence.rs`, and `summary.rs`). As written, `pub(super)`
 makes these reachable from the entire `crate::lint` subtree (`linter.rs`,
@@ -192,11 +211,12 @@ makes these reachable from the entire `crate::lint` subtree (`linter.rs`,
 
 **Recommendation:** Drop the `pub(super)` qualifier on these items so they are
 module-private; unit-test modules keep working because they are child modules
-and import via `use super::*`. Keep the qualifier where a real cross-module
-call exists today (`BatchResults::new` is consumed by `linter.rs` and must stay
-`pub(super)`). Guardrails: no behavior change; the batch protocol types remain
-crate-internal, and `report`'s public surface stays just
-`ProjectAnalysis`/`ProjectAnalysisTimings` (re-exported at `lint/mod.rs:16`).
+and import via `use super::*` (e.g. `batch/tests.rs:3`). Keep the qualifier
+where a real cross-module call exists today (`BatchResults::new` is consumed by
+`linter.rs:258` and must stay `pub(super)`). Guardrails: no behavior change;
+the batch protocol types remain crate-internal, and `report`'s public surface
+stays just `ProjectAnalysis`/`ProjectAnalysisTimings` (re-exported at
+`lint/mod.rs:16`).
 
 ### Finding range conversion (`lint/report/evidence`)
 
@@ -206,16 +226,16 @@ crate-internal, and `report`'s public surface stays just
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/lint/report/evidence.rs:48-91,158,168`
+- **Location:** `glass-lint-core/src/lint/report/evidence.rs:48-91,158,167`
 
 `into_evidence` (`evidence.rs:48-91`) performs four distinct jobs in one body:
 per-occurrence trace resolution through the renderer, `MatchCertainty` joining
-(`evidence.rs:60`), the truncated-vs-full `EvidenceTraces` policy
+(`evidence.rs:59-61`), the truncated-vs-full `EvidenceTraces` policy
 (`evidence.rs:85-89`), and the empty-trace fallback (`evidence.rs:79-84`), then
 returns `Option<(SourceRange, EvidenceTraces, MatchCertainty)>` — a bare
-3-tuple the single caller immediately destructures (`evidence.rs:159`) — while
+3-tuple the single caller immediately destructures (`evidence.rs:158`) — while
 the caller finishes the construction with `Finding::new(...).into()`
-(`evidence.rs:168`), an `Into<Option<Finding>>` (`From<T> for Option<T>`) that
+(`evidence.rs:167`), an `Into<Option<Finding>>` (`From<T> for Option<T>`) that
 obscures what is simply `Some(finding)` in a `filter_map`.
 
 **Recommendation:** Split the policy from the plumbing: extract the
@@ -232,9 +252,9 @@ contract.
 
 - **Error surfaces over-state reachable failures.** `LintConfigError` declares
   a compiler-failure variant that cannot occur at linter construction
-  (README-001), while `RuleCompilationError` (a four-kind parallel model of the
+  (READ-001), while `RuleCompilationError` (a four-kind parallel model of the
   internal `CompiledCatalogError`) erases structured diagnostics and is
-  re-hosted through a hand roll (README-002). The intended layering
+  re-hosted through a hand roll (READ-002). The intended layering
   (internal compiler error → stable provider-catalog error → single
   lint-construction error) is sound; the reachable sets and the translation
   should be tightened to match the layers actually reached.
@@ -254,14 +274,14 @@ contract.
   `glass-lint-project` loader drive linting through a single shared
   `ProjectSession` with wave parallelism (`loader.rs:237-299`) — so the
   public batch surface is exercised only by integration tests today (see Open
-  Questions).
+  Questions — Resolved).
 - **Selection is decomposed, not sprawled.** `RuleSelection`/
   `RuleOverride`/`RuleBaseline`/`RuleState`/`PreparedRuleSelection` form the
   public configuration vocabulary and are each single-meaning; the parsing
   internals (`RuleSelector`/`RulePattern`/`PatternSegment`) and the one-shot
   `SelectionEvaluation` are private helpers, which is the correct ownership
   split. The real defects are the second validation grammar for exact IDs
-  (README-003) and the double serde vocabulary (README-004), not the number of
+  (READ-003) and the double serde vocabulary (READ-004), not the number of
   types. `LinterSharedConfig` is a justified Arc-shared immutable config bucket
   (its five fields are all consumed by `Linter`, and cloning the `Arc` is what
   makes batch worker clones cheap); it is not an immediately-consumed wrapper.
@@ -283,37 +303,75 @@ contract.
   silently coerce construction-time guarantees instead of modeling them; the
   batch coercion is provably safe (inputs are always ≥ 1), but both are the
   same "assume the invariant, hide it" style. These stay minor because the
-  invariants are cheap and local; README-001 proposes restructuring the
+  invariants are cheap and local; READ-001 proposes restructuring the
   unreachable one structurally.
 
-## Open Questions
+## Open Questions — Resolved
 
-- `RuleCompilationError` currently string-erases the structured
-  `CompilerInvariantDiagnostic`/`PhysicalPlanDiagnostic` payloads it mirrors.
-  If the report/diagnostics schema ever wants to serialize provider-catalog
-  compile failures, the stable boundary should carry the structured types
-  instead; the right time to decide is the README-002 conversion, not later.
-- Is `lint_batch` public API deliberately awaiting a production host? The
-  integration suite (`tests/integration/batch.rs`) is thorough and the
-  semantics are documented in core ARCHITECTURE.md, but neither the CLI nor the
-  project loader calls it. If no host is planned, the four public
-  `Batch*` exports (`lib.rs:38-43`) are currently contract pinned by tests
-  alone.
-- `LinterConfig::with_rules` round-trips a `Prepared` selection back to
-  `Unprepared`, discarding the validated enabled indexes and re-evaluating the
-  selection at `Linter::new` (`linter.rs:55-68`). No caller in the repo does
-  `with_prepared_rules` then `with_rules`; the arm exists for builder
-  order-independence. Is that property worth keeping, or should the builder
-  document that `with_prepared_rules` is terminal?
-- `ReportFiles::replace_findings` manufactures a fresh `FileReport` (no parse
-  diagnostics) when a module path is not already present (`files.rs:56-59`).
-  Since every `ProjectModule` path comes from a source that `initialize`
-  already keyed, the branch appears unreachable; if that ever changes, this
-  silent fallback would drop existing per-file data instead of failing.
-- `Linter::enabled_rule_ids()` (`linter.rs:186-192`) has no caller in the
-  current workspace, including tests. It is plausible external-consumer API,
-  but it is the only public `Linter` accessor without in-repo evidence of use;
-  confirm it is a designed part of the contract before relying on it.
+- **Should `RuleCompilationError` carry the structured
+  `CompilerInvariantDiagnostic`/`PhysicalPlanDiagnostic` payloads it currently
+  string-erases? Resolved: no.** The structured types are produced and consumed
+  entirely inside the authoring/compiler layer (`api/rule/error.rs:33-78`,
+  `api/compiler/mod.rs:209-214`); at the lint boundary nothing reads them —
+  `RuleCompilationError` is only ever `Display`-rendered (`catalog.rs:38-47`)
+  or compared in the mapping unit test (`catalog/tests.rs:44-85`). A compile
+  failure also cannot reach the report/diagnostics schema by construction:
+  `RuleCatalog::new` compiles during catalog construction (`catalog.rs:118`),
+  before a linter or report exists, so there is no serialization consumer to
+  serve. Keep the flat vocabulary as the stable provider-boundary shape (it is
+  the public payload type of `ProviderCatalogError::InvalidRule`, exported at
+  `lib.rs:41`); the READ-002 conversion should not re-add field access.
+- **Is `lint_batch` public API deliberately awaiting a production host?
+  Resolved: keep it public; it is a documented, test-pinned contract.**
+  `Linter::lint_batch` (`linter.rs:239-266`) is the only batch entry point and
+  the four `Batch*` types are deliberately exported (`lib.rs:38-43`,
+  `lint/mod.rs:13`). No production crate calls it — the CLI drives analysis
+  through `glass-lint-project`'s `ProjectLoader` (`cli/lint.rs:51-63`) →
+  `Linter::begin_project` (`loader.rs:212`) with wave parallelism
+  (`loader.rs:237-303`), and the harness uses `lint_source`/`begin_project`
+  (`adapters.rs:86,117,134`, `profile/runner/workers.rs:41-50`) — so the
+  surface is contract-pinned by the integration suite alone
+  (`tests/integration/batch.rs`, six tests covering laziness, bounding,
+  input order, duplicate paths, malformed items, cancellation, and cache
+  reuse). The semantics are a documented core contract
+  (`core/ARCHITECTURE.md:60-66`), and the harness, which lints many independent
+  one-file snippets across threads, is a plausible future host that could adopt
+  `lint_batch` without API change. No in-repo evidence suggests a demotion is
+  planned.
+- **Should the builder keep `with_rules` total over a `Prepared` state?
+  Resolved: keep it, and document it.** `with_rules` (`linter.rs:55-68`)
+  extracts the prepared selection's catalog and re-stores the config as
+  `Unprepared` with the new selection, discarding the validated enabled
+  indexes. No in-repo caller chains `with_prepared_rules` then `with_rules` —
+  the CLI's `selected_linter` picks exactly one branch (`cli/config.rs:381-388`)
+  — but the arm is what keeps `with_rules` total and order-independent: when
+  the prepared selection was built against the same catalogs (as
+  `Config::validate` does, `cli/config.rs:283-286`), the round-trip is
+  idempotent. That is a real builder property worth keeping; add a doc note on
+  `with_prepared_rules` (`linter.rs:70-76`) stating that a later `with_rules`
+  re-evaluates the new selection against the prepared catalog and discards the
+  prepared validation.
+- **Is `ReportFiles::replace_findings`'s fresh-`FileReport` fallback reachable?
+  Resolved: no — make the invariant explicit instead of silent.**
+  `populate_project_files` (`evidence.rs:113-125`) calls it with
+  `module.path()` for every module in the linked model, and every module path
+  is a source-table path by construction: `ResolvedLinkInput::build`
+  (`model.rs:143-155`) requires each analyzed path to resolve through
+  `sources.module_ids()` (`tables.rs:103-116`), while `ReportFiles::initialize`
+  keys exactly `sources.in_normalized_path_order()` (`files.rs:21-39`), and
+  `validate_complete` (`artifacts.rs:108-119`) requires every source to be
+  analyzed. The `else` branch (`files.rs:55-60`) therefore never runs today;
+  because it would silently drop existing per-file data (e.g. parse
+  diagnostics) in a hypothetical flow that bypassed `initialize`, replace it
+  with an invariant check (`debug_assert!`/`expect` on `self.files` containing
+  the path) so the failure is loud if the invariant ever breaks.
+- **Is `Linter::enabled_rule_ids()` dead API? Resolved: no — it has in-repo
+  callers and is part of the contract.** The premise was wrong: it is exercised
+  by the integration suite (`tests/integration/linter.rs:236-238` asserts the
+  exact enabled set after override ordering) and by the CLI config tests
+  (`cli/config/tests.rs:53,71,94` assert profile baseline plus override
+  composition). It is the accessor the CLI's own tests rely on to verify rule
+  selection, so it is contract-pinned public API; keep it as-is.
 
 ## Coverage
 
@@ -341,20 +399,28 @@ Callers traced: `Linter::begin_project` → `SessionState::new`
 `ProjectAnalysis::{into_report,into_parts}` (`adapters.rs:169`,
 `loader.rs:414-417`); `RuleSelection::{prepare,resolve}` (CLI `config.rs:283-286`,
 `linter.rs:158`); `PreparedRuleSelection::into_parts` (`linter.rs:149`);
-`RuleCatalog::{combine,metadata,rule_ids,rule_count,rule_id,compiled}`
-(provider crates and CLI `config.rs:327-396`); the batch protocol
+`RuleCatalog::combine` (only `linter.rs:154` and `catalog/tests.rs:20,30`;
+provider crates and the CLI never call it — they use `metadata`/`rule_ids`/
+`rule_count`/`rule_id`/`compiled`: `js/lib.rs:86,121`, `obsidian/lib.rs:33,67`,
+`cli/output.rs:38`, `cli/config.rs:392`, `cli/config/tests.rs:6,12`,
+`selection.rs:333`, `report/mod.rs:201`); the batch protocol
 (`tests/integration/batch.rs:27-150`, unit tests `batch/tests.rs:19-141`);
 the report pipeline (`FindingRenderer::populate_project_files` →
 `merge_duplicate_findings` → `Finding::has_primary/merge_duplicate`,
 `report/mod.rs:220-228`, `evidence.rs:113-249`).
 
 Verification performed: `rg` confirms `LintConfigError::InvalidRule` is never
-constructed and `Linter::enabled_rule_ids` has no callers; confirmed
+constructed; `Linter::enabled_rule_ids` does have callers — the integration
+suite (`tests/integration/linter.rs:236`) and the CLI config tests
+(`cli/config/tests.rs:53,71,94`) — so the earlier "no callers" premise is
+retracted and the open question is resolved to "keep it"; confirmed
 `RuleCatalog::combine`'s only error is `DuplicateRule`; confirmed the
-`into_evidence` 3-tuple destructure and the `Finding::new(...).into()`
-`Option` conversion; confirmed every `pub(super)` item's consumers lie inside
-its module subtree; confirmed `rule_state_as_bool` is the sole serde path for
-`RuleState` and the `rename_all = "lowercase"` derive is unreachable; confirmed
-`ReportFiles` path-BTreeMap ordering plus `AnalysisReport::finalize`
-re-sorting; and confirmed `git status --short` shows only this audit file as
-new among the chunk files I created.
+`into_evidence` 3-tuple destructure (`evidence.rs:158`) and the
+`Finding::new(...).into()` `Option` conversion (`evidence.rs:167`); confirmed
+every `pub(super)` item's consumers lie inside its module subtree (with
+`BatchDriver::new` additionally used within `batch.rs` itself at line 358);
+confirmed `rule_state_as_bool` is the sole serde path for `RuleState` and the
+`rename_all = "lowercase"` derive is unreachable; confirmed `ReportFiles`
+path-BTreeMap ordering plus `AnalysisReport::finalize` re-sorting
+(`file_report.rs:51`, `analysis_report.rs:130-137`); and confirmed `git status
+--short` shows only this audit file as new among the chunk files I created.

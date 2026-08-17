@@ -30,14 +30,15 @@ arm.
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/syntax/names.rs:147-150`,
   `glass-lint-core/src/analysis/syntax/names.rs:188-191`,
-  `glass-lint-core/src/analysis/syntax/constant/eval.rs:213-216`,
-  `glass-lint-core/src/analysis/resolution/expression/static_values.rs:45-48`
+  `glass-lint-core/src/analysis/syntax/constant/eval.rs:213-216`
 
 The identical `Expr::TsAs` / `Expr::TsNonNull` / `Expr::TsSatisfies` /
 `Expr::TsTypeAssertion` unwrap arm block is repeated verbatim in eight
-match sites (four within this chunk, four outside:
-`analysis/facts/functions.rs:291-294`, `analysis/facts/calls/callee.rs:195-198`
-and `:226-229`, `analysis/resolution/expression.rs:284-287`). The root cause is
+match sites — three within this chunk (`names.rs:147-150`, `names.rs:188-191`,
+`constant/eval.rs:213-216`) and five outside (
+`resolution/expression/static_values.rs:45-48`,
+`facts/functions.rs:291-294`, `facts/calls/callee.rs:195-198` and `:226-231`,
+`resolution/expression.rs:284-287`). The root cause is
 documented in `names.rs:117-121`: `effective_terminal_expr` deliberately leaves
 "TypeScript assertion wrappers … terminal here", so every consumer re-implements
 the peel with its own recursion target. Adding or renaming a transparent wrapper
@@ -64,8 +65,8 @@ only the shared peeling step is consolidated. Sequence handling (`Expr::Seq`
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/syntax/constant/eval.rs:277-285`,
-  `glass-lint-core/src/analysis/syntax/constant/eval.rs:335-343`
+- **Location:** `glass-lint-core/src/analysis/syntax/constant/eval.rs:278-285`,
+  `glass-lint-core/src/analysis/syntax/constant/eval.rs:336-343`
 
 The object-spread arm of `evaluate_object` and the `Object.assign` loop of
 `evaluate_object_assign` perform the same bounded merge twice: destructure a
@@ -147,38 +148,64 @@ observe the same `MAX_DEPTH`/`MAX_NODES`/`MAX_LOOKUPS` bounds as other shapes.
   `ConstValue::bounded()` re-admission) are documented defense-in-depth in
   `types.rs:86-134`; the two genuinely redundant merge checks are READ-002.
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. `Resolver::const_value` (`resolution/constant.rs:23-57`) bounds the
-   `ValueId -> ConstValue` read path by `MAX_DEPTH` only, with no node or
-   lookup accounting, while `.bounded()` (node capped) is applied only when
-   interning constants back. With per-level container fanout of
-   `MAX_ARRAY_ITEMS`/`MAX_OBJECT_KEYS` (256) and 32 depth levels, the read path
-   can materialize far more nodes than the syntax evaluator would admit. Is this
-   asymmetry intentional (values are already bounded by `MAX_VALUES` at
-   interning), or should the read path also charge a node budget?
-2. `UnknownReason` (`syntax/provenance.rs:11-22`) carries five variants and a
-   `BudgetExhausted { limit }` payload, but every consumer matches it as a
-   blanket fail-closed `Unknown(_)` (e.g.
-   `matching/build.rs:195,316`, `project/linker/export.rs:240`,
-   `project/identities.rs:93`); only resolver unit tests inspect the precise
-   reasons. Is the taxonomy meant to feed future diagnostics, or is it
-   currently over-built bookkeeping?
-3. `EvalNode::Binary`/`EvalNode::Template` (`eval.rs:175-183`) duplicate the
-   `Expr::Bin`/`Expr::Tpl` arms (`eval.rs:197-200`); the wrapper is justified
-   by the resolver's bare-node call sites, but the Add/template semantics now
-   have two dispatch paths that must stay in sync. Would separate
-   `evaluate_binary`/`evaluate_template` entry points be clearer?
-4. `name.rs::MAX_NAMES` re-derives `DEFAULT_MAX_NAMES` with a compile-time pin
-   because the bound is excluded from the artifact cache key. Deliberate, but
-   could the pin live in `glass-lint-datastructures` so the second constant and
-   its assert never diverge from the real default?
-5. The `Lookup` service is threaded through ~10 `EvalState` methods (e.g.
-   `evaluate_inner`, `evaluate_template`, `evaluate_add`, `evaluate_object`,
-   `evaluate_object_assign`, both `contextual_*_property_name`). Binding it into
-   `EvalState<'a, L: Lookup>` would remove the repeated parameter but ripple
-   through every `Lookup` impl (`FrozenScopeGraph`, `Resolver`, `ScopeCollector`).
-   Deferred as a conscious trade-off; revisit if the parameter count grows.
+1. Resolved: intentional — the interning arena is the read path's aggregate
+   node bound. `const_value`/`const_value_depth`
+   (`resolution/constant.rs:23,27`) re-materialize only values already admitted
+   to `ValueTable`, which caps distinct interned values at `MAX_VALUES`
+   (65,536; `model/value.rs:135`, enforced at `model/value.rs:184`) and
+   deduplicates identical trees (`values: FastIndexSet<Value>`,
+   `model/value.rs:139`); trees entering through the evaluator boundary are
+   additionally capped by `.bounded()` in `intern_const_value`
+   (`resolution/constant.rs:65`). Per-container limits are re-verified on read
+   (`ConstValue::array`/`object` at `resolution/constant.rs:43,53`) and
+   recursion is guarded by `depth >= MAX_DEPTH` (`resolution/constant.rs:28`).
+   `MAX_NODES` is a field-side syntax budget (`eval.rs:160`); charging a second
+   node budget on the read path would double-enforce a bound the arena already
+   provides, and would change which already-admitted arena trees read back as
+   `Unknown`. No change recommended.
+2. Resolved: the `UnknownReason` taxonomy is producer-side bookkeeping that
+   documents and distinguishes fail-closed causes; it is not over-built.
+   Producers emit precise reasons (`resolution/call.rs:67,130-166`;
+   `resolution/expression.rs:316,335`) and every production consumer matches the
+   blanket `Unknown(_)` fail-closed arm (`matching/build.rs:195,316`,
+   `analysis/project/linker/export.rs:240`, `analysis/project/identities.rs:93`,
+   plus `resolution/call.rs:112`, `resolution/expression.rs:332`). The precise
+   inspection lives in resolver unit tests (`resolution/tests.rs:20-23,42-45`),
+   which explicitly keep "unsupported" distinct from "budget exhausted" —
+   distinguishing a genuine resolution failure from resource exhaustion. The
+   `BudgetExhausted { limit }` payload records the responsible cap. Keep as-is;
+   it is also the natural seam if diagnostics ever surface the reason.
+3. Resolved: the `EvalNode` wrapper is justified and the duplication is
+   dispatch-only, not semantic. `EvalNode::Binary`/`EvalNode::Template` exist
+   because the resolver passes bare `&BinExpr`/`&Tpl` through `intern_evaluated`
+   (`resolution/expression.rs:83,281,297`), and both dispatch paths forward to
+   the same shared implementations (`eval.rs:175-183` → `eval.rs:197-200`):
+   `evaluate_add` for Add binaries and `evaluate_template` for templates.
+   Separate `evaluate_binary`/`evaluate_template` entry points would be
+   redundant — those helpers already are the shared single implementation, and
+   non-Add binaries already fail closed identically on both paths. Keep; no
+   change.
+4. Resolved: keep the core-owned pin. The `assert!` at `name.rs:13`
+   (`MAX_NAMES == glass_lint_datastructures::DEFAULT_MAX_NAMES`) is a
+   compile-time check, so the two constants can never diverge without a build
+   failure. The artifact-level bound is deliberately independent of the
+   datastructure default (`name.rs:6-10`): because the name bound affects
+   resolution output yet is excluded from the artifact cache key, it must stay a
+   stable core constant rather than a re-export that tracks upstream
+   scheduling defaults. Moving it would couple two concerns the doc comment
+   separates. No change recommended.
+5. Resolved: keep the explicit `&impl Lookup` threading. Binding `L: Lookup`
+   into `EvalState<'a, L>` would ripple a generic parameter through every
+   `Lookup` impl (`scope/query/constants.rs:24`, `resolution/mod.rs:186`,
+   `scope/build/constants.rs:15`, `NoLookup`, and the test lookups) and through
+   every external call site, only to remove one parameter on the ten private
+   `EvalState` methods (`eval.rs:142-393`). The free
+   `contextual_member_property_name_with_state` wrapper (`eval.rs:96-102`)
+   already absorbs the parameter where a caller shares budget, and not binding
+   the service keeps every `Lookup` impl stateless. The deferred trade-off
+   stands; revisit only if the parameter or impl count grows.
 
 ## Coverage
 

@@ -41,9 +41,10 @@ real source-propagation budgets are plain `Budget` values driven directly in
 `sources.rs:196` and `sources.rs:255-306` — and the only two consumers are
 `source_budget_transfer_limit_is_detected` and
 `source_budget_not_exhausted_after_stabilization` (tests.rs:184-200), which
-exercise `Budget`'s own counter semantics through the shim. Two of the three
-`propagate_*` tests in the same file use `Budget` directly, so callers already
-demonstrate the shim adds nothing.
+exercise `Budget`'s own counter semantics through the shim. All nine
+`propagate_*` tests in the same file construct `Budget` directly (tests.rs:34,
+52, 71, 89, 103, 115, 135, 151, 171), so callers already demonstrate the shim
+adds nothing.
 
 **Recommendation:** Delete `SourceBudget` from `state.rs` and `use` it from the
 two tests; rewrite those tests to construct `Budget::new(...)` and call
@@ -86,7 +87,7 @@ distinct field of the evidence type) must stay unchanged.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — `usage_matches_context` is a free function in the evidence module that only dispatches `CallContext`'s own mismatch predicates
+#### [ ] READ-005 — `usage_matches_context` is a free function in the evidence module that only dispatches `CallContext`'s own match predicates
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -98,8 +99,8 @@ distinct field of the evidence type) must stay unchanged.
 `evidence.rs` but is only consumed by `UsageProjector::project`
 (propagation.rs:64-65), and every arm calls back into `CallContext` state:
 `matches_property_write` (evidence.rs:31-33), `matches_call_receiver`
-(evidence.rs:34), or `effect.call_argument(...).and_then(|arg|
-context.matches_argument(...))` (evidence.rs:35-41). It is dispatch over one
+(evidence.rs:34), or `effect.call_argument(...).is_some_and(|argument|
+context.matches_argument(effect, argument))` (evidence.rs:35-41). It is dispatch over one
 type's own matcher surface; the free-function form forces `evidence.rs` to know
 `EffectUse`, `FunctionEffect`, and `CallContext` just to route three variants,
 and leaves the "which `EffectUse` matches which context" contract undocumented
@@ -143,14 +144,15 @@ actually consulted only by unit tests (production matches only
 
 **Recommendation:** Move `BoundedFifo` and `FifoAdmission` into
 `glass-lint-datastructures` behind a narrow public API (construct, `push` →
-admission, `pop_front`/`take_pending`, `is_exhausted`), exporting
-`FifoAdmission` with the documented `Inserted`/`Duplicate`/`Full` contract, and
-repoint `worklist.rs` and `sources.rs`. Guardrails: do not merge it with
-`FifoAdmission`, `PathAdmission`, or `StateAdmission` — those classify
-different admissions (queue capacity, path restoration, state batch) and the
-distinct vocabularies are deliberate; keep `T: Ord + Clone`, the
-total-retained (seen-set) bound rather than a pending-only bound, and the
-fail-closed behavior where `Full` latches `exhausted` so downstream
+admission, `pop_front`/`take_pending`, `is_empty`, `is_exhausted` — `is_empty`
+keeps the `propagate` loop at sources.rs:265 working), exporting `FifoAdmission`
+with the documented `Inserted`/`Duplicate`/`Full` contract, and repoint
+`worklist.rs` and `sources.rs`. Guardrails: keep `FifoAdmission` distinct from
+`PathAdmission` and `StateAdmission` — the three classify different admissions
+(queue capacity, path restoration, state batch) and the distinct vocabularies
+are deliberate; keep `T: Ord + Clone`, the total-retained (seen-set) bound
+rather than a pending-only bound, and the fail-closed behavior where `Full`
+latches `exhausted` so downstream
 `FlowCompletionReason::CrossContextLimit`/`SourcePropagation` marks are
 preserved. Implementation order: before READ-006, which restructures callers in
 the same files.
@@ -175,8 +177,9 @@ once per matching usage inside `UsageProjector::project`
 `project_context` (mod.rs:137-145), each construction passing the same
 session/effect/context/propagated/state by position, and `UsageProjector::new`
 needs `#[allow(clippy::too_many_arguments)]` (propagation.rs:36). One per-context
-projection therefore owns the same state twice, through two wrappers, with the
-`allowed` constructor being the only object that keeps the phases coherent.
+projection therefore dresses the same five pieces in two wrappers, with
+coherence resting on the two hand-written constructors — one of which carries
+`#[allow(clippy::too_many_arguments)]` — rather than on a single shared owner.
 
 **Recommendation:** Collapse the two coordinators into one per-context owner —
 either make `CallPropagation`'s behavior inherent `propagate(through)` methods
@@ -203,29 +206,39 @@ pre-usage state via `through = Some(event)`, then the final `None` pass), the
 - **Location:** `glass-lint-core/src/analysis/flow/cross/graph.rs:20-52`, `glass-lint-core/src/analysis/flow/cross/sources.rs:137-188` and `sources.rs:204-243`, `glass-lint-core/src/analysis/flow/cross/worklist.rs:191-254`
 
 Four independent passes re-derive the same topology: `QualifiedCallGraph::build`
-(graph.rs:22-50), `FlowSources::collect_candidates` (sources.rs:209-243),
+(graph.rs:22-50), `FlowSources::collect_candidates` (sources.rs:204-243),
 `FlowSources::build_adjacency` (sources.rs:137-188), and
 `ContextWorklist::seed_from_calls` (worklist.rs:198-254) each walk
-`project.modules()` → `effects().iter_effects()` → `effect.calls()`, resolve the
-same `stream.call_effect(event)` shape, and (except `collect_candidates`) look
-up the same `call_graph.get(QualifiedEvent::new(module, call.event()))` edge.
-Three of the four skip `effect.is_invalid()` at the top (graph.rs:25-27,
-sources.rs:141-143, sources.rs:218-220); `seed_from_calls` omits that gate
-(worklist.rs:202-203) and only survives because invalid effects never produce a
-qualified target, so the divergence both reads as intent and costs nothing to
-fix — the classic signal of a skeleton that should exist once.
+`project.modules()` → `effects().iter_effects()` → `effect.calls()`. Three of
+the four also resolve the caller's call shape via `stream.call_effect(event)`
+(graph.rs:30, sources.rs:145, sources.rs:223); `seed_from_calls` needs no
+shape. Target resolution diverges: `build` is the producer — it qualifies the
+target itself via `project.qualified_function_target` (graph.rs:35-40) and
+inserts it into the map — while `build_adjacency` (sources.rs:146-150) and
+`seed_from_calls` (worklist.rs:204-208) read the same
+`call_graph.get(QualifiedEvent::new(module, call.event()))` edge, and
+`collect_candidates` resolves flows through the source index instead
+(sources.rs:228-233). Three of the four skip `effect.is_invalid()` at the top
+(graph.rs:25-27, sources.rs:141-143, sources.rs:218-220); `seed_from_calls`
+omits that gate (worklist.rs:202-203) and only survives because invalid effects
+never produce a qualified target, so the divergence both reads as intent and
+costs nothing to fix — the classic signal of a skeleton that should exist once.
 
 **Recommendation:** Add one shared qualified-call iteration owned by the graph
 module (the natural owner of site→target qualification), yielding
-`(module, effect, call event, shape, Option<target>)` in deterministic order,
-and drive `build`, `collect_candidates`, `build_adjacency`, and
+`(module, effect, call)` with the per-call shape resolved, in deterministic
+order, and drive `build`, `collect_candidates`, `build_adjacency`, and
 `seed_from_calls` from it; each consumer then keeps only its distinguishing
-logic. Apply the invalid-effect gate uniformly inside the iterator (including
-for seeding) and document it. Guardrails: preserve deterministic iteration
-order, bounded memory (resolve shapes per call, never collect the whole
-stream), the exact skip semantics for unresolved targets/missing shapes, and
-the `seed_from_calls` distinction that unknown-source alternatives must still
-be seeded for calls without a candidate.
+logic, including target resolution — `build` must keep qualifying the target
+into the map (the graph does not exist yet when it runs), while the other
+passes keep reading `call_graph.get`, so the iterator should not attempt to
+yield the target itself. Apply the invalid-effect gate uniformly inside the
+iterator (including for seeding) and document it. Guardrails: preserve
+deterministic iteration order, bounded memory (resolve shapes per call, never
+collect the whole stream), the exact skip semantics for unresolved
+targets/missing shapes (including in `seed_from_calls`, which today does not
+resolve a shape), and the `seed_from_calls` distinction that unknown-source
+alternatives must still be seeded for calls without a candidate.
 
 **Fix Applied:** None so far.
 
@@ -233,8 +246,9 @@ be seeded for calls without a candidate.
 
 - **The session/context/state layering is deliberate, not triplicated.**
   `CrossProjectionSession` (mod.rs:50-57) is a per-context borrow bundle that
-  splits the `&mut` borrows of `CrossWorklist.evidence`, `.worklist`,
-  `.call_graph`, `.project`, `.names`, and `.arena` (mod.rs:116-123);
+  splits the borrows of `CrossWorklist.evidence` (`&mut`), `.worklist`
+  (`&mut`), `.project`, `.call_graph`, `.names`, and `.arena` (`&mut`)
+  (mod.rs:116-123);
   `CallContext` is the queue item; `CrossFlowState` is the monotone evidence
   state inside it. Each type owns a distinct role, so the chunk's candidate
   "three session books" concern is resolved — the real field overlap is the
@@ -259,27 +273,40 @@ be seeded for calls without a candidate.
   matches the architecture invariant "incomplete analysis never claims
   Definite" and must survive every refactor.
 - **One bounded-primitive reminder:** the `u16` bit-set `FlowCompletion` + the
-  `Budget` latch pattern now appear in three modules (cross, summary,
-  projector) with compatible semantics but separate vocabulary; worth keeping
-  an eye on as a future `glass-lint-datastructures` consolidation candidate,
-  not a finding here.
+  `Budget` latch pattern now appear in four flow modules (cross, summary,
+  projector, effect) with compatible semantics but separate vocabulary; worth
+  keeping an eye on as a future `glass-lint-datastructures` consolidation
+  candidate, not a finding here.
 
-## Open Questions
+## Open Questions (resolved)
 
-- `BoundedFifo`'s `Inserted`/`Duplicate` distinction is only consumed by unit
-  tests today (production matches `Full`). Is the three-variant contract a
-  future-facing API (e.g. to let `enqueue_parameters` react to duplication) or
-  should the projection-decision callers begin using the admission result when
-  the worklist ceiling is hit?
-- `src/analysis/flow/cross/mod.rs` — the four full-model passes (READ-006) are
-  all bounded by the same `flow_limit`, but each creates its own `Budget`. Is
-  a single shared operations budget per cross session intended, or is the
-  per-phase accounting (source vs step) a deliberate separation that must be
-  preserved?
-- The `collect` entry point names its `ExportLookupCache` parameter `session`
-  (mod.rs:188) while `CrossProjectionSession` is the session type in the same
-  module. Cosmetic, but worth aligning if READ-004/READ-006 touch these
-  signatures anyway.
+- **`BoundedFifo`'s `Inserted`/`Duplicate`/`Full` contract (resolved):** the
+  three-variant admission is intentional and should be kept. Production callers
+  consult only `Full` (sources.rs:260-261, 293-295; the `ContextWorklist::push`
+  results are discarded at worklist.rs:146, 176-187), and the unit tests are
+  what distinguish `Inserted`/`Duplicate`/`Full` to prove the total-retained
+  bound (tests.rs:234, 244, 251-258). The variant set is the documented
+  admission contract for READ-003's relocation; production callers should keep
+  latching on `Full` (fail-closed) and may treat `Duplicate` as success — no
+  caller today needs to react to deduplication.
+- **Per-phase `Budget` accounting (resolved):** the separation is deliberate and
+  must be preserved. There are two `Budget` instances — `source_budget` for the
+  `FlowSources` propagation fixed point (mod.rs:213-215) and `step_budget` for
+  the context traversal (mod.rs:217, 79-81) — both seeded with the same
+  `project.flow_limit()` (mod.rs:212, 217). The READ-006 walking passes are not
+  budget-charged: `build`, `collect_candidates`, and `build_adjacency` are
+  project-size-bounded walks, and `seed_from_calls` is bounded by the
+  worklist's `MAX_CONTEXTS` (worklist.rs:161). Merging the budgets would couple
+  the phases (source exhaustion would starve context stepping and vice versa)
+  and erase the per-phase attribution carried by `SourcePropagation` vs
+  `CrossStepBudget` in `FlowCompletion` (flow/mod.rs:41-42); only
+  `step_budget.used()` is reported (mod.rs:177).
+- **`collect` naming its `ExportLookupCache` parameter `session` (resolved):**
+  cosmetic, worth aligning when READ-004/READ-006 touch these signatures. The
+  parameter is passed straight to `QualifiedCallGraph::build` (mod.rs:210,
+  graph.rs:20) and used only for target qualification (graph.rs:35-40), so it
+  should be renamed to `cache` (or `exports`) to end the collision with the
+  `CrossProjectionSession` type in the same module (mod.rs:50-57).
 
 ## Coverage
 

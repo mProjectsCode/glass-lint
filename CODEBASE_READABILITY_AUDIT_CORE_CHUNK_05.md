@@ -36,9 +36,10 @@ places; `AssignmentAt::{Known, Ambiguous}` behaving identically).
 verbatim to `self.data.scopes` / `self.data.bindings` — `scope_kind` (61),
 `scope_span` (65), `parameter_alias_for_scope` (85), `assignment_at` (93),
 `binding_id_at` (102), `binding_version` (124), `reassigned_between` (133),
-and the five `function_*` lookups (145-159). Only `scope_at`, `nearest_binding_at`,
+and the five `function_*` lookups (storage.rs:73-74 `enclosing_function_at` plus
+the four at 145-159). Only `scope_at`, `nearest_binding_at`,
 and `binding_key_for_name` actually combine the `scope_shape_valid` flag with
-storage; the other twelve are one-line passes with no vocabulary or invariant
+storage; the other eleven are one-line passes with no vocabulary or invariant
 added. The same conceptual operation is additionally re-exposed twice under
 two names: `enclosing_function_at` (graph.rs:273-275) and `function_scope_at`
 (functions.rs:9-11) return the identical `FunctionId`.
@@ -82,8 +83,16 @@ query/provenance/object.rs:71 on the frozen graph.
 **Recommendation:** Move one generic implementation onto the phase-generic
 owner that already serves both phases — `ScopeReadView<'a, M>` (or `ScopeData<M>`)
 — and have `ScopeGraph::preferred_binding_witness_at` (graph.rs:185-197) and
-`FrozenScopeGraph::binding_resolution_at`/`preferred_binding_witness_at`
-delegate to it. Delete the collection-phase body (graph.rs:185-197). Guardrails:
+`FrozenScopeGraph::preferred_binding_witness_at` delegate the preferred-witness
+chain (name lookup → `scope_at` → nearest binding → parameter alias →
+assignment resolve → preferred witness) to it, deleting the collection-phase
+body (graph.rs:185-197). Precise scope of the move: `binding_resolution_at`
+returns a status-bearing `BindingResolution` (bindings.rs:60-73), so it cannot
+delegate wholesale to an `Option`-shaped view method; only the preferred-witness
+chain moves, while `binding_resolution_at`/`resolve_binding` (bindings.rs:60-93)
+must remain to serve the status-aware consumers (`definite_binding_at`
+bindings.rs:48-57, `ident_value_seed` via `ident_binding_seed`→`resolve_binding`
+callable.rs:178, rooted.rs:27-31, chain.rs:96, callable.rs:50). Guardrails:
 preserve the fail-closed `Absent` semantics for a missing name or scope and the
 first-non-local-witness order; `scope_shape_valid` must continue gating
 `scope_at`; keep `Resolver` and the fact builders feeding from
@@ -142,14 +151,21 @@ the identity key used for flow/aliasing, and it is easy to get subtly wrong
 (e.g., mixing `function_scope_at` vs `enclosing_function_at`, or dropping the
 version) in a new copy.
 
-**Recommendation:** Add one method (e.g. `FrozenScopeGraph::lexical_binding_key
-(scope, name, span) -> Option<BindingKey>`) that composes `function_scope_at`
-(`enclosing_function_at`), `binding_id_at`, and `binding_version`, and call it
-from all three sites; delete the inline triples in bindings.rs and callable.rs
-and the inline triple inside storage.rs:110-122. Guardrails: keep the global-root
-fallback in `binding_key_for_name` (returns `BindingKey::global(name)` when
-unbound) exactly as-is; keep the `Option` semantics (callable.rs currently
-maps a missing binding id to `None`, matching `?` in the other sites).
+**Recommendation:** Add one method — `lexical_binding_key(&self, scope:
+ScopeId, name: NameId, span: Span) -> Option<BindingKey>` — that composes
+`enclosing_function_at` (storage.rs:48-52), `binding_id_at`, and
+`binding_version`, and call it from all three sites, deleting the inline
+triples in bindings.rs and callable.rs and the inline triple inside
+storage.rs:110-122. Corrected home: the helper must live on
+`ScopeReadView` (or `ScopeData<M>`), **not** on `FrozenScopeGraph`, because
+`binding_key_for_name` — the proposed third caller — is invoked from *both*
+phases (collection graph.rs:200-202 and frozen graph.rs:342-348), and the
+READ-001 guardrail requires preserving that phase-generic sharing. A
+`FrozenScopeGraph::lexical_binding_key` could not serve the collection phase.
+Guardrails: keep the global-root fallback in `binding_key_for_name` (returns
+`BindingKey::global(name)` when unbound) exactly as-is (storage.rs:111-121);
+keep the `Option` semantics (callable.rs currently maps a missing binding id
+to `None`, matching `?` in the other sites).
 
 **Fix Applied:** None so far.
 
@@ -204,20 +220,39 @@ variant, not by the removed distinction.
 
 ## Open Questions
 
-- Should `ScopeReadView` survive at all after READ-001/READ-002, or would a
-  small set of compositing helper methods on `ScopeData<M>` (taking
-  `scope_shape_valid` as an argument) be simpler than a view type that is built
-  fresh on every call?
-- Is the duplicated dynamic-lookup predicate between
-  `bindings.rs:162-168` (`has_dynamic_lookup_at`) and `callable.rs:169-170`
-  (`ident_binding_seed`) a deliberate hot-path fast probe (the PERF note at
-  callable.rs:130-133) or a genuine divergence risk worth unifying? The
-  callable site avoids re-deriving the scope, so it was left out of the
-  findings.
-- `BindingResolutionStatus::Joined` is consumed only by `definite_binding_at`
-  as "not `Complete`". If a future rule needs to distinguish "joined-complete"
-  from "incomplete", that would be the place to extend — currently it is a
-  three-way split with a two-way consumer.
+- **ScopeReadView survival (Q1) — Resolved: keep it, trimmed as READ-001
+  prescribes.** Only `LexicalScopeIndex::scope_at` actually reads the
+  `scope_shape_valid` flag (scope_index.rs:49-52); the flag is a per-graph
+  phase property (graph.rs:41, 53-54), and the view is a zero-allocation
+  two-field bundle built inline per call (graph.rs:58-63, 210-215).
+  Parameterizing three compositing helpers with `scope_shape_valid` instead
+  would push the cross-cutting boolean through every signature
+  (storage.rs:69-71, 77-83, 110-122) and reintroduce a threading hazard the
+  view removes — not simpler.
+- **Duplicated dynamic-lookup predicate (Q2) — Resolved: deliberate hot-path
+  probe; keep it.** The PERF note at callable.rs:130-133 asks for a single
+  joined-binding result per identifier, and `ident_binding_seed` already
+  holds `use_scope` from its own `scope_at` (callable.rs:162), so calling
+  `has_dynamic_lookup_at` (which re-runs `scope_at`, bindings.rs:163) would
+  double the hottest index query. Both paths fail open identically on an
+  unmapped span (`bindings.rs:163-164` → `true`; callable.rs:162-167 →
+  `dynamic_lookup: true`), so there is no behavioral divergence today. If
+  drift-proofing is wanted, extract the callable.rs:169-170 body into
+  `dynamic_lookup_at_scope(scope, span)` and make `has_dynamic_lookup_at` a
+  thin wrapper — optional, not an audit finding. The audit's exclusion is
+  correct.
+- **BindingResolutionStatus::Joined (Q3) — Resolved: keep the three-way
+  split.** `frozen_assignments.rs:8-17` documents Joined ("multiple complete
+  joined alternatives") and Incomplete ("at least one joined alternative was
+  unknown or exhausted") as distinct model states, and the `BindingResolution`
+  contract (frozen_assignments.rs:26-30) routes fallback/certainty decisions
+  through `status`. Production consumers test only `== Complete`
+  (bindings.rs:54-57) and `== / != Absent` (callable.rs:103, chain.rs:192,
+  rooted.rs:31-32, bindings.rs:131-133, 186-189); this is a conservative
+  consumer, not evidence of a dead variant — `Joined` is precisely what keeps
+  `definite_binding_at` "definite" vs `preferred_witness`. Collapsing Joined
+  into Complete would falsify `status()`'s certainty meaning; the framing as
+  a future extension point stands, with no change recommended.
 
 ## Coverage
 
@@ -237,9 +272,13 @@ Callers traced across the crate: `analysis/resolution/mod.rs` (Resolver holds
 `expression/static_values.rs`; `analysis/facts/*` (function_scope_at,
 rooted_write_chain, name lookups); the build phase via
 `analysis/scope/build/{provenance,assignments,collector}.rs`
-(`RootedExprContext`, `normalize_scope_expression`,
-`preferred_binding_witness_at`); and the scope unit tests (scope/tests.rs,
+(`RootedExprContext`, `normalize_scope_expression`; coverage nit: no
+`build/*` module calls `preferred_binding_witness_at` directly — the
+collection-phase callers are graph.rs:171 (inside `finish_collected_properties`,
+invoked from `build/freeze.rs:56`) and scope/tests.rs:66,139, the frozen-phase
+caller is object.rs:71); and the scope unit tests (scope/tests.rs,
 frozen_assignments/tests.rs).
 
 Only `CODEBASE_READABILITY_AUDIT_CORE_CHUNK_05.md` was written; no source,
 test, or configuration file was modified.
+

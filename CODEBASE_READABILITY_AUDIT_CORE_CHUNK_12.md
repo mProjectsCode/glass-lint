@@ -21,11 +21,11 @@ interfaces use strings and `SmolStr`). The audit reports five findings:
   `Value` matches.
 - READ-003: request-existence validation is duplicated as a fetch-and-discard
   `let Some(_request) = ...` across four project-phase call sites.
-- READ-004: the parallel ID newtype family drifted (usize vs u32 widths, a
-  `Default` derive that yields a live scope id on `ScopeId`, per-type test
-  constructors).
+- READ-004: the parallel ID newtype family drifted (an undocumented width
+  split, a `Default` derive that fabricates the live program scope id on
+  `ScopeId`, and per-type test constructors).
 - READ-005: `intern_value_with_binding(value, None)` dominates the interning
-  surface, hiding the plain `intern_value` path from 9 of 11 production calls.
+  surface, hiding the plain `intern_value` path from 8 of 10 production calls.
 
 Fix Applied: None so far.
 
@@ -44,26 +44,35 @@ Fix Applied: None so far.
 `Model::ModuleInterface` is a retained semantic model, yet `for_each_request`
 (module.rs:352-370) takes `&ProjectRelativePath` and `&SourceLineIndex` and
 emits `crate::project::ResolutionRequest`/`ResolutionRequestKey` values. To do
-so the model imports project input types (module.rs:8-11) and owns the
+so the model imports project input types (module.rs:8-10) and owns the
 `ModuleRequestRole -> ResolutionRequestKind` classification
 (`ModuleRequest::kind`, module.rs:149-157). `kind()` is used only by
-`for_each_request` and its unit test (`module/tests.rs:86`), and
+`for_each_request` and its unit test (`module/tests.rs:86-97`), and
 `for_each_request` has exactly one production caller
 (`project/session/artifacts.rs:144-151`), which stores the produced keys in the
 authored-request table. This places a project-session transition (authoring
 resolver keys from a source position) inside the provider-neutral retained
 model, so the model can no longer be read or reused without the project request
-types tag-along.
+types tag-along. Project consumers already classify on the model-owned role
+directly (`ModuleRequestRole` matches at `identities.rs:119-140`,
+`resolver.rs:113-117`, `export.rs:151`), so only the role-to-`ResolutionRequestKind`
+mapping is the project-phase decision leaking into the model.
 
-**Recommendation:** Move `for_each_request` (and the role-to-kind mapping it
-needs) into `project/session/artifacts.rs` beside `record_local`, walking
-`interface().request_entries()` and reusing the existing span-normalization
-skip-on-error behavior. Delete `for_each_request` and the `crate::project`
-import from module.rs, and keep `ModuleRequest.kind()` only if a non-project
-consumer remains. Guardrails: the authored `ResolutionRequestKey` values must
-stay byte-identical (same importer clone, same kind mapping, same
-`try_range(...).ok()` skip) so `is_authored_request` validation and resolver
-outcome keys are unchanged; request enumeration order must not change.
+**Recommendation:** Replace the `for_each_request` callback with a direct loop
+in `record_local` (`project/session/artifacts.rs:138-155`) over
+`interface().request_entries()`, applying the `ModuleRequestRole ->
+ResolutionRequestKind` mapping inline beside its only caller. Delete
+`for_each_request`, `ModuleRequest::kind`, and the `crate::project` import from
+module.rs — `kind()` returns a project type, so it cannot remain in the model
+once its only consumers (the callback and `module/tests.rs:75-99`) move with
+it; move the kind-mapping assertions to the project/session module and keep the
+role-constructor assertions in `module/tests.rs`. Guardrails: the authored
+`ResolutionRequestKey` values must stay byte-identical (same
+`importer.clone()` per key, same role mapping, same
+`lines.try_range(request.span()).ok()` skip-on-error) so `is_authored_request`
+validation and resolver outcome keys are unchanged; request enumeration order
+must not change; the model keeps the `role()`/`specifier()`/`span()` accessors
+the replacement loop reads.
 
 #### [ ] READ-003 — Request "does this id exist" is re-derived by four fetch-and-discard lookups
 
@@ -71,27 +80,32 @@ outcome keys are unchanged; request enumeration order must not change.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/project/resolver.rs:232-240`, `glass-lint-core/src/analysis/project/identities.rs:194-198`, `glass-lint-core/src/analysis/project/linker/export.rs:275-282, 313-319`
+- **Location:** `glass-lint-core/src/analysis/project/resolver.rs:233-240`, `glass-lint-core/src/analysis/project/identities.rs:195-198`, `glass-lint-core/src/analysis/project/linker/export.rs:276-282, 313-319`
 
 Four call sites validate a `ModuleRequestId` by fetching the request through
 `interface().request(id)` and discarding it
 (`let Some(_request) = ... else { ... }`): `walk_star_exports`
-(resolver.rs:232-240, returns `saw_unknown`), `collect_exported_identities`
-(identities.rs:194-198, `continue`), `resolve_namespace_export` and
-`resolve_request_export` (export.rs:275-282 and 313-319, return
+(resolver.rs:233-240, records `saw_unknown`), `collect_exported_identities`
+(identities.rs:195-198, `continue`), `resolve_namespace_export` and
+`resolve_request_export` (export.rs:276-282 and 313-319, return
 `ExportResolution::Unknown`). Each caller rebuilds the same
-module → interface → request-index existence check and then independently
-decides the failure semantics, so the existence invariant of the id domain is
-not owned by `ModuleInterface` and the failure handling can drift.
+module → interface → request-index existence check (`module.rs:310-312`) and
+then independently decides the failure semantics, so the existence invariant of
+the id domain is not owned by `ModuleInterface` and the failure handling can
+drift.
 
-**Recommendation:** Add one narrow existence operation on `ModuleInterface`
-(e.g. `has_request(ModuleRequestId) -> bool` built on the existing private
-`index()`), replace the four discarded fetches with it, and keep the
-per-caller failure semantics (`saw_unknown` vs `Unknown` vs `continue`)
-unchanged. Guardrails: do not fuse the different fallback behaviors into a
-shared helper — only the existence check deduplicates; the two
+**Recommendation:** Add one narrow existence operation on `ModuleInterface` —
+`pub fn has_request(&self, id: ModuleRequestId) -> bool` delegating to the same
+`self.requests.get(id.index())` path as `request` — replace the four discarded
+fetches with it (keeping each site's outer `module()`/`modules.get()` lookup),
+and keep the per-caller failure semantics (`saw_unknown` vs `Unknown` vs
+`continue`) unchanged. Guardrails: do not fuse the different fallback behaviors
+into a shared helper — only the existence check deduplicates; the two
 `export.rs` callers must still return `ExportResolution::Unknown` when absent,
-and `walk_star_exports` must still record `saw_unknown`.
+`walk_star_exports` must still record `saw_unknown`, and `identities.rs` must
+still `continue`; `has_request` must not consult the project-phase
+`AuthoredRequestTable` (it validates the local module interface, not authored
+status).
 
 ### Value arena and static values
 
@@ -101,51 +115,59 @@ and `walk_star_exports` must still record `saw_unknown`.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/analysis/model/value.rs:280-285`, `glass-lint-core/src/analysis/flow/matcher.rs:108-126`, `glass-lint-core/src/analysis/matching/arguments/evaluator.rs:230-238`
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:280-285`, `glass-lint-core/src/analysis/flow/matcher.rs:113-126`, `glass-lint-core/src/analysis/matching/arguments/evaluator.rs:230-235`
 
 `ValueTable` owns value-arena accessors `static_string(id)` (value.rs:280-285)
 and `binding_slot(id)` (value.rs:268-273), but the analogous `StaticObject`
 and rooted-chain views are rebuilt by consumers from a raw
-`match values.resolve(id) { Value::StaticObject(o) => Some(o), .. }` / 
+`match values.resolve(id) { Value::StaticObject(o) => Some(o), .. }` /
 `Value::RootedMember { path } => Some(path)` split. The two known instances
-are `ArgumentData for CallArgInfo` in flow/matcher.rs:113-126 and
-`argument_with_overlay` in matching/arguments/evaluator.rs:230-238. Both do
-the same resolve-then-variant-match over the same two variants, so the
-"what value does this id carry" interpretation is duplicated rather than owned
-by the arena.
+are `ArgumentData for CallArgInfo` in flow/matcher.rs:113-126 (the
+`static_object` and `rooted_chain` trait methods, while `static_string`
+already delegates to `ValueTable`) and `argument_with_overlay` in
+matching/arguments/evaluator.rs:230-235. Both do the same
+resolve-then-variant-match over the same two variants, so the "what value does
+this id carry" interpretation is duplicated rather than owned by the arena.
 
 **Recommendation:** Add `ValueTable::static_object(id) -> Option<&StaticObject>`
 and `ValueTable::rooted_member(id) -> Option<&NamePath>` beside `static_string`,
-each delegating to the existing `resolve` (so `Value::Binding` chains keep
-resolving), and rewrite the two call sites to call them. Delete the duplicated
-match arms. Guardrails: the accessors must keep resolving through binding
-chains exactly like `static_string` does, and `evaluator.rs` must preserve the
-fall-through `(None, None)` for unknown/non-static values so matcher behavior
-and evidence order are unchanged.
+at the same visibility, each delegating to the existing `resolve` (so
+`Value::Binding` chains keep resolving), and rewrite the two call sites to call
+them. Delete the duplicated match arms. Guardrails: the accessors must keep
+resolving through binding chains exactly like `static_string` does
+(`resolve` → `get`), and `evaluator.rs` must preserve the fall-through
+`(None, None)` for unknown/non-static values — a value can be at most one of
+`StaticObject`/`RootedMember`, so the paired result is unchanged — keeping
+matcher behavior and evidence order identical.
 
-#### [ ] READ-005 — Interning surface pushes `intern_value_with_binding(.., None)` onto 9 of 11 production calls
+#### [ ] READ-005 — Interning surface pushes `intern_value_with_binding(.., None)` onto 8 of 10 production calls
 
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** API
-- **Location:** `glass-lint-core/src/analysis/model/value.rs:156-208`, `glass-lint-core/src/analysis/resolution/expression/static_values.rs:102-148`
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:157-208`, `glass-lint-core/src/analysis/resolution/expression/static_values.rs:102-148`
 
-`intern_value` (value.rs:157-197) is private and the only production-facing
-intern entry is `intern_value_with_binding` (value.rs:199-208), whose `binding:
-Option<BindingKey>` parameter wraps the value in `Value::Binding`. Nine of the
-eleven production calls pass `None` (static_values.rs:105-146, call.rs:87,
-expression.rs:346); only `intern_bounded_const_value` (resolution/constant.rs:95)
-and the bound-argument path (resolution/call.rs:114) actually use a binding.
-Callers that never bind must still type the two-argument name and the `None`
-argument, and the private `intern_value` path is duplicated in it.
+`intern_value` (value.rs:157-197) is private, so the only plain-value intern
+entry visible to production callers is `intern_value_with_binding`
+(value.rs:199-208), whose `binding: Option<BindingKey>` parameter wraps the
+value in `Value::Binding` (`intern_static_object`, value.rs:210-228, is the
+other production-facing entry but only handles object shapes and delegates to
+the same function). Eight of the ten production calls pass `None`
+(static_values.rs:105-146, call.rs:87, expression.rs:346); only
+`intern_bounded_const_value` (resolution/constant.rs:95) and the bound-argument
+path (resolution/call.rs:114) actually use a binding. Callers that never bind
+must still name the two-argument entry and pass `None`, so the plain-intern
+path is re-expressed at every call site instead of once.
 
 **Recommendation:** Expose plain `intern_value` as `pub(in crate::analysis)`
-and route the nine no-binding call sites through it, leaving
+and route the eight no-binding call sites through it, leaving
 `intern_value_with_binding` as the explicitly-named wrapper for the two
 binding-aware sites (better, rename the wrapper to make the binding intent
 explicit). Guardrails: keep the capacity/pop/exhausted and terminal-cache
-behavior identical for both entry points, and do not change the `Value::Binding`
+behavior identical for both entry points — `intern_value` already performs the
+binding-terminal and `MAX_VALUES` bookkeeping (value.rs:158-194), so the exposed
+entry must not change it — and do not change the `Value::Binding`
 chaining used by the two binding-aware callers.
 
 ### Scope and binding identity model
@@ -158,27 +180,36 @@ chaining used by the two binding-aware callers.
 - **Category:** Newtype
 - **Location:** `glass-lint-core/src/analysis/model/scope.rs:16-29, 51-103`, `glass-lint-core/src/analysis/model/module.rs:114-121`, `glass-lint-core/src/analysis/model/value.rs:9-57`
 
-The retained ID family is not consistently encapsulated: `ScopeId(usize)`
-(scope.rs:17) and `ModuleRequestId(usize)` (module.rs:115) are pointer-width
-while `BindingId`, `BindingVersion`, `FunctionId`, `ValueId`,
-`ResolvedObjectId`, and `FlowObjectId` are `u32` (scope.rs:52, 66, 80;
-value.rs:10, 30, 46). `ScopeId` derives `Default` (scope.rs:16), so
-`ScopeId::default()` yields `ScopeId(0)` — a live program scope id, not a
+The retained ID family is not consistently encapsulated. The width split is
+partly structural: `ScopeId(usize)` (scope.rs:17) and `ModuleRequestId(usize)`
+(module.rs:115) index unbounded `Vec` storage directly
+(`LexicalScopes.0.get(scope.0)`, scope.rs:223; `self.requests.get(index.index())`,
+module.rs:311), while the `u32` ids — `BindingId`, `BindingVersion`,
+`FunctionId` (scope.rs:52, 66, 80) and `ResolvedObjectId`, `FlowObjectId`
+(value.rs:30, 46) — either cap their arenas (`MAX_VALUES`/`MAX_OBJECTS` =
+65_536, value.rs:135, 245) or satisfy the datastructures `IdIndex` contract
+(`FunctionId`, scope.rs:99-103; `table.rs:18`). The split is nonetheless
+undocumented, and the surrounding conventions drifted: `ScopeId` derives
+`Default` (scope.rs:16), so `ScopeId::default()` yields `ScopeId(0)` — the live
+program scope id (`LexicalScopes::program_scope`, scope.rs:230-232), not a
 sentinel — while only `ValueId` defines an explicit `UNKNOWN` sentinel
-(value.rs:13) and the other ids have no sentinel discussion at all. Each id
-also re-implements near-identical `#[cfg(test)] from_test` (and, for `ScopeId`,
-`index_for_test`) constructors, so there is no single convention to copy when a
-new id is added.
+(value.rs:13) and the other ids have no sentinel at all. Each id also
+re-implements near-identical `#[cfg(test)] from_test` (and, for `ScopeId`,
+`index_for_test`) constructors — `ModuleRequestId` (module.rs:114-121) has
+none — so there is no single convention to copy when a new id is added.
 
-**Recommendation:** Unify the family on one convention documented once at the
-top of `model/scope.rs` and `model/value.rs`: pick `u32` for all arena indices,
-remove the `Default` derive from `ScopeId` (no production caller uses it and it
-fabricates a valid scope), and consolidate the repeated
-`from_test`/`index_for_test` test constructors behind one shared test helper or
-macro. Guardrails: no production code path may construct a `ScopeId`/id out of
-thin air after the change — all ids must continue to originate from their
-allocating collections (`LexicalScopes`, `BindingIndex`, `ValueTable`,
-`ModuleInterface`); `ValueId::UNKNOWN` must remain index 0.
+**Recommendation:** Remove the `Default` derive from `ScopeId` (no production
+or test caller uses it, and it fabricates a valid program scope), document the
+width convention once at the top of `model/scope.rs` and `model/value.rs` —
+`u32` for bounded-arena / `IdIndex` ids, `usize` for direct `Vec`-indexing
+ids — and consolidate the repeated `from_test`/`index_for_test` test
+constructors behind one shared `#[cfg(test)]` helper or macro so a new id
+copies one spelling. Guardrails: no production code path may construct a
+`ScopeId`/id out of thin air after the change — all ids must continue to
+originate from their allocating collections (`LexicalScopes`, `BindingIndex`,
+`ValueTable`, `ModuleInterface`); `ValueId::UNKNOWN` must remain index 0; do
+not re-width `ScopeId`/`ModuleRequestId` to `u32`, which would add a
+`usize::try_from` at every `Vec` index without a capacity bound to enforce.
 
 ## Systemic Themes
 
@@ -187,31 +218,68 @@ allocating collections (`LexicalScopes`, `BindingIndex`, `ValueTable`,
   `const_value_to_provenance` / `provenance_to_const_value` pair are narrow,
   well-documented bridges; the exceptions are READ-001 (project types pulled
   into the model) and READ-002 (arena interpretation rebuilt at consumer sites).
-- **Existence-checks are re-derived instead of owned.** Passim, consumers
-  answer "is this id live" by re-fetching and discarding the payload (READ-003,
-  and the `resolve_namespace`/`resolve_request` guards), signalling that some
-  id-domain invariants belong on `ModuleInterface` and `ValueTable`.
+- **Existence-checks are re-derived instead of owned.** Across the project
+  phase, consumers answer "does this request id exist" by re-fetching the
+  request through `interface().request(id)` at five sites — READ-003's four
+  fetch-and-discard lookups plus `resolve_namespace` (identities.rs:228-233),
+  which fetches the same way and then uses the payload — signalling that the
+  request-existence invariant belongs on `ModuleInterface`, which today exposes
+  it only through the fetch-a-payload accessor.
 - **Newtype conventions drift within one family.** Width, sentinel, `Default`,
-  and test-constructor spelling differ across the id types that caller code
-  already treats interchangeably as opaque keys (READ-004).
+  and test-constructor spelling differ across the id types (READ-004). The
+  width split tracks storage (`u32` for bounded arenas / `IdIndex`, `usize` for
+  direct `Vec` indexes) but is undocumented; the `Default` derive on `ScopeId`
+  and the per-type test constructors are pure drift, and the same
+  `Default`-on-an-id derive recurs on `ControlRegionId` (fact.rs:50), where it
+  is a deliberate counter seed (facts/state.rs:32) — so the family has no
+  single documented rule for when `Default` is acceptable.
 - **The scope and value static-shape models are deliberately parallel but
   undocumented as such.** `BindingProvenance::StaticString/StaticNumber/
   StaticStringArray/StaticObjectKeys/StaticObjectValues` (scope/provenance.rs:
-  45-50) and `Value::StaticString/StaticNumber/StaticArray/StaticObject`
-  (value.rs:126-130) are separate phase-local vocabularies, each with its own
+  45-49) and `Value::StaticString/StaticNumber/StaticArray/StaticObject`
+  (value.rs:126-129) are separate phase-local vocabularies, each with its own
   `ConstValue` adapter; this is defensible given build order but worth one
   comment naming the lifecycle split.
 
-## Open Questions
+## Open Questions — Resolved
 
-1. Should `BindingProvenance`'s static variants and `Value`'s static variants
-   ever share a shape token? Scope provenance is frozen before the value arena
-   exists, so unifying them would reparent construction order; left open rather
-   than recommended.
-2. Is there a plan to align the ptr-width ids (`ScopeId`, `ModuleRequestId`)
-   with the `u32` ids, or is the width split deliberate for cache friendliness?
-3. Should `StaticProperties::to_const_object` become the single `ConstValue`
-   projection for both static-shape models, or stay scope-phase-specific?
+1. **No — the scope and value static variants should not share a shape token.**
+   `BindingProvenance`'s static variants hold scope-phase data keyed by `NameId`
+   and carry no value ids (`StaticObjectKeys(StaticProperties<()>)`,
+   `StaticObjectValues(StaticProperties<NamePath>)`, scope/provenance.rs:48-49),
+   while `Value`'s static variants reference the value arena
+   (`StaticArray(Vec<ValueId>)`, `StaticObject(StaticObject)` with
+   `entries: StaticProperties<ValueId>`, value.rs:65-67, 128-129). The pipeline
+   builds scopes/bindings/provenance ("scopes, bindings, provenance, and
+   semantic facts", core `ARCHITECTURE.md:12`) before the value arena
+   ("module interfaces and bounded flow summaries", `ARCHITECTURE.md:14`);
+   scope provenance is produced by `scope/build` via `const_value_to_provenance`
+   (static_value.rs:16-41), which interns names but has no `ValueTable`. The
+   vocabularies also differ in intent: the scope phase retains object keys only
+   ("Object values are intentionally retained as keys only", static_value.rs:13-15),
+   while the value phase retains the full value graph. Unifying would reparent
+   construction order and force an `Option`-valued payload; the readable fix is
+   the naming comment proposed under Systemic Themes.
+2. **The width split is structural, not a cache-friendliness choice — document
+   it, do not re-width.** The `u32` ids back bounded arenas
+   (`MAX_VALUES = 65_536`, value.rs:135; `MAX_OBJECTS: u32 = 65_536`,
+   value.rs:245) or satisfy the datastructures `IdIndex` contract
+   (`Copy + Into<u32>`, `table.rs:18`; `FunctionId`'s impl at scope.rs:99-103,
+   used by `FunctionTable<T> = IndexTable<FunctionId, T>`, flow.rs:10-11).
+   `ScopeId`/`ModuleRequestId` index plain unbounded `Vec`s directly
+   (scope.rs:223, module.rs:311), so `usize` avoids a conversion at every `get`.
+   Forcing `u32` on them would add `usize::try_from` noise with no capacity
+   bound to enforce; READ-004's actionable defects are the `Default` derive and
+   the test-constructor spelling drift, not the widths.
+3. **No — `to_const_object` is keys-only by design and cannot serve the value
+   phase.** `to_const_object` (static_properties.rs:73-82) projects keys with
+   all-`Unknown` values and is used by the scope-phase adapter
+   `provenance_to_const_value` for `StaticObjectKeys`/`StaticObjectValues`
+   (static_value.rs:54-59). The value-phase projection (`const_value_depth`,
+   constant.rs:27-57) walks `StaticObject` entries recursively
+   (`object.iter()` → `const_value_depth(value_id, ...)`, constant.rs:45-54),
+   producing value-bearing `ConstValue` trees. A single projection cannot serve
+   both; keep `to_const_object` as the scope-phase keys-only adapter.
 
 ## Coverage
 

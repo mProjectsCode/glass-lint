@@ -8,9 +8,10 @@ source changed.
 ## Summary
 
 Matching is a coherent pipeline where it matters. The fact-to-occurrence
-projection is the single matcher-independent path (`build.rs::from_stream`,
-"the sole projection from semantic facts into shared matcher indexes"), built
-and normalized before rule selection. The overlay/identity machinery is
+projection is the single matcher-independent path
+(`OccurrenceIndexes::from_stream`, build.rs:63-74 — "the sole projection from
+semantic facts into shared matcher indexes"), built and normalized before rule
+selection. The overlay/identity machinery is
 well-owned: `ModuleIdentityMap` plus `ModuleIdentityContributions` keep the
 star-vs-direct disagreement policy in one place; `LinkedOccurrenceView` hides
 masking/remapping behind a build-then-resolve contract; and `MatcherArtifact`,
@@ -34,11 +35,12 @@ The problems concentrate in the constrained-evaluation preparation:
    immediately flattened into `ConstrainedRoot`, and every evaluation loop
    re-destructures `root.identity`, `root.event`, `root.constraints` and
    `prepared_root.paths` into a six-parameter predicate call (READ-003).
-4. **The same call event can emit two different evidence spans.** Indexed call
-   occurrences use `callee_span`; the linear fallback path builds occurrences
-   from `fact.span`, so evidence locations depend on which evaluation path a
-   root took (READ-004).
-5. Two smaller papers: `MatcherArtifact::from_facts` is handed the full project
+4. **One event, two span sources.** Indexed call occurrences are anchored on
+   `callee_span`; the linear fallback path builds occurrences from the
+   whole-call `fact.span`. The divergence is masked today because falling-back
+   roots can only match shapes the index view misses, but it is reachable and
+   unprotected (READ-004).
+5. Two smaller items: `MatcherArtifact::from_facts` is handed the full project
    overlay but reads only `identities` (READ-005), and the four index groups
    are parallel but carry inconsistent `Clone` derives while nothing clones
    them (READ-006).
@@ -68,7 +70,7 @@ survive).
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/matching/arguments/evaluator.rs:94-155`; `arguments/mod.rs:225-229,265-275`
+- **Location:** `glass-lint-core/src/analysis/matching/arguments/evaluator.rs:94-98,103-155`; `arguments/mod.rs:226-229,265-275`
 
 `MatcherProjectOverlay<'a>` (`arguments/mod.rs:226-229`) holds
 `identities: Option<&ModuleIdentityMap>` and
@@ -113,12 +115,14 @@ counted. The only reader is the test shell `run_with_ops`
 observe the counters.
 
 **Recommendation:** Either (a) return `EvaluationOperations` from
-`try_compute_constrained_evidence` and fold it into
-`outcome.metrics.operations` next to the existing `overlay_ops` addition in
-`project_modules` (`projection.rs:171-173`) — the honest reading of the
-"deterministic operation counts" invariant in ARCHITECTURE.md — or (b) mark the
-`charge_*` bodies `#[cfg(test)]` so the production build stops doing accounting
-work it never uses. Guardrail: keep the exact candidate, group, predicate,
+`try_compute_constrained_evidence`, thread it through `project_facts`
+(`projection.rs:255-260`) into `project_modules`, and fold it into
+`outcome.metrics.operations` next to the existing `overlay_ops` addition
+(`projection.rs:171-173`) — the honest reading of the "deterministic operation
+counts" invariant in ARCHITECTURE.md — or (b) gate the `charge_*` updates
+behind `#[cfg(test)]` so the production build stops performing accounting work
+it never reads (the test helper calls the same inner function, so the counters
+stay live for the tests). Guardrail: keep the exact candidate, group, predicate,
 preparation, and value-resolution totals the extended tests assert
 (`arguments/tests/extended.rs:141-145`); if (a), use the same per-module
 saturating-add pattern as `overlay_ops`, and keep the count deterministic under
@@ -149,12 +153,19 @@ copied into a second struct before it is even read.
 **Recommendation:** Move the clause match-check onto the prepared root, e.g.
 `PreparedConstrainedRoot::matches(&self, fact: &SemanticFact,
 evaluator: &MatcherEvaluator<'_>, ops: &mut EvaluationOperations) -> bool`,
-delegating identity/constraint evaluation to the evaluator while receiving
-`self.root` and `self.paths` without field forwarding. Collapse
-`ConstrainedRootInput`/`ConstrainedRoot` into one prepared shape. Guardrail:
-preserve the `Indexed → Fallback → Published` state machine, the rule that a
-root that resolved candidates never falls back, and the constraint short-circuit
-order (groups iterate with `all`, predicates within a group with `all`).
+delegating identity/constraint evaluation to the evaluator while reading
+`self.root` and `self.paths` from the single owner instead of forwarding fields
+at every call site. Collapse `ConstrainedRootInput`/`ConstrainedRoot` into one
+prepared shape: the input carrier stays at the `arguments` boundary (it is
+built by `ProjectionPlan::from_selection`), but `ConstrainedRoot` is deleted
+and its fields owned directly by `PreparedConstrainedRoot`. Guardrail: preserve
+the `Indexed → Fallback → Published` state machine, the rule that a root that
+resolved candidates never falls back, and the constraint short-circuit order
+(groups iterate with `all`, predicates within a group with `all`). The
+argument-projection duplication that also lives in this evaluator
+(`argument_with_overlay`/`ArgumentView`, `evaluator.rs:225-246`) is reported
+separately as chunk 11 READ-003; this finding stays on the prepared-root double
+shape and the predicate threading owned here.
 
 #### [ ] READ-004 — Fallback evidence uses `fact.span` while every indexed call occurrence uses `callee_span`
 
@@ -162,30 +173,41 @@ order (groups iterate with `all`, predicates within a group with `all`).
 - **Fix Complexity:** Low
 - **Theme:** SIMPLIFY
 - **Category:** Other
-- **Location:** `glass-lint-core/src/analysis/matching/arguments/mod.rs:402`; `build.rs:34-56,177-199`; `facts/calls/mod.rs:32-40,98`; `analysis/model/fact.rs:293-295`
+- **Location:** `glass-lint-core/src/analysis/matching/arguments/mod.rs:402`; `build.rs:34-56,177-249`; `facts/calls/mod.rs:32-40,98`; `analysis/model/fact.rs:293-295`
 
 The matcher index records call occurrences with the callee token span:
 `CallProjection::occurrence` builds `Occurrence::new(id, callee_span)`
-(`build.rs:53-56`) and `record_call_fact` uses it for every call-backed index
-entry (`build.rs:181-213`). The constrained fallback path builds occurrences
-from the whole call-expression span: `Occurrence::new(fact.id, fact.span)`
-(`arguments/mod.rs:402`), where `call.span` covers the entire `CallExpr`
-(`facts/calls/mod.rs:32-40,98`) and `callee_span` is the callee expression
-(`model/fact.rs:293-295`). Because fallback is the only path for identities an
-index view cannot express (for example `IdentityConstraint::Rooted` on a
-`Call` event, which `EventIndexView::rooted` declines — `query/view.rs:146-173`),
-the same `fetch('/api')` event reports a whole-call span under one rule and a
-callee span under another, and both flows feed the same
+(`build.rs:53-55`) and `record_call_fact` and its helpers use it for every
+call-backed index entry (`build.rs:177-249`). The constrained fallback path
+builds occurrences from the whole call-expression span:
+`Occurrence::new(fact.id, fact.span)` (`arguments/mod.rs:402`), where
+`call.span` covers the entire `CallExpr` (`facts/calls/mod.rs:32-40,98`) and
+`callee_span` is the callee expression (`model/fact.rs:293-295`). The
+divergence is reachable for a constrained root whose identity the index view
+cannot resolve to a bucket but whose matcher still accepts the fact — for
+example `IdentityConstraint::Any` on a `Call` event matching through the
+`syntactic_path` channel (`identity.rs:20-25`): a renamed destructured instance
+callable such as `const { sendBeacon: sb } = navigator; sb('/x')` records
+`callee_name` as the local identifier (`sb`) and a single-segment
+`syntactic_path` (`["sendBeacon"]`) in the callee-resolution Ident arm
+(`callee.rs:61-77`), so the Call view's callee-name lookup misses it
+(`view.rs:179-182`) and the root falls back. (A `Rooted`-on-`Call` root also
+falls back — `view.rs:146-173` — but cannot match, because
+`call_identity_matches` returns false for it, `identity.rs:39`.) The
+same event can therefore report a whole-call span under one rule and a callee
+span under another, and both flows feed the same
 `EvidenceGroup`/`normalize_evidence` pipeline.
 
-**Recommendation:** Extract one occurrence-from-fact constructor shared by the
-projection and the fallback scanner (for example an
-`Occurrence::for_call_event`-style factory or a `matching`-scoped helper) and
-use it in `evaluate_fallback_roots` so a given fact always yields the same
-span. Guardrail: keep the caliber of indexed behavior unchanged (calls use the
-callee span, member reads use the fact span), preserve deterministic
-(span, fact) ordering, and keep the constraints-only fallback semantics (the
-scan must still emit no occurrences for facts that fail `fact_matches_clause`).
+**Recommendation:** Extract one occurrence-from-call-fact constructor shared by
+the projection and the fallback scanner — e.g. `Occurrence::for_call_fact(fact,
+call)` on the type that owns occurrence spans (`matching::occurrence`) — and
+use it in `evaluate_fallback_roots` so a given call fact always yields the
+callee span. Guardrail: keep the per-payload span choice unchanged so the
+indexed path produces identical output (calls and constructions use the callee
+span, member reads, property writes, and imports use the fact span), preserve
+deterministic `(span, fact)` ordering, and keep the constraints-only fallback
+semantics (the scan must still emit no occurrences for facts that fail
+`fact_matches_clause`).
 
 #### [ ] READ-005 — `MatcherArtifact::from_facts` is handed the full project overlay but reads only `identities`
 
@@ -220,16 +242,17 @@ operations)` pair must keep their current shape and accounting.
 - **Fix Complexity:** Low
 - **Theme:** DEDUPLICATE
 - **Category:** Other
-- **Location:** `glass-lint-core/src/analysis/matching/indexes.rs:8,60,183,279`; `arguments/mod.rs:33-41`
+- **Location:** `glass-lint-core/src/analysis/matching/indexes.rs:8,60,183,279`; `matching/mod.rs:33-41`
 
 `MemberIndexes`, `ConstructionIndexes`, and `LiteralIndexes` are
 `#[derive(Clone, Debug, Default)]`, while the parallel `CallIndexes` is only
-`#[derive(Debug, Default)]` — and the owning `OccurrenceIndexes` is not `Clone`.
-A search of all callers finds no `.clone()` of any group or its `Occurrence`
-collections; `LinkedOccurrenceView::build` and every query path borrow. The
-derives are stale and inconsistent, so a reader cannot tell which is canonical,
-and each `#[derive(Clone)]` on a container of `BTreeMap`s invites accidental
-deep-copies of the matcher indexes.
+`#[derive(Debug, Default)]` — and the owning `OccurrenceIndexes` (`mod.rs:33-41`)
+is not `Clone`, so the three group derives cannot even be used to take an owned
+copy of the index. A search of all callers finds no `.clone()` of any group or
+its `Occurrence` collections; `LinkedOccurrenceView::build` and every query
+path borrow. The derives are stale and inconsistent, so a reader cannot tell
+which is canonical, and each `#[derive(Clone)]` on a container of `BTreeMap`s
+invites accidental deep-copies of the matcher indexes.
 
 **Recommendation:** Drop `Clone` from the three groups (or, if a copy is ever
 intended, add it to all four plus `OccurrenceIndexes` deliberately). Guardrail:
@@ -250,29 +273,76 @@ artifact immutable and borrowed.
   (READ-002). The same inner/outer split appears in `compute_constrained_evidence`
   vs `try_compute_constrained_evidence`, where only the test variant's
   accounting escapes.
-- **Same event, path-dependent evidence.** The fallback scanner and the index
-  projection disagree on call spans (READ-004); both write into the same
-  `ClassificationEvidence` stream, so evidence appears path-dependent.
+- **Same event, two span sources.** The index projection anchors call
+  occurrences on `callee_span` while the fallback scanner builds them from the
+  whole-call `fact.span` (READ-004); both write into the same
+  `ClassificationEvidence` stream. The divergence is latent today — falling-back
+  roots can only match the shapes the index view misses — but nothing enforces
+  the "one fact, one span" invariant when a new identity channel is added.
 
-## Open Questions
+## Open Questions — Resolved
 
-- Are two `EvidenceKey` structs — `matching::evidence::EvidenceKey(MatchKind,
-  String)` and `flow::cross::evidence::EvidenceKey(MatchKind, String, FactId)` —
-  justified by the different lifetimes (normalization-time grouping vs
-  per-fact trace assembly), or should the per-fact variant be a distinct name to
-  avoid the collision risk? No finding: merging them would couple distinct
-  normalization and flow-trace lifecycles.
-- `ModuleIdentityMap::insert` lets any caller (currently only
-  `project/identities.rs`) bypass the star-vs-direct disagreement policy that
-  `merge_star_from`/`merge_missing_from` encode; the "single source of truth"
-  doc on `ModuleIdentityContributions` (identity_map.rs:51-58) covers the
-  policy between those types but not the raw-insert escape hatch. Is a document
-  comment or a dedicated `record_direct` method warranted?
-- Is the fallback scanner reachable for `Rooted`-on-`Call` roots in the shipped
-  catalogs, or only for future/foreign queries? (The code path exists and
-  renders the READ-004 span divergence observable on any such root.)
-- Does the `Clone` on `MemberIndexes`/`ConstructionIndexes`/`LiteralIndexes`
-  exist as intended state for an upcoming owned-overlay step, or is it leftover?
+1. **The two `EvidenceKey` structs are justified by genuinely different
+   lifecycles, and the collision risk is currently nil.** The
+   `matching::evidence::EvidenceKey` (`evidence.rs:60-61`) is a private tuple
+   struct used only by `EvidenceAccumulator` (`evidence.rs:70-93`) as the
+   grouping key for `normalize_evidence`: it deliberately omits the `FactId` so
+   all occurrences across facts for one `(kind, symbol)` collapse into a single
+   `ClassificationEvidence` item (`add`, evidence.rs:76-93). The
+   `flow::cross::evidence::EvidenceKey` (`cross/evidence.rs:45-50`) is a
+   private named struct whose extra `fact: FactId` field keeps each fact's
+   witness trace separate during `RuleEvidence` assembly (`cross/evidence.rs:63-68`),
+   and failed keys are retained in a distinct `nonmatching` set
+   (`cross/evidence.rs:67`) precisely so evidence is never assembled from
+   incompatible call sites. Merging them would couple distinct
+   normalization-time grouping and per-fact trace-assembly lifecycles; the
+   collision risk is moot today because both are module-private. If either is
+   ever made `pub`, renaming the flow-side key (e.g. `TraceEvidenceKey`) is a
+   one-line change, not a finding.
+2. **`ModuleIdentityMap::insert` is the export walker's commit path, not a
+   policy bypass.** The star-vs-direct policy documented at `identity_map.rs:51-58`
+   is applied by `ModuleIdentityContributions::add_star`/`add_direct`/`finish_into`
+   (`identity_map.rs:70-81`), and the raw `insert` calls
+   (`identities.rs:131,155,175,182`) are the walker committing data into the
+   target map: direct import resolutions in `module_identities` (lines 131,155 —
+   no star contributions exist for those keys), and conservative
+   `ExportResolution::Unknown` markers for depth/cycle cutoffs in
+   `collect_exported_identities` (lines 175,181-185). The precedence-resolved
+   merge happens through `finish_into` into that same map (`identities.rs:192-217`),
+   and no matching code calls `insert`, so the policy cannot be circumvented
+   today; the gap is documentation only. A doc comment on `insert`
+   (`identity_map.rs:19-25`) noting it is a raw commit for the export walker
+   (not a precedence-bearing path) closes it; a dedicated `record_direct`
+   method would misname the Unknown-cycle and intermediate cases and add a
+   second API for the same operation.
+3. **The fallback scanner is structurally reachable but cannot emit in the
+   shipped catalogs today; the READ-004 divergence is latent, not live.** Any
+   constrained root whose `occurrences_for_indexed` returns `None` is marked for
+   fallback (`arguments/mod.rs:351-355`). The index records exactly the channels
+   the identity matchers read, so a falling-back root can only match a fact the
+   index view misses — the one reachable shape is `IdentityConstraint::Any` on a
+   `Call` event matching via the `syntactic_path` channel (`identity.rs:20-25`)
+   for a renamed destructured instance callable: `const { sendBeacon: sb } =
+   navigator; sb('/x')` records `callee_name` as the local identifier (`sb`) and
+   a single-segment `syntactic_path` (`["sendBeacon"]`) in the callee-resolution
+   Ident arm (`callee.rs:61-77`), so the Call view's callee-name lookup misses
+   it (`view.rs:179-182`) and the root falls back. A `Rooted`-on-`Call` root
+   also falls back (`view.rs:146-173`) but cannot match, because
+   `call_identity_matches` returns false for it (`identity.rs:39`). None of the shipped js/obsidian
+   catalogs combine an argument constraint with such an identity (constrained
+   rules use `call_global`/`call` on globals or `member_call_rooted`/
+   `member_call_module` on member events), so the divergence becomes observable
+   only when a rule adds a shape the index view cannot express — which is why
+   READ-004's shared occurrence constructor should land before that happens.
+4. **The `Clone` derives are leftover, not intended state for an upcoming
+   owned-overlay step.** A search of every caller finds no `.clone()` of any
+   index group or its collections (all matching-side clones are on keys,
+   symbols, names, and chains). The owner `OccurrenceIndexes` (`mod.rs:33-41`)
+   is not `Clone`, so the three group derives cannot even be used to take an
+   owned copy of the index; an owned-overlay step would need `Clone` on the
+   whole `OccurrenceIndexes`, and the linked overlay already borrows the index
+   buckets (`LinkedOccurrenceView`, mod.rs:76-80,168-208). Removing the three
+   derives (READ-006) is safe.
 
 ## Coverage
 

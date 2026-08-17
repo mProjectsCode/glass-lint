@@ -33,7 +33,7 @@ vocabulary/API choices. Findings READ-001..READ-006 below; no fixes applied.
 
 `InverseDelta::apply` handles `RequirementRemove` with
 `if !undo { state.clear_requirement(*index); } state.restore_requirement(*index, events);`
-(`state.rs:90-91`). `events` is the pre-removal value set captured by
+(`state.rs:88-91`). `events` is the pre-removal value set captured by
 `FlowStateTable::clear_requirement` (`tables.rs:249-265`), so the redo arm clears
 the index and then immediately re-inserts the very set that the recorded
 property-write removal erased. Redo is genuinely reachable: every path admission
@@ -41,10 +41,14 @@ and restoration funnels through `MutationLog::transition` (`history.rs:77-88`),
 and `restore_path`/`admit_path` (`driver.rs:238`, `293`) move the projector
 between sibling branch checkpoints, which undoes one chord of deltas and redoes
 another. After a redo over a branch containing `RequirementRemove` followed by a
-new `RequirementInsert` (per `apply_property_write`, `tables.rs:283-295`), the
-index ends up `{removed_events, new_event}` instead of `{new_event}`. Existing
-tests only restore to ancestors (`state/tests.rs:365-432`,
-`state/tests.rs:74-96`), so the branch-fan-out forward path is never exercised.
+new `RequirementInsert` (the clear/record pair in `apply_property_write`,
+`tables.rs:289-292`), the index ends up `{removed_events, new_event}` instead of
+`{new_event}`. Existing tests never redo a requirement/sink delta:
+`checkpoints_restore_divergent_mutation_paths` (`state/tests.rs:74-96`) does
+restore a sibling capture, but the redone forward delta is only an alias `bind`,
+and `fine_grained_state_edits_restore_across_checkpoints` (`state/tests.rs:365-432`)
+restores only to ancestor checkpoints. The branch-fan-out forward path over a
+requirement delta is never exercised.
 
 **Recommendation:** Fix on the owner `FlowStateTable`/`InverseDelta::apply`: the
 redo arm should be `state.clear_requirement(*index)` only; undo alone restores
@@ -63,19 +67,19 @@ are symmetric and must stay unchanged; keep the fail-closed empty-index no-op.
 - **Fix Complexity:** Medium
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/flow/summary/evidence.rs:135-147`, `glass-lint-core/src/analysis/flow/summary/sink.rs:220-241`, `glass-lint-core/src/analysis/flow/summary/summaries.rs:317-341`
+- **Location:** `glass-lint-core/src/analysis/flow/projector/evidence.rs:135-147`, `glass-lint-core/src/analysis/flow/summary/sink.rs:220-241`, `glass-lint-core/src/analysis/flow/summary/summaries.rs:317-341`
 
 The same two predicates are re-implemented in three modules:
 `parameter.parameter_index() == sink.parameter_index() && parameter.matches_sink_path(sink.path(), paths)`
-appears verbatim in `evidence.rs:136-139` (`record_helper_sink`) and
+appears verbatim in `projector/evidence.rs:136-139` (`record_helper_sink`) and
 `summaries.rs:326-328` (`try_project_sink`), and the value-to-parameter match
 `parameter.value() != ValueId::UNKNOWN && parameter.value() == argument`
-appears in `sink.rs:221-224` (`collect_sinks_for_call`, on
+appears in `sink.rs:222-223` (`collect_sinks_for_call`, on
 `argument.base_value`) and `summaries.rs:331-333` (with an extra
 `!parameter.is_rest()` gate). Any change to how a summarized sink binds to a
 parameter (e.g., rest-prefix or path fallback handling) must now be applied in
-three files at risk of divergence; the subtle `is_rest()`/UNKNOWN differences
-already differ between the copies.
+three files at risk of divergence; the copies already differ in the
+`is_rest()`/`UNKNOWN` acceptance rules.
 
 **Recommendation:** Consolidate on `summary::sink` (or on `ParameterBinding` in
 `summary/parameter.rs`) with two narrow helpers — e.g.
@@ -83,8 +87,12 @@ already differ between the copies.
 and `parameter_for_value<'a>(parameters, value) -> Option<&'a ParameterBinding>` —
 and route all three call sites through them, deleting the inline loops.
 Guardrails: keep `collect_sinks_for_call`'s distinct prefix/suffix `join`
-(present-index `paths.join`), keep the `!is_rest()` gate only in the
-cross-function propagation path, and keep UNKNOWN rejection in every copy.
+(present-index `paths.join` of `parameter.path()` with `argument.base_path`), keep
+the `!is_rest()` gate only in the cross-function propagation path
+(`summaries.rs:try_project_sink`), and keep `ValueId::UNKNOWN` rejection inside
+the shared value-matching helper (both value-predicate call sites reject it).
+The index/path predicate has no UNKNOWN term and must stay same-shape in both of
+its call sites.
 
 **Fix Applied:** None so far.
 
@@ -109,8 +117,9 @@ the enum pure test vocabulary. Separately, the test-only
 **Recommendation:** On `FlowStateTable`, drop `StateAdmission` and have
 `admit_object` return `()` (or `bool` if a test needs it), asserting rejection
 through `state_limit_rejected()` plus table contents in `state/tests.rs`. Remove
-or reroute `#[cfg(test)] insert_state`: rewrite its 11 tests to build states via
-`admit_object` with the aliases they already construct. Guardrails: keep the
+or reroute `#[cfg(test)] insert_state`: rewrite the tests that seed bare states
+(10 `insert_state` call sites across 7 tests in `state/tests.rs`) to build states
+via `admit_object` with the aliases they already construct. Guardrails: keep the
 atomic all-or-nothing batch decision before `bind_aliases`/`insert_state_unchecked`,
 keep the flag read by `from_sources`, and keep `StateAdmission`'s ordering
 (`Admitted`/`Rejected`) out of any future public surface.
@@ -130,19 +139,25 @@ keep the flag read by `from_sources`, and keep `StateAdmission`'s ordering
 that `project_argument_at` (`parameter.rs:47-91`) computes later, and the two are
 deliberately more permissive in the gate (short-circuits `is_rest()` and empty
 path back to `true` even when the argument value is `ValueId::UNKNOWN` or spread).
-Every call site does gate-then-project (`evidence.rs:120-146`,
+Every call site does gate-then-project (`projector/evidence.rs:120-146`,
 `summaries.rs:196-198`, `summaries.rs:317-329`), so the permissiveness contract
 must be held in sync across two code paths with no single statement of "can this
 invocation bind a value."
 
 **Recommendation:** Make the acceptance a thin wrapper over one projection
-decision — e.g. have `accepts_invocation_projection` call `project_argument` and
-combine the rest/empty-path shortcuts explicitly, or expose
-`project_argument_at`-based helper that both phases share. Guardrails: preserve
-the exact permissiveness boundary (rest accepts all shapes; spread and UNKNOWN
-never bind a value; default applies only when the argument is absent and the path
-is empty), covered by the existing `summary/sink/tests.rs` and
-`summary/summaries/tests.rs` cases so the refactor stays behavior-identical.
+decision — e.g. have `accepts_invocation_projection` retain its three
+short-circuits in the existing order (rest first, then missing argument, then
+empty path — the order is load-bearing: an absent argument with an empty path and
+no default must still fail) and delegate the final fallback check
+(`project_argument(..).is_some() || default_value().is_some()`) to
+`project_argument`. Guardrails: preserve the exact permissiveness boundary —
+rest accepts all argument shapes; spread and `ValueId::UNKNOWN` never bind a
+value; a default binds only when the argument is absent with an empty path, or as
+the fallback when a present argument's path projection fails; the gate's final
+`default_value().is_some()` credit must stay without a non-UNKNOWN filter (an
+`UNKNOWN` default still grants gate acceptance), and the existing
+`summary/sink/tests.rs` and `summary/summaries/tests.rs` invocation-compatibility
+cases must keep passing to prove the refactor stays behavior-identical.
 
 **Fix Applied:** None so far.
 
@@ -157,8 +172,9 @@ is empty), covered by the existing `summary/sink/tests.rs` and
 `summary::sink` owns `FunctionSinkSummary` and `SinkSet` (its namesakes), but also
 `FunctionSignature` and `FunctionSummary` (`sink.rs:86-182`) — the function shape
 and the complete per-function row (id, signature, calls, sinks) — while the
-aggregate `FunctionSummaries` and its fixed-point machinery live one module over
-(`summaries.rs:19-70`). The pairing sentence in the chunk inventory
+aggregate `FunctionSummaries` and its `SummarySinkBudget` live one module over
+(`summaries.rs:19-70`) with the fixed-point propagation machinery further down
+(`SummaryPropagation::run`, `summaries.rs:229-305`). The pairing sentence in the chunk inventory
 ("`summary::sink::FunctionSummary — Stores the complete summary for one function`")
 reads bent precisely because the "sink" module owns the whole function. The
 per-file split itself is defensible (each file is 128-344 lines and cohesive);
@@ -186,8 +202,9 @@ fixed-point worklist types.
 `states_for`/`remove_states_for` retrieve one object's state rows via
 `FlowStateKey::new(object, FlowId::new(RuleIndex::new(0), 0)) ..= FlowStateKey::new(object, FlowId::new(RuleIndex::new(usize::MAX), usize::MAX))`
 (`tables.rs:206-209`). This relies on `FlowId`'s private
-`(rule_index, flow_index)` `Ord` shape (model/flow.rs:20-36) and on the ordering
-of `FlowStateKey` being `(object, flow)`, with no comment at the sentinel site;
+`(rule_index, flow_index)` `Ord` shape (model/flow.rs:19-23) and on the
+tuple-order `(object, flow)` of `FlowStateKey`'s derived `Ord`
+(model/flow/state.rs:25-27), with no comment at the sentinel site;
 nothing documents that `RuleIndex::new(usize::MAX)` is a range bound rather than
 a real index. It is correct and bounded today, but the bound mirrors the model's
 private representation.
@@ -197,8 +214,8 @@ documented helper such as `FlowStateKey::object_range(object)` or a
 `FlowStateTable::states_for` doc note stating the constraint, moving the
 min/max construction next to the key's copies. Guardrails: keep the
 `BTreeMap::range` scan (no per-object index growth), keep deterministic ascending
-(flow) iteration order asserted by `states_for` callers in `evidence.rs:47`,
-`evidence.rs:86`, and the state tests.
+(flow) iteration order asserted by `states_for` callers in `projector/evidence.rs:47`
+and `projector/evidence.rs:86`, and the state tests.
 
 **Fix Applied:** None so far.
 
@@ -228,37 +245,48 @@ min/max construction next to the key's copies. Guardrails: keep the
   intern/overlay machinery rather than duplicating value/identity storage, so no
   parallel model exists there.
 
-## Open Questions
+## Resolved Questions
 
-- **`Canonical*` family (explicitly asked):** verdict is "not a finding." The
-  five structs are private to `tables.rs`, encode exactly one idea (projection-
-  local object normalization for fixed-point convergence, `tables.rs:384-435`),
-  and give `FlowSemanticSnapshot` deterministic `Ord`. The two leaf structs
-  (`CanonicalRequirementState`, `CanonicalSinkState`, `tables.rs:49-59`) merely
-  restate what `requirement_entries()/sink_entries()` already yield
-  (model/flow/state.rs:126-142); whether that parallel is worth keeping depends
-  on whether a future snapshot needs to absorb other event shapes.
-- **`summary` four-module split (explicitly asked):** mostly justified by size
-  and cohesion; the only incoherence is READ-005. `FunctionSignature` and
-  `SinkSet` do add vocabulary: `SinkSet` hides ordering/dedup, and
-  `FunctionSignature` hides the `(parameter_count, has_rest)` shape — both are
-  used only through their owning `FunctionSummary`.
-- **`summary::store` dual representation (explicitly asked):** the
-  `Frozen`/`Overlay` `SummaryPathId` enum plus `parent()` mapping
-  `ParentRef::Linked` to frozen and the `without_first_from`/`join_suffix`/
-  `SummaryPathWalk` walkers encode the same leaf-to-root traversal several ways
-  (`store.rs:49-93, 124-135, 251-275`). This is the most complex part of the
-  chunk but is thoroughly regression-tested (`store/tests.rs`); a future pass
-  could see whether one walk primitive can serve `starts_with`, `join`, and
-  `without_first`.
-- **Doc drift:** `CODEBASE_STRUCTURE_CORE.md:307` describes
+- **`Canonical*` family (explicitly asked):** RESOLVED — keep as-is; not a
+  finding. The five structs are private to `tables.rs` and encode exactly one idea
+  (projection-local object normalization for fixed-point convergence,
+  `tables.rs:384-436`), giving `FlowSemanticSnapshot` deterministic `Ord`. The two
+  leaf structs (`CanonicalRequirementState`, `CanonicalSinkState`,
+  `tables.rs:49-59`) restate what `requirement_entries()/sink_entries()` already
+  yield (model/flow/state.rs:126-142), but that reshape is what keeps the snapshot
+  Ord-parallel to `semantic_snapshot`'s own iteration over `states`
+  (`tables.rs:404-434`); flattening them into `CanonicalFlowState` would only move
+  the vocabulary, not remove it. Revisit only if a future snapshot must absorb
+  other event shapes.
+- **`summary` four-module split (explicitly asked):** RESOLVED — mostly justified
+  by size and cohesion; the only incoherence is READ-005. `FunctionSignature`
+  (`sink.rs:86-90`) and `SinkSet` (`sink.rs:41-66`) do add vocabulary: `SinkSet`
+  hides ordering/dedup (uniqueness via `FastIndexSet` plus `sort_and_dedup`,
+  `sink.rs:46-66`), and `FunctionSignature` hides the `(parameter_count, has_rest)`
+  acceptance shape (`sink.rs:100-121`). Both are used only through their owning
+  `FunctionSummary` (`sink.rs:141-198`; `summaries.rs:196-199`, `317-341`),
+  so READ-005's move of `Function*` beside the aggregate does not disturb them.
+- **`summary::store` dual representation (explicitly asked):** RESOLVED — leave as
+  is; no finding. The `Frozen`/`Overlay` `SummaryPathId` enum plus `parent()`
+  mapping `ParentRef::Linked` to frozen (`store.rs:124-135`) and the
+  `SummaryPathWalk`/`join_suffix`/`without_first_from` walkers (`store.rs:49-93,
+  251-275`) all consume the same representation-neutral leaf-to-root traversal but
+  differ in what they reconstruct (segment enumeration vs. path rebuild), so a
+  single shared primitive is a possible future cleanup, not a current defect. The
+  walkers are thoroughly regression-tested (`store/tests.rs:96-190`).
+- **Doc drift:** RESOLVED — confirmed. `CODEBASE_STRUCTURE_CORE.md:307` describes
   `tables::FlowEnvironment` as "Maps tracked values to their flow state", but the
-  type is an O(1) `(Checkpoint, reachable)` snapshot (`tables.rs:27-33`); the
-  structure reference should be corrected to match the code's own doc comment.
-- **Redo reachability deserves a fixing test** even if READ-001's analysis is
-  judged wrong: no current test performs a forward transition across a sibling
-  branch containing a requirement/sink delta (`state/tests.rs` only restores to
-  ancestors).
+  type is an O(1) `(Checkpoint, reachable)` snapshot (`tables.rs:27-33`) built by
+  `capture` and restored by `restore` (`tables.rs:466-492`); the structure
+  reference should be corrected to match the code's own doc comment.
+- **Redo reachability deserves a fixing test:** RESOLVED — a fixing test is
+  warranted and READ-001's reachability analysis holds. The one existing sibling
+  test `checkpoints_restore_divergent_mutation_paths` (`state/tests.rs:74-96`)
+  performs a forward transition across a sibling capture, but the redone delta is
+  an alias `bind` only, and `fine_grained_state_edits_restore_across_checkpoints`
+  (`state/tests.rs:365-432`) restores only to ancestor checkpoints. No current
+  test performs a forward transition over a chord containing a `RequirementRemove`
+  or `SinkInsert` delta, which is exactly the regression READ-001 prescribes.
 
 ## Coverage
 
