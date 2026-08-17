@@ -192,10 +192,13 @@ impl ProjectSemanticModel {
         let mut contributions = ModuleIdentityContributions::new();
         if let Some(project_module) = self.module(module) {
             for request_index in project_module.local().interface().star_exports() {
-                let Some(_request) = project_module.local().interface().request(*request_index)
-                else {
+                if !project_module
+                    .local()
+                    .interface()
+                    .has_request(*request_index)
+                {
                     continue;
-                };
+                }
                 let key = QualifiedRequestId::new(module, *request_index);
                 if let Some(LinkedModuleTarget::Internal { id }) = self.resolution_for(&key) {
                     let mut child_entries = ModuleIdentityMap::new();

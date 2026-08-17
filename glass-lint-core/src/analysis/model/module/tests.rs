@@ -83,6 +83,8 @@ fn request_constructors_retain_their_valid_kind_and_role_pair() {
 
     let requests = interface.requests().collect::<Vec<_>>();
     assert_eq!(requests.len(), 5);
+    assert!(interface.has_request(ModuleRequestId::from_test(0)));
+    assert!(!interface.has_request(ModuleRequestId::from_test(5)));
     assert!(matches!(
         requests[0].role(),
         ModuleRequestRole::Import { .. }

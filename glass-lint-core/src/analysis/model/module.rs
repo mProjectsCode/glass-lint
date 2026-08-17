@@ -110,6 +110,11 @@ pub struct ModuleInterface {
 pub struct ModuleRequestId(usize);
 
 impl ModuleRequestId {
+    #[cfg(test)]
+    fn from_test(index: usize) -> Self {
+        Self(index)
+    }
+
     fn index(self) -> usize {
         self.0
     }
@@ -294,6 +299,10 @@ impl ModuleInterface {
 
     pub fn request(&self, index: ModuleRequestId) -> Option<&ModuleRequest> {
         self.requests.get(index.index())
+    }
+
+    pub fn has_request(&self, index: ModuleRequestId) -> bool {
+        self.request(index).is_some()
     }
 
     pub fn request_ids_for_specifier(

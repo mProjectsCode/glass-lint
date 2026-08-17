@@ -273,13 +273,16 @@ impl ProjectLinker {
         module: ModuleId,
         request_index: module::ModuleRequestId,
     ) -> ExportResolution {
-        let Some(_request) = self
-            .modules
-            .get(&module)
-            .and_then(|project_module| project_module.local().interface().request(request_index))
-        else {
+        let Some(project_module) = self.modules.get(&module) else {
             return ExportResolution::Unknown;
         };
+        if !project_module
+            .local()
+            .interface()
+            .has_request(request_index)
+        {
+            return ExportResolution::Unknown;
+        }
         let key = QualifiedRequestId::new(module, request_index);
         self.resolutions
             .get(&key)
@@ -310,13 +313,16 @@ impl ProjectLinker {
         request_index: module::ModuleRequestId,
         imported: &SmolStr,
     ) -> ExportResolution {
-        let Some(_request) = self
-            .modules
-            .get(&module)
-            .and_then(|m| m.local().interface().request(request_index))
-        else {
+        let Some(project_module) = self.modules.get(&module) else {
             return ExportResolution::Unknown;
         };
+        if !project_module
+            .local()
+            .interface()
+            .has_request(request_index)
+        {
+            return ExportResolution::Unknown;
+        }
         self.with_export_resolver(|resolver| {
             resolver
                 .resolve_request_target(module, request_index, imported)

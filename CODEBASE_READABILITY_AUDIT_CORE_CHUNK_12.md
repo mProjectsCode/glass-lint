@@ -80,7 +80,7 @@ the replacement loop reads.
 keys directly in the existing source order. Added a project-session regression
 test covering all five role mappings.
 
-#### [ ] READ-003 — Request "does this id exist" is re-derived by four fetch-and-discard lookups
+#### [x] READ-003 — Request "does this id exist" is re-derived by four fetch-and-discard lookups
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -112,6 +112,10 @@ into a shared helper — only the existence check deduplicates; the two
 still `continue`; `has_request` must not consult the project-phase
 `AuthoredRequestTable` (it validates the local module interface, not authored
 status).
+
+**Fix Applied:** Added `ModuleInterface::has_request` and replaced the four
+discarded request fetches while preserving each caller’s existing fallback
+behavior. Added valid/invalid request-ID assertions to the module model tests.
 
 ### Value arena and static values
 

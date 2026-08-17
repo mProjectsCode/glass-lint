@@ -230,14 +230,18 @@ impl<'a> ExportResolver<'a> {
         let mut candidate = None;
         let mut saw_unknown = false;
         for request_index in star_exports {
-            let Some(_request) = self
-                .project
-                .module(module)
-                .and_then(|module| module.local().interface().request(request_index))
-            else {
+            let Some(project_module) = self.project.module(module) else {
                 saw_unknown = true;
                 continue;
             };
+            if !project_module
+                .local()
+                .interface()
+                .has_request(request_index)
+            {
+                saw_unknown = true;
+                continue;
+            }
             let candidate_export = match self.project.request_target(module, request_index) {
                 Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export_inner(
                     &QualifiedExportId::new(*target, export_name.clone()),
