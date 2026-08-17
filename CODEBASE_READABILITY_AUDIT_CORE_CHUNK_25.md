@@ -34,7 +34,7 @@ against the code; see "Open Questions — Resolved".
 
 ### Finalized report aggregation
 
-#### [ ] READ-001 — `FinalizedReportAggregate` is a one-field wrapper whose value is always immediately computed twice
+#### [x] READ-001 — `FinalizedReportAggregate` is a one-field wrapper whose value is always immediately computed twice
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -70,7 +70,10 @@ ordering, `ReportCompletion::join`, saturating `operations` merge, serde output
 (the aggregate is already `serde(skip)`), and the invariant that the summary
 always reflects the current files/diagnostics after `finalize`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `FinalizedReportAggregate` and stored the derived
+summary directly on `AnalysisReport`. Finalization now owns the summary scan,
+while assembly computes only evidence metrics for operation counts; report
+construction and serde behavior remain unchanged.
 
 #### [x] READ-002 — `AnalysisOperationCountsBuilder` duplicates the whole DTO as a write-side proxy
 

@@ -41,11 +41,10 @@ pub struct AnalysisReport {
     operations: AnalysisOperationCounts,
     completion: ReportCompletion,
     #[cfg_attr(feature = "serde", serde(skip))]
-    aggregate: FinalizedReportAggregate,
+    summary: AnalysisReportSummary,
 }
 
 impl AnalysisReport {
-    #[cfg(test)]
     pub(crate) fn new(
         schema_version: u32,
         tool_version: String,
@@ -54,27 +53,7 @@ impl AnalysisReport {
         operations: AnalysisOperationCounts,
         completion: ReportCompletion,
     ) -> Self {
-        let aggregate = Self::aggregate(&files, &diagnostics);
-        Self::new_with_aggregate(
-            schema_version,
-            tool_version,
-            files,
-            diagnostics,
-            operations,
-            completion,
-            aggregate,
-        )
-    }
-
-    pub(crate) fn new_with_aggregate(
-        schema_version: u32,
-        tool_version: String,
-        files: Vec<FileReport>,
-        diagnostics: Vec<Diagnostic>,
-        operations: AnalysisOperationCounts,
-        completion: ReportCompletion,
-        aggregate: FinalizedReportAggregate,
-    ) -> Self {
+        let summary = Self::summary_for(&files, &diagnostics);
         Self {
             schema_version,
             tool_version,
@@ -82,7 +61,7 @@ impl AnalysisReport {
             diagnostics,
             operations,
             completion,
-            aggregate,
+            summary,
         }
     }
 
@@ -132,7 +111,7 @@ impl AnalysisReport {
             .sort_by(|left, right| left.ordering_key().cmp(right.ordering_key()));
         self.diagnostics
             .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
-        self.aggregate = Self::aggregate(&self.files, &self.diagnostics);
+        self.summary = Self::summary_for(&self.files, &self.diagnostics);
         self
     }
 
@@ -160,51 +139,29 @@ impl AnalysisReport {
         self.finalize()
     }
 
-    pub(crate) fn aggregate(
-        files: &[FileReport],
-        diagnostics: &[Diagnostic],
-    ) -> FinalizedReportAggregate {
-        Self::aggregate_and_evidence(files, diagnostics).0
+    /// Compute evidence metrics for serialized operation counts.
+    pub(crate) fn aggregate_and_evidence(files: &[FileReport]) -> (usize, usize) {
+        let mut evidence_steps = 0usize;
+        let mut rendered_traces = 0usize;
+        for file in files {
+            for finding in file.findings() {
+                evidence_steps += finding
+                    .evidence()
+                    .traces()
+                    .iter()
+                    .map(|trace| trace.steps().len())
+                    .sum::<usize>();
+                rendered_traces += finding.evidence().traces().len();
+            }
+        }
+        (evidence_steps, rendered_traces)
     }
 
-    /// Compute the summary aggregate and the evidence metrics that the
-    /// serialized operation counts own, in a single scan.
-    pub(crate) fn aggregate_and_evidence(
-        files: &[FileReport],
-        diagnostics: &[Diagnostic],
-    ) -> (FinalizedReportAggregate, usize, usize) {
-        FinalizedReportAggregate::from_parts(files, diagnostics)
-    }
-}
-
-#[cfg(test)]
-mod tests;
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct AnalysisReportSummary {
-    files: usize,
-    findings: usize,
-    parse_diagnostics: usize,
-    file_diagnostics: usize,
-    report_diagnostics: usize,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct FinalizedReportAggregate {
-    summary: AnalysisReportSummary,
-}
-
-impl FinalizedReportAggregate {
-    /// Compute the report summary and the evidence metrics in one scan. The
-    /// evidence metrics are recorded into the serialized operation counts
-    /// rather than retained in the aggregate.
-    fn from_parts(files: &[FileReport], diagnostics: &[Diagnostic]) -> (Self, usize, usize) {
+    fn summary_for(files: &[FileReport], diagnostics: &[Diagnostic]) -> AnalysisReportSummary {
         let mut summary = AnalysisReportSummary {
             files: files.len(),
             ..AnalysisReportSummary::default()
         };
-        let mut evidence_steps = 0usize;
-        let mut rendered_traces = 0usize;
-
         for file in files {
             summary.findings += file.findings().len();
             summary.parse_diagnostics += file
@@ -217,26 +174,24 @@ impl FinalizedReportAggregate {
                 .iter()
                 .filter(|diagnostic| diagnostic.is_project())
                 .count();
-            for finding in file.findings() {
-                evidence_steps += finding
-                    .evidence()
-                    .traces()
-                    .iter()
-                    .map(|trace| trace.steps().len())
-                    .sum::<usize>();
-                rendered_traces += finding.evidence().traces().len();
-            }
         }
         summary.report_diagnostics = diagnostics
             .iter()
             .filter(|diagnostic| diagnostic.is_project())
             .count();
-        (Self { summary }, evidence_steps, rendered_traces)
+        summary
     }
+}
 
-    pub(crate) const fn summary(self) -> AnalysisReportSummary {
-        self.summary
-    }
+#[cfg(test)]
+mod tests;
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AnalysisReportSummary {
+    files: usize,
+    findings: usize,
+    parse_diagnostics: usize,
+    file_diagnostics: usize,
+    report_diagnostics: usize,
 }
 
 impl AnalysisReportSummary {
@@ -263,6 +218,6 @@ impl AnalysisReportSummary {
 
 impl AnalysisReport {
     pub fn summary(&self) -> AnalysisReportSummary {
-        self.aggregate.summary()
+        self.summary
     }
 }

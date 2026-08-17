@@ -12,8 +12,7 @@ pub(super) fn assemble_project_report(
     diagnostics: Vec<Diagnostic>,
     outcome: &ProjectionOutcome,
 ) -> AnalysisReport {
-    let (aggregate, evidence_steps, rendered_traces) =
-        AnalysisReport::aggregate_and_evidence(&files, &diagnostics);
+    let (evidence_steps, rendered_traces) = AnalysisReport::aggregate_and_evidence(&files);
 
     let mut operations = project.operation_counts();
     operations.record_evidence(evidence_steps);
@@ -26,7 +25,7 @@ pub(super) fn assemble_project_report(
     operations.record_fixed_point_iterations(metrics.fixed_point_iterations());
     operations.record_rendered_traces(rendered_traces);
 
-    AnalysisReport::new_with_aggregate(
+    AnalysisReport::new(
         REPORT_VERSION,
         env!("CARGO_PKG_VERSION").into(),
         files,
@@ -37,7 +36,6 @@ pub(super) fn assemble_project_report(
         } else {
             ReportCompletion::Partial
         },
-        aggregate,
     )
     .finalize()
 }
