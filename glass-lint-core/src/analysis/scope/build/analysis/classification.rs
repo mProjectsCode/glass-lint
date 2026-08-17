@@ -149,7 +149,6 @@ fn classify_call(
         name,
         derived_function_pattern,
         &[
-            Candidate::BoundCallable,
             Candidate::ModuleAlias,
             Candidate::Constant,
             Candidate::ReturnedObject,

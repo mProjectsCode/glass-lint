@@ -180,7 +180,7 @@ for dynamic values.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — `Candidate::BoundCallable` is provably dead in `classify_call`'s fallthrough candidate list
+#### [x] READ-005 — `Candidate::BoundCallable` is provably dead in `classify_call`'s fallthrough candidate list
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -209,7 +209,9 @@ bound-callable arm. Guardrails: keep `Candidate::BoundCallable` for genuine
 `x.bind(...)` callee forms and preserve the remaining fallthrough order
 (`ModuleAlias`, `Constant`, `ReturnedObject`, `RootedAlias`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unreachable `BoundCallable` candidate from the
+non-bind fallthrough list. The dedicated bind-call path remains unchanged, as
+do the remaining candidate precedence and fail-closed behavior.
 
 ## Systemic Themes
 
