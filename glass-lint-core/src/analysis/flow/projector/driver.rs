@@ -283,17 +283,16 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         seen: &mut BTreeSet<FlowSemanticSnapshot>,
         environment: FlowEnvironment,
     ) -> PathAdmission {
-        if !self.run.charge_operation() {
-            return PathAdmission::Exhausted;
-        }
-        if !self.flow_state.restore(environment) {
-            self.run.mark_incomplete();
-            return PathAdmission::RestoreFailed;
-        }
-        if seen.insert(self.flow_state.semantic_snapshot()) {
-            PathAdmission::Admitted
-        } else {
-            PathAdmission::Duplicate
+        match self.restore_path(environment) {
+            PathRestoration::Exhausted => PathAdmission::Exhausted,
+            PathRestoration::Failed => PathAdmission::RestoreFailed,
+            PathRestoration::Ready => {
+                if seen.insert(self.flow_state.semantic_snapshot()) {
+                    PathAdmission::Admitted
+                } else {
+                    PathAdmission::Duplicate
+                }
+            }
         }
     }
 

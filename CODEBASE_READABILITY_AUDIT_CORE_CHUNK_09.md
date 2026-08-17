@@ -33,7 +33,7 @@ Dependent ordering: all findings are independent; no fix blocks another.
 
 ### Projector driver (`driver.rs`)
 
-#### [ ] READ-001 — Restore and admit duplicate the bounded path-restore protocol
+#### [x] READ-001 — Restore and admit duplicate the bounded path-restore protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -66,7 +66,11 @@ performs (driver.rs:329), `Exhausted` must still `break` out of both admission
 loops, and `Duplicate`/`Failed` must still have no downward effect (no push of
 an unreachable environment and no witness).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `admit_path` delegate charging, restoration, reachability,
+and incomplete-state handling to `restore_path`, retaining only snapshot
+deduplication and the existing `PathAdmission` mapping. Join and loop callers
+therefore keep their prior admission behavior and exhaustion handling. Verified
+with projector tests, clippy, `make fmt`, and `make ci`.
 
 #### [x] READ-002 — `mark_incomplete` and `mark_control_stack_incomplete` are identical twins
 
