@@ -33,9 +33,35 @@ impl<E> FirstError<E> {
     }
 }
 
-fn record_first_error<T, E>(slot: &mut FirstError<E>, result: Result<T, E>) {
-    if let Err(error) = result {
-        slot.record(error);
+#[derive(Debug, Clone)]
+struct DeferredBuilder<T, E> {
+    inner: T,
+    first_error: FirstError<E>,
+}
+
+impl<T, E> DeferredBuilder<T, E> {
+    fn new(inner: T) -> Self {
+        Self {
+            inner,
+            first_error: FirstError::default(),
+        }
+    }
+
+    fn record_with(&mut self, operation: impl FnOnce(&mut T) -> Result<(), E>) {
+        if let Err(error) = operation(&mut self.inner) {
+            self.first_error.record(error);
+        }
+    }
+
+    fn into_parts(self) -> (T, Option<E>) {
+        (self.inner, self.first_error.take())
+    }
+
+    fn map_inner(self, operation: impl FnOnce(T) -> T) -> Self {
+        Self {
+            inner: operation(self.inner),
+            first_error: self.first_error,
+        }
     }
 }
 
@@ -98,8 +124,7 @@ impl Rule {
     /// Start the deferred-error builder used by declarative rule catalogs.
     pub fn catalog_builder(id: impl Into<String>) -> CatalogRuleBuilder {
         CatalogRuleBuilder {
-            inner: Self::builder(id),
-            first_query_error: FirstError::default(),
+            inner: DeferredBuilder::new(Self::builder(id)),
         }
     }
 
@@ -264,14 +289,13 @@ impl RuleBuilder {
 #[derive(Debug, Clone)]
 /// Deferred-error builder reserved for declarative provider catalogs.
 pub struct CatalogRuleBuilder {
-    inner: RuleBuilder,
-    first_query_error: FirstError<QueryBuildError>,
+    inner: DeferredBuilder<RuleBuilder, QueryBuildError>,
 }
 
 impl CatalogRuleBuilder {
     #[must_use]
     pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
-        record_first_error(&mut self.first_query_error, self.inner.try_add_query(query));
+        self.inner.record_with(|inner| inner.try_add_query(query));
         self
     }
 
@@ -289,27 +313,28 @@ impl CatalogRuleBuilder {
 
     #[must_use]
     pub fn description(mut self, description: impl Into<String>) -> Self {
-        self.inner = self.inner.description(description);
+        self.inner = self.inner.map_inner(|inner| inner.description(description));
         self
     }
 
     #[must_use]
     pub fn severity(mut self, severity: Severity) -> Self {
-        self.inner = self.inner.severity(severity);
+        self.inner = self.inner.map_inner(|inner| inner.severity(severity));
         self
     }
 
     #[must_use]
     pub fn confidence(mut self, confidence: Confidence) -> Self {
-        self.inner = self.inner.confidence(confidence);
+        self.inner = self.inner.map_inner(|inner| inner.confidence(confidence));
         self
     }
 
     pub fn build(self) -> Result<Rule, RuleBuildError> {
-        if let Some(error) = self.first_query_error.take() {
+        let (inner, first_error) = self.inner.into_parts();
+        if let Some(error) = first_error {
             return Err(RuleBuildError::InvalidQuery(error));
         }
-        self.inner.build()
+        inner.build()
     }
 }
 

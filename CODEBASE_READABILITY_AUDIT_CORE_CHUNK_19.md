@@ -33,7 +33,7 @@ Seven findings, ranked by severity. No fixes applied.
 
 ### Lifecycle builder architecture
 
-#### [ ] READ-001 — The deferred/immediate builder machinery is duplicated across `Rule` and `LifecycleQuery`, and the lifecycle immediate surface is test-only
+#### [x] READ-001 — The deferred/immediate builder machinery is duplicated across `Rule` and `LifecycleQuery`, and the lifecycle immediate surface is test-only
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -87,7 +87,12 @@ sequence (lifecycle.rs:78-104), and the public `rules::` exports —
 remain; any `try_*` helper surfaced on the catalog builder must keep the same
 conversion and duplicate-check order the stages apply today.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the test-only lifecycle immediate builder and made
+`CatalogLifecycleQueryBuilder` wrap `LifecycleStages` directly. Added a shared
+private `DeferredBuilder` governor used by both catalog builders to retain the
+first fallible authoring error while preserving stage validation order. Updated
+lifecycle tests to exercise duplicate and malformed-source errors through the
+remaining catalog path. Verified with `cargo test -p glass-lint-core api::rule::query::lifecycle`.
 
 ### Lifecycle event construction
 

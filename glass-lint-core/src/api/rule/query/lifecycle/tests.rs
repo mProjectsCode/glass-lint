@@ -42,24 +42,6 @@ fn deferred_builder_reports_first_invalid_operation() {
 }
 
 #[test]
-fn immediate_builder_reports_duplicate_stages_at_build() {
-    let condition = LifecycleCondition::event(LifecycleEvent::property_write(
-        "value",
-        ValueMatcher::any_value(),
-    ))
-    .unwrap();
-    let error = LifecycleQuery::builder("input")
-        .try_source(source())
-        .unwrap()
-        .condition(condition.clone())
-        .condition(condition)
-        .completion(LifecycleCompletion::configuration())
-        .build()
-        .expect_err("duplicate condition should be retained");
-    assert_eq!(error, QueryBuildError::DuplicateLifecycleStage("condition"));
-}
-
-#[test]
 fn deferred_condition_accepts_a_prebuilt_value() {
     let condition = LifecycleCondition::event(LifecycleEvent::property_write(
         "type",
@@ -435,8 +417,9 @@ fn empty_all_of_condition_fails() {
 
 #[test]
 fn try_source_reports_constructor_errors_at_the_call_site() {
-    let error = LifecycleQuery::builder("test")
-        .try_source(EventQuery::member_call_rooted(""))
+    let error = LifecycleQuery::catalog_builder("test")
+        .source(EventQuery::member_call_rooted(""))
+        .build()
         .unwrap_err();
     assert!(matches!(error, QueryBuildError::MalformedChain(_)));
 }
