@@ -249,7 +249,7 @@ must remain free of parameter data per the flow-marker contract.
 Exit fact emitters, preserving their distinct payload behavior. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-008 — 36 identical budget-exhausted guards in the visitor
+#### [x] READ-008 — 36 identical budget-exhausted guards in the visitor
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -272,7 +272,9 @@ must keep running before any resolver or provenance access so exhausted budgets
 produce no partial mutation; it is a semantic invariant, not a cosmetic early
 return.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the local `budget_guard!` macro and replaced all 36
+visitor guard blocks, preserving guard-before-access ordering. Verified with
+`make fmt && make ci`.
 
 ### Call lowering and model
 
