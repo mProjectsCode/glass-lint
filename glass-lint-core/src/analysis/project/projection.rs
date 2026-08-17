@@ -367,7 +367,7 @@ impl ProjectSemanticModel {
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
-        let has_flow = plan.requirements.flow().local() || plan.requirements.flow().cross_call();
+        let has_flow = plan.needs_flow();
         let mut session = ProjectionSession::new(self, &plan, flow_limits, arena);
         let (projections, mut outcome) = match session.project_modules() {
             Ok(result) => result,

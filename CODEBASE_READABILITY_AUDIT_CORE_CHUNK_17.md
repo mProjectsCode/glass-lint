@@ -34,7 +34,7 @@ wiring deduplication that depends on it (READ-003).
 
 ### Projection orchestration (`analysis/project/projection.rs`)
 
-#### [ ] READ-001 — "Does this plan need flow" is computed twice from different sources
+#### [x] READ-001 — "Does this plan need flow" is computed twice from different sources
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -70,7 +70,10 @@ compiled plan contract (plan summary/explanation and the requirements-mismatch
 tests read them); the runtime gate must stay true whenever a
 `PhysicalRoot::Lifecycle` was lowered for a selected matcher.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reused `ProjectionPlan::needs_flow()` for the cross-module
+projection gate, making the plan-owned lifecycle-root predicate authoritative
+for both local effect loading and cross-flow projection. Compiled requirement
+flags remain available to test-only plan summaries and validation.
 
 ### Linker ownership boundary (`analysis/project/linker/mod.rs`, `analysis/project/model.rs`)
 

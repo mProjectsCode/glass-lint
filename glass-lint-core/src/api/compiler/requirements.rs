@@ -12,10 +12,12 @@ pub(crate) struct FlowRequirements {
 }
 
 impl FlowRequirements {
+    #[cfg(test)]
     pub(crate) fn local(&self) -> bool {
         self.local
     }
 
+    #[cfg(test)]
     pub(crate) fn cross_call(&self) -> bool {
         self.cross_call
     }
@@ -65,6 +67,7 @@ pub(crate) struct PlanRequirements {
 }
 
 impl PlanRequirements {
+    #[cfg(test)]
     pub(crate) fn flow(&self) -> &FlowRequirements {
         &self.flow
     }
