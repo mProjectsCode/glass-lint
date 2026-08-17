@@ -29,7 +29,7 @@ below; no fixes applied.
 
 ### Retained model facts and flow
 
-#### [ ] READ-001 — Completion policy is defined twice: compiler IR enums mirror the readiness enums and are queried separately
+#### [x] READ-001 — Completion policy is defined twice: compiler IR enums mirror the readiness enums and are queried separately
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -74,7 +74,13 @@ explicit `Configuration` stays distinct from a zero-count `AnySink`; preserve
 and keep the flow/completion tests behavior-identical (`flow/projector/tests.rs`,
 `flow/projector/tests_extended.rs`, `api/compiler/tests`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the compiler-only `RequirementMode` and
+`CompletionMode` mirrors. `CompiledObjectFlow` now stores the model's
+`RequirementReadiness` and `SinkReadiness` directly, and configuration-emission
+callers compare against `SinkReadiness::Configuration`. The explicit
+`Configuration` versus `AnySink` distinction and all readiness behavior remain
+unchanged. Verified with focused flow/compiler tests, clippy, `make fmt`, and
+`make ci`.
 
 #### [x] READ-002 — `CallProjection` re-copies the entire `CallEvent` accessor surface before indexing
 

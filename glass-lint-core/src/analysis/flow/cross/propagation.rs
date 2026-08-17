@@ -14,10 +14,10 @@ use crate::{
             effect::{EffectUse, FunctionEffect},
             planning::{BoundFlowPlan, FlowMatchView, PropertyRequirementMatch},
         },
-        model::flow::RequirementIndex,
+        model::flow::{RequirementIndex, SinkReadiness},
         trace::QualifiedEvent,
     },
-    api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
+    api::compiler::CompiledObjectFlow,
 };
 
 pub(super) struct UsageProjector<'a, 'session> {
@@ -197,7 +197,7 @@ impl UsageProjector<'_, '_> {
         event: FactId,
         transition: EvidenceTransition,
     ) {
-        if self.flow.completion_mode() == CompletionMode::Configuration
+        if self.flow.sink_readiness() == SinkReadiness::Configuration
             && transition.is_ready()
             && self.context.is_crossed()
         {

@@ -18,14 +18,12 @@ use crate::{
             summary::find_sink_parameter,
         },
         model::{
-            flow::{FlowId, FlowStateKey},
+            flow::{FlowId, FlowStateKey, SinkReadiness},
             scope::FunctionId,
         },
         trace::{QualifiedEvent, TraceNodeId},
     },
-    api::{
-        classification::ClassificationEvidenceOccurrence, compiler::object_flow::CompletionMode,
-    },
+    api::classification::ClassificationEvidenceOccurrence,
     project::EvidenceRole,
 };
 
@@ -62,7 +60,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     key.object(),
                     key.flow(),
                     event,
-                    Some(CompletionMode::Configuration),
+                    Some(SinkReadiness::Configuration),
                     false,
                 );
             }
@@ -168,7 +166,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         object: FlowObjectId,
         flow: FlowId,
         match_fact: FactId,
-        completion_mode: Option<CompletionMode>,
+        sink_readiness: Option<SinkReadiness>,
         require_sinks: bool,
     ) {
         let state = self.flow_state.state(object, flow).cloned();
@@ -177,7 +175,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         };
         let ready = self.inputs.plan.get(flow).is_some_and(|flow| {
             let readiness = flow.readiness();
-            completion_mode.is_none_or(|mode| flow.completion_mode() == mode)
+            sink_readiness.is_none_or(|mode| flow.sink_readiness() == mode)
                 && if require_sinks {
                     state.complete(readiness)
                 } else {

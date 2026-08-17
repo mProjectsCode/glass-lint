@@ -11,12 +11,12 @@ use crate::{
         facts::{FactId, FactPayload, FunctionBoundary},
         flow::FlowCompletion,
         model::{
-            flow::{FlowLimits, FlowState},
+            flow::{FlowLimits, FlowState, SinkReadiness},
             value::{FlowObjectId, ValueId},
         },
         trace::TraceArena,
     },
-    api::{classification::RuleEvidenceTable, compiler::object_flow::CompletionMode},
+    api::classification::RuleEvidenceTable,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -382,7 +382,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 object,
                 flow,
                 event,
-                Some(CompletionMode::Configuration),
+                Some(SinkReadiness::Configuration),
                 false,
             );
         }

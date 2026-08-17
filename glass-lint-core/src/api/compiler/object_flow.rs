@@ -18,42 +18,22 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum RequirementMode {
-    AllRequired,
-    AnyRequired,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum CompletionMode {
-    Configuration,
-    AnySink,
-    AllSinks,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectFlow {
     symbol: SmolStr,
     sources: Vec<CompiledObjectSource>,
     requirements: Vec<CompiledObjectRequirement>,
     sinks: Vec<CompiledObjectSink>,
-    requirement_mode: RequirementMode,
-    completion_mode: CompletionMode,
+    requirement_readiness: RequirementReadiness,
+    sink_readiness: SinkReadiness,
 }
 
 impl CompiledObjectFlow {
     pub(crate) fn readiness(&self) -> FlowReadiness {
         FlowReadiness::new(
-            match self.requirement_mode {
-                RequirementMode::AllRequired => RequirementReadiness::All,
-                RequirementMode::AnyRequired => RequirementReadiness::Any,
-            },
+            self.requirement_readiness,
             self.requirement_count(),
-            match self.completion_mode {
-                CompletionMode::Configuration => SinkReadiness::Configuration,
-                CompletionMode::AnySink => SinkReadiness::Any,
-                CompletionMode::AllSinks => SinkReadiness::All,
-            },
+            self.sink_readiness,
             self.sink_count(),
         )
     }
@@ -86,8 +66,8 @@ impl CompiledObjectFlow {
         self.sinks.len()
     }
 
-    pub(crate) fn completion_mode(&self) -> CompletionMode {
-        self.completion_mode
+    pub(crate) fn sink_readiness(&self) -> SinkReadiness {
+        self.sink_readiness
     }
 
     #[cfg(test)]
@@ -110,8 +90,8 @@ impl CompiledObjectFlow {
                     args: CompiledObjectSinkArguments::Any,
                 })
                 .collect(),
-            requirement_mode: RequirementMode::AllRequired,
-            completion_mode: CompletionMode::AllSinks,
+            requirement_readiness: RequirementReadiness::All,
+            sink_readiness: SinkReadiness::All,
         }
     }
 
@@ -120,42 +100,42 @@ impl CompiledObjectFlow {
         lc: &NormalizedLifecycle,
         symbol: &str,
     ) -> Result<Self, SubjectRelationError> {
-        let (requirements, requirement_mode) = lc.condition().map_or_else(
-            || (Vec::new(), RequirementMode::AnyRequired),
+        let (requirements, requirement_readiness) = lc.condition().map_or_else(
+            || (Vec::new(), RequirementReadiness::Any),
             |cond| match cond {
                 NormalizedLifecycleCondition::AnyOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_normalized_lifecycle_event)
                         .collect(),
-                    RequirementMode::AnyRequired,
+                    RequirementReadiness::Any,
                 ),
                 NormalizedLifecycleCondition::AllOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_normalized_lifecycle_event)
                         .collect(),
-                    RequirementMode::AllRequired,
+                    RequirementReadiness::All,
                 ),
             },
         );
-        let (sinks, completion_mode) = match lc.completion() {
+        let (sinks, sink_readiness) = match lc.completion() {
             NormalizedLifecycleCompletion::Configuration => {
-                (Vec::new(), CompletionMode::Configuration)
+                (Vec::new(), SinkReadiness::Configuration)
             }
             NormalizedLifecycleCompletion::AnySink(sinks) => (
                 sinks
                     .iter()
                     .map(CompiledObjectSink::from_normalized_lifecycle_sink)
                     .collect(),
-                CompletionMode::AnySink,
+                SinkReadiness::Any,
             ),
             NormalizedLifecycleCompletion::AllSinks(sinks) => (
                 sinks
                     .iter()
                     .map(CompiledObjectSink::from_normalized_lifecycle_sink)
                     .collect(),
-                CompletionMode::AllSinks,
+                SinkReadiness::All,
             ),
         };
         let sources = lc
@@ -168,8 +148,8 @@ impl CompiledObjectFlow {
             sources,
             requirements,
             sinks,
-            requirement_mode,
-            completion_mode,
+            requirement_readiness,
+            sink_readiness,
         })
     }
 }
