@@ -22,7 +22,7 @@ arm.
 
 ### `analysis::syntax` — names, constant
 
-#### [ ] READ-001 — Repeated four-arm TypeScript assertion unwrap
+#### [x] READ-001 — Repeated four-arm TypeScript assertion unwrap
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -57,7 +57,11 @@ change match certainty. Each consumer keeps its current transparency policy;
 only the shared peeling step is consolidated. Sequence handling (`Expr::Seq`
 "last expression") is a separate, per-caller policy and stays untouched.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already resolved by the shared
+`analysis::syntax::unwrap_transparent_expr` helper, which owns the four
+TypeScript assertion variants and is used by the listed consumers. The
+terminal-expression helper intentionally keeps its caller-specific policy, so
+rooted-chain handling does not change.
 
 #### [ ] READ-002 — Duplicated bounded object merge in the constant evaluator
 
