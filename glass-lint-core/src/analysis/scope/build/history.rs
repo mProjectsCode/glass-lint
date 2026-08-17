@@ -34,17 +34,23 @@ impl HistoryOwner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HistoryRestoreError {
+    /// The checkpoint belongs to another history owner or is outside this
+    /// history's reachable mutation-log positions.
     ForeignCheckpoint,
     /// The delta log and the live state disagreed while applying a delta.
     StateDesync,
 }
 
 /// A position in the assignment history.
+///
+/// Checkpoints are created only by the single history owner held by the
+/// collector's path state; the owner marker rejects cross-history restores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Cursor {
     position: HistoryCheckpoint,
 }
 
+/// An owner-qualified position in one mutation history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HistoryCheckpoint {
     owner: HistoryOwner,
@@ -52,6 +58,7 @@ struct HistoryCheckpoint {
 }
 
 #[derive(Debug)]
+/// A mutation log with checkpoints valid only for this history instance.
 struct OwnedHistory<D> {
     history: ParentLinkedHistory<D>,
     owner: HistoryOwner,

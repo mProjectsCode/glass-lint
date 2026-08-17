@@ -78,7 +78,7 @@ identity — is unchanged.
 callers to use the owner methods. Recognition, fail-closed `Function` lookup,
 and mutable-object recording guards are unchanged.
 
-#### [ ] READ-002 — Reversible-history identity guard and error type conflate two distinct failure causes that only the test suite can reach
+#### [x] READ-002 — Reversible-history identity guard and error type conflate two distinct failure causes that only the test suite can reach
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
