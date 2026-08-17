@@ -33,19 +33,23 @@ impl ResolvedCallee {
         resolved: &crate::analysis::resolution::ResolvedValue,
         callee_span: glass_lint_datastructures::ByteRange,
         target_function: Option<FunctionId>,
+        receiver: Option<ValueId>,
+        callee_name: Option<SmolStr>,
+        syntactic_path: Option<NamePath>,
+        instance_class: Option<ClassIdentity>,
     ) -> Self {
         Self {
             value: resolved.id,
-            receiver: None,
+            receiver,
             callee_span,
-            callee_name: None,
+            callee_name,
             call_provenance: resolved.call.clone(),
-            syntactic_path: None,
+            syntactic_path,
             rooted_chain: resolved.rooted_chain.clone(),
             module_member: resolved.module_member.clone(),
             returned_member: resolved.returned_member.clone(),
             bound_arguments: resolved.bound_arguments.clone(),
-            instance_class: None,
+            instance_class,
             target_function,
         }
     }
@@ -68,12 +72,15 @@ impl FactBuilder<'_, '_> {
                 let callee_span = self.byte_range(ident.span)?;
                 let callee_name = Some(ident.sym.to_smolstr());
                 let target_function = self.resolver.function_id_for_expr(effective);
-                let mut callee =
-                    ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
-                callee.callee_name = callee_name;
-                callee.syntactic_path = syntactic_path;
-                callee.instance_class = instance_class;
-                Some(callee)
+                Some(ResolvedCallee::from_resolved(
+                    &resolved,
+                    callee_span,
+                    target_function,
+                    None,
+                    callee_name,
+                    syntactic_path,
+                    instance_class,
+                ))
             }
             Expr::Member(member) => self.resolve_member_callee(member),
             Expr::OptChain(chain) => {
@@ -94,6 +101,10 @@ impl FactBuilder<'_, '_> {
             &resolved,
             callee_span,
             target_function,
+            None,
+            None,
+            None,
+            None,
         ))
     }
 
@@ -122,11 +133,15 @@ impl FactBuilder<'_, '_> {
         let receiver = Some(self.resolver.resolve_expr_id(&member.obj));
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
-        let mut callee = ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
-        callee.syntactic_path = syntactic_path;
-        callee.receiver = receiver;
-        callee.instance_class = instance_class;
-        Some(callee)
+        Some(ResolvedCallee::from_resolved(
+            &resolved,
+            callee_span,
+            target_function,
+            receiver,
+            None,
+            syntactic_path,
+            instance_class,
+        ))
     }
 
     pub(in crate::analysis::facts) fn instance_class_for_receiver(

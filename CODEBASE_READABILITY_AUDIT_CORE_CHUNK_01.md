@@ -302,7 +302,7 @@ paths. Guardrails: keep `Callee::Super`/`Import` behavior intact — the
 routed fact, module-request, and scope consumers through it. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-010 — `ResolvedCallee` and `CallEvent` are parallel 12/14-field records with a hand-written field copy
+#### [x] READ-010 — `ResolvedCallee` and `CallEvent` are parallel 12/14-field records with a hand-written field copy
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -335,7 +335,11 @@ calls/mod.rs:87-89), keep `CallEvent` fields behind semantic accessors, and
 preserve the distinction that `CallEvent::unknown` represents an
 unresolvable/import callee rather than a resolved one.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ResolvedCallee::from_resolved` fully initialize the
+callee-owned fields, so identifier, member, and fallback resolution no longer
+construct a default record and mutate it afterward. Interning and the single
+`into_call_event` lowering entry point remain in the fact builder. Verified
+with `make fmt && make ci`.
 
 ## Systemic Themes
 
