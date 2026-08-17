@@ -164,7 +164,7 @@ diagnostic output.
 
 ### Lifecycle builders (`api/rule/query/lifecycle.rs`)
 
-#### [ ] READ-003 — `LifecycleBuilderState` adds a pointless nesting level, making the builder a three-level chain
+#### [x] READ-003 — `LifecycleBuilderState` adds a pointless nesting level, making the builder a three-level chain
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -196,7 +196,9 @@ distinct from the built `LifecycleQuery`) and keep
 `first_error` is popped before `inner.build()` (lifecycle.rs:246-251) — so error
 reporting order for providers does not change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolved by commit `66a80d7f` (`fix chunk 19 read 001`),
+which removed `LifecycleBuilderState` and the intermediate lifecycle builder,
+leaving `CatalogLifecycleQueryBuilder` over `DeferredBuilder<LifecycleStages>`.
 
 ### Query-boundary validation (`api/rule/query/declarations.rs` and callers)
 
