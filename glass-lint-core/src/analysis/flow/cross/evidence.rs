@@ -5,10 +5,7 @@ use hashbrown::HashMap;
 use crate::{
     analysis::{
         facts::FactId,
-        flow::{
-            cross::state::{CallContext, CrossFlowState},
-            effect::{EffectUse, FunctionEffect},
-        },
+        flow::cross::state::CrossFlowState,
         model::flow::FlowId,
         trace::{QualifiedEvent, TraceArena, TraceNodeId},
     },
@@ -19,28 +16,6 @@ use crate::{
     },
     project::{EvidenceRole, ModuleId},
 };
-
-pub(super) fn usage_matches_context(
-    effect: &FunctionEffect,
-    usage: &EffectUse,
-    context: &CallContext,
-) -> bool {
-    match usage {
-        EffectUse::PropertyWrite {
-            receiver,
-            receiver_value,
-            ..
-        } => context.matches_property_write(effect, receiver.as_ref(), *receiver_value),
-        EffectUse::CallReceiver { receiver, .. } => context.matches_call_receiver(receiver),
-        EffectUse::CallArgument {
-            call_id,
-            argument_index,
-            ..
-        } => effect
-            .call_argument(*call_id, *argument_index)
-            .is_some_and(|argument| context.matches_argument(effect, argument)),
-    }
-}
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct EvidenceKey {

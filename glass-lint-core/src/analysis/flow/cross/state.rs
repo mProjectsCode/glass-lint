@@ -6,7 +6,7 @@ use crate::api::classification::RuleIndex;
 use crate::{
     analysis::{
         facts::FactId,
-        flow::effect::{EffectArgument, FunctionEffect, ParameterRef},
+        flow::effect::{EffectArgument, EffectUse, FunctionEffect, ParameterRef},
         model::{
             flow::{FlowId, FlowReadiness, LifecycleEvidence, RequirementIndex, SinkIndex},
             scope::FunctionId,
@@ -299,6 +299,24 @@ impl CallContext {
     ) -> bool {
         receiver.is_some_and(|parameter| self.matches_parameter_ref(parameter, true))
             || self.matches_source_value(effect, receiver_value, false, false)
+    }
+
+    pub(super) fn matches_use(&self, effect: &FunctionEffect, usage: &EffectUse) -> bool {
+        match usage {
+            EffectUse::PropertyWrite {
+                receiver,
+                receiver_value,
+                ..
+            } => self.matches_property_write(effect, receiver.as_ref(), *receiver_value),
+            EffectUse::CallReceiver { receiver, .. } => self.matches_call_receiver(receiver),
+            EffectUse::CallArgument {
+                call_id,
+                argument_index,
+                ..
+            } => effect
+                .call_argument(*call_id, *argument_index)
+                .is_some_and(|argument| self.matches_argument(effect, argument)),
+        }
     }
 
     fn matches_parameter_ref(&self, parameter: &ParameterRef, argument_is_root: bool) -> bool {

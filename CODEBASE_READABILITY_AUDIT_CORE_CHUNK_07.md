@@ -87,7 +87,7 @@ distinct field of the evidence type) must stay unchanged.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — `usage_matches_context` is a free function in the evidence module that only dispatches `CallContext`'s own match predicates
+#### [x] READ-005 — `usage_matches_context` is a free function in the evidence module that only dispatches `CallContext`'s own match predicates
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -117,7 +117,10 @@ parameter/root pairing already encoded in `matches_argument`; keep the
 `EffectUse` extraction (`call_argument`) explicit so call-id/argument-index
 resolution stays in one place.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved usage dispatch onto `CallContext::matches_use` and
+updated `UsageProjector` to call the owner method. The three existing matching
+branches and call-argument lookup semantics are unchanged; the evidence module
+no longer owns a `CallContext` dispatcher.
 
 #### [ ] READ-003 — `BoundedFifo`/`FifoAdmission` are reusable bounded data structures living outside the crate chartered to own them
 

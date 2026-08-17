@@ -8,7 +8,7 @@ use crate::{
         facts::{FactId, FactStream, Frozen},
         flow::{
             cross::{
-                evidence::{emit, mark_nonmatching, usage_matches_context},
+                evidence::{emit, mark_nonmatching},
                 state::{CallContext, CrossFlowState, EvidenceTransition},
             },
             effect::{EffectUse, FunctionEffect},
@@ -61,7 +61,7 @@ impl UsageProjector<'_, '_> {
     pub(super) fn project(&mut self) {
         for usage in self.effect.uses() {
             let event = usage.event();
-            if !usage_matches_context(self.effect, usage, self.context) {
+            if !self.context.matches_use(self.effect, usage) {
                 continue;
             }
             CallPropagation::new(
