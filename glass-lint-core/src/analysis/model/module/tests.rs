@@ -83,17 +83,12 @@ fn request_constructors_retain_their_valid_kind_and_role_pair() {
 
     let requests = interface.requests().collect::<Vec<_>>();
     assert_eq!(requests.len(), 5);
-    assert_eq!(requests[0].kind(), ResolutionRequestKind::StaticImport);
     assert!(matches!(
         requests[0].role(),
         ModuleRequestRole::Import { .. }
     ));
-    assert_eq!(requests[1].kind(), ResolutionRequestKind::StaticImport);
     assert_eq!(requests[1].role(), &ModuleRequestRole::ReExport);
-    assert_eq!(requests[2].kind(), ResolutionRequestKind::StaticImport);
     assert_eq!(requests[2].role(), &ModuleRequestRole::StarExport);
-    assert_eq!(requests[3].kind(), ResolutionRequestKind::DynamicImport);
     assert_eq!(requests[3].role(), &ModuleRequestRole::DynamicImport);
-    assert_eq!(requests[4].kind(), ResolutionRequestKind::Require);
     assert_eq!(requests[4].role(), &ModuleRequestRole::Require);
 }

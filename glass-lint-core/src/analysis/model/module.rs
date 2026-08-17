@@ -3,12 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use glass_lint_datastructures::ByteRange;
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::model::scope::FunctionId,
-    project::{
-        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
-    },
-};
+use crate::analysis::model::scope::FunctionId;
 
 pub const DEFAULT_EXPORT: &str = "default";
 pub const NAMESPACE_EXPORT: &str = "*";
@@ -144,16 +139,6 @@ impl ImportedBinding {
 impl ModuleRequest {
     pub fn span(&self) -> ByteRange {
         self.span
-    }
-
-    pub fn kind(&self) -> ResolutionRequestKind {
-        match &self.role {
-            ModuleRequestRole::Import { .. }
-            | ModuleRequestRole::ReExport
-            | ModuleRequestRole::StarExport => ResolutionRequestKind::StaticImport,
-            ModuleRequestRole::DynamicImport => ResolutionRequestKind::DynamicImport,
-            ModuleRequestRole::Require => ResolutionRequestKind::Require,
-        }
     }
 
     pub fn specifier(&self) -> &SmolStr {
@@ -347,26 +332,6 @@ impl ModuleInterface {
 
     pub fn function_export(&self, name: &str) -> Option<FunctionId> {
         self.exports.get(name).and_then(|e| e.function_id)
-    }
-
-    pub fn for_each_request(
-        &self,
-        importer: &ProjectRelativePath,
-        lines: &crate::SourceLineIndex,
-        mut visit: impl FnMut(ModuleRequestId, ResolutionRequest),
-    ) {
-        for (index, request) in self.requests.iter().enumerate() {
-            let Some(range) = lines.try_range(request.span()).ok() else {
-                continue;
-            };
-            visit(
-                ModuleRequestId(index),
-                ResolutionRequest::new(
-                    ResolutionRequestKey::new(importer.clone(), request.kind(), range),
-                    request.specifier().clone(),
-                ),
-            );
-        }
     }
 }
 

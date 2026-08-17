@@ -10,11 +10,12 @@ use crate::{
     ParseDiagnostic,
     analysis::{
         AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, QualifiedRequestId,
-        ResolvedLinkInput, model::module::ModuleRequestId,
+        ResolvedLinkInput,
+        model::module::{ModuleRequestId, ModuleRequestRole},
     },
     project::{
         ModuleId, ProjectPhaseError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
-        ResolutionTable, ResolverOutcome, SourceTable,
+        ResolutionRequestKind, ResolutionTable, ResolverOutcome, SourceTable,
         session::{ExecutionEvent, ExecutionObserver},
     },
 };
@@ -141,14 +142,29 @@ impl AnalysisArtifacts {
         local: LocalArtifact,
     ) -> Vec<ResolutionRequest> {
         let mut authored_requests = Vec::new();
-        local.interface().for_each_request(
-            path,
-            local.source_context().lines(),
-            |req_id, request| {
-                self.authored_requests.insert(request.key().clone(), req_id);
-                authored_requests.push(request);
-            },
-        );
+        for (req_id, request) in local.interface().request_entries() {
+            let Some(range) = local
+                .source_context()
+                .lines()
+                .try_range(request.span())
+                .ok()
+            else {
+                continue;
+            };
+            let kind = match request.role() {
+                ModuleRequestRole::Import { .. }
+                | ModuleRequestRole::ReExport
+                | ModuleRequestRole::StarExport => ResolutionRequestKind::StaticImport,
+                ModuleRequestRole::DynamicImport => ResolutionRequestKind::DynamicImport,
+                ModuleRequestRole::Require => ResolutionRequestKind::Require,
+            };
+            let request = ResolutionRequest::new(
+                ResolutionRequestKey::new(path.clone(), kind, range),
+                request.specifier().clone(),
+            );
+            self.authored_requests.insert(request.key().clone(), req_id);
+            authored_requests.push(request);
+        }
         self.outcomes
             .insert(path.clone(), LocalAnalysisOutcome::Analyzed(local));
         authored_requests

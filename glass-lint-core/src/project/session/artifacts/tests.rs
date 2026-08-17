@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     AnalysisLimits, Environment,
     analysis::SemanticAnalyzer,
-    project::{ResolvedTargetKind, SourceFile, tests::as_require_key},
+    project::{ResolutionRequestKind, ResolvedTargetKind, SourceFile, tests::as_require_key},
 };
 
 fn lower(path: &str, source: &str) -> (ProjectRelativePath, AnalyzedSource) {
@@ -120,4 +120,24 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
         )],
     );
     assert!(matches!(error, Err(ProjectPhaseError::UnknownRequest(_))));
+}
+
+#[test]
+fn record_local_maps_module_roles_to_project_request_kinds_in_source_order() {
+    let source = SourceFile::new(
+        "requests.js",
+        "import value from 'imported'; export { value } from 'reexported'; export * from 'starred'; import('dynamic'); require('required');",
+    )
+    .unwrap();
+    let (path, analyzed) = lower(source.path().as_str(), source.source());
+    let mut artifacts = AnalysisArtifacts::default();
+
+    let requests = artifacts.record_analyzed(&path, analyzed);
+
+    assert_eq!(requests.len(), 5);
+    assert_eq!(requests[0].kind(), ResolutionRequestKind::StaticImport);
+    assert_eq!(requests[1].kind(), ResolutionRequestKind::StaticImport);
+    assert_eq!(requests[2].kind(), ResolutionRequestKind::StaticImport);
+    assert_eq!(requests[3].kind(), ResolutionRequestKind::DynamicImport);
+    assert_eq!(requests[4].kind(), ResolutionRequestKind::Require);
 }

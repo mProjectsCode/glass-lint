@@ -33,7 +33,7 @@ Fix Applied: None so far.
 
 ### Retained module interface and request model
 
-#### [ ] READ-001 — `ModuleInterface` imports project request types and owns project-phase request authoring
+#### [x] READ-001 — `ModuleInterface` imports project request types and owns project-phase request authoring
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -73,6 +73,12 @@ role-constructor assertions in `module/tests.rs`. Guardrails: the authored
 validation and resolver outcome keys are unchanged; request enumeration order
 must not change; the model keeps the `role()`/`specifier()`/`span()` accessors
 the replacement loop reads.
+
+**Fix Applied:** Removed project request imports, `ModuleRequest::kind`, and
+`ModuleInterface::for_each_request` from the core model. Project session
+`record_local` now maps roles to request kinds and constructs authored request
+keys directly in the existing source order. Added a project-session regression
+test covering all five role mappings.
 
 #### [ ] READ-003 — Request "does this id exist" is re-derived by four fetch-and-discard lookups
 
