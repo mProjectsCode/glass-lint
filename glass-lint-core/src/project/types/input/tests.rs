@@ -124,11 +124,10 @@ fn builtin_rejects_nul() {
 }
 
 #[test]
-fn builtin_rejects_missing_prefix() {
+fn builtin_rejects_missing_scheme_or_name() {
     assert!(BuiltinModuleName::new("fs").is_err());
     assert!(BuiltinModuleName::new("nodefs").is_err());
-    assert!(BuiltinModuleName::new("Node:fs").is_err());
-    assert!(BuiltinModuleName::new("NODE:fs").is_err());
+    assert!(BuiltinModuleName::new(":fs").is_err());
 }
 
 #[test]
@@ -144,6 +143,10 @@ fn builtin_accepts_valid_names() {
     assert_eq!(name.as_str(), "node:path");
     let name = BuiltinModuleName::new("node:buffer").unwrap();
     assert_eq!(name.as_str(), "node:buffer");
+    let name = BuiltinModuleName::new("deno:fs").unwrap();
+    assert_eq!(name.as_str(), "deno:fs");
+    let name = BuiltinModuleName::new("Node:fs").unwrap();
+    assert_eq!(name.as_str(), "Node:fs");
 }
 
 #[test]

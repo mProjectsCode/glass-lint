@@ -93,7 +93,7 @@ while the error source now points directly to the local execution failure.
 
 ### Provider-neutral input contract
 
-#### [ ] READ-002 — `BuiltinModuleName` hardcodes Node `node:` policy in provider-neutral core
+#### [x] READ-002 — `BuiltinModuleName` hardcodes Node `node:` policy in provider-neutral core
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -134,7 +134,13 @@ spelling stable for reports and cases (the stored value is the resolver's
 `BuiltinModuleName` as the validated storage type so
 `ResolvedTargetKind::Builtin` remains unusable with arbitrary strings.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `BuiltinModuleName` validate only the provider-neutral
+scheme-qualified shape: a trimmed, non-empty `scheme:name` with no whitespace
+or NUL. The core tests now cover missing schemes/names and non-Node schemes,
+while preserving the serialized `node:*` spellings used by resolver and
+harness fixtures. Node builtin recognition remains owned by the Oxc-backed
+project resolver, which is the component that classifies a resolution as
+builtin before constructing the core value.
 
 ### Session execution coordinates
 

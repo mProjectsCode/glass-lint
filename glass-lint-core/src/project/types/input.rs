@@ -128,8 +128,7 @@ impl PackageSpecifier {
     }
 }
 
-/// A validated builtin module name (e.g., "node:fs", "node:path",
-/// "node:buffer").
+/// A validated scheme-qualified builtin module name.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BuiltinModuleName(SmolStr);
 
@@ -140,11 +139,10 @@ impl BuiltinModuleName {
         if trimmed.is_empty() || trimmed.contains('\0') || trimmed.contains(char::is_whitespace) {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        if !trimmed.starts_with("node:") {
+        let Some((scheme, name)) = trimmed.split_once(':') else {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-        }
-        let name = &trimmed[5..];
-        if name.is_empty() || name.contains('\0') || name.contains(char::is_whitespace) {
+        };
+        if scheme.is_empty() || name.is_empty() {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
         Ok(Self(trimmed.into()))

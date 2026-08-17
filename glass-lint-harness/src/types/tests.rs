@@ -98,7 +98,9 @@ fn adapter_project_protocol_json_preserves_all_resolution_variants() {
             ),
             resolution(
                 AdapterResolutionKind::Require,
-                AdapterResolutionResult::Builtin { name: "fs".into() },
+                AdapterResolutionResult::Builtin {
+                    name: "node:fs".into(),
+                },
             ),
             resolution(
                 AdapterResolutionKind::Import,
