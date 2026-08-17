@@ -30,10 +30,6 @@ impl AnalysisDiagnostic {
     pub fn location(&self) -> Option<&SourceLocation> {
         self.location.as_ref()
     }
-
-    pub(crate) fn set_location(&mut self, location: Option<SourceLocation>) {
-        self.location = location;
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

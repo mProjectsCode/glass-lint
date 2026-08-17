@@ -109,7 +109,7 @@ getters immutable, and preserve the saturating `AddAssign` used by
 
 ### Diagnostic construction
 
-#### [ ] READ-003 — `AnalysisDiagnostic::set_location` is a whole-state mutator that grafts fabricated locations onto a public DTO
+#### [x] READ-003 — `AnalysisDiagnostic::set_location` is a whole-state mutator that grafts fabricated locations onto a public DTO
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -141,7 +141,9 @@ and `SourceLocation` couples path and range (location.rs:7-15), so replacing it
 with `None` would strip the file association and change the serialized shape
 (see Open Questions — Resolved, #2).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `AnalysisDiagnostic::set_location` and construct the
+sentinel file location while `AnalysisStatus` still owns the file path. Report
+assembly now forwards already-located diagnostics without mutating them.
 
 ### Summary classification
 

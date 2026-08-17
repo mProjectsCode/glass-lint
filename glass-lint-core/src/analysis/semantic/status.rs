@@ -2,9 +2,11 @@
 
 use std::collections::BTreeSet;
 
+use glass_lint_datastructures::{Position, SourceRange};
+
 use crate::{
     parse::ParseFailureKind,
-    project::{AnalysisDiagnostic, ProjectRelativePath, types::DiagnosticKind},
+    project::{AnalysisDiagnostic, ProjectRelativePath, SourceLocation, types::DiagnosticKind},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -173,7 +175,10 @@ impl AnalysisStatus {
             if matches!(entry.reason, IncompleteReason::ParseFailure { .. }) {
                 continue;
             }
-            let diagnostic = entry.reason.diagnostic();
+            let diagnostic = match &entry.scope {
+                StatusScope::File(path) => entry.reason.diagnostic(Some(file_location(path))),
+                StatusScope::Local | StatusScope::Project => entry.reason.diagnostic(None),
+            };
             match &entry.scope {
                 // Local status is an internal pre-materialization state. The
                 // linker attaches its path before production diagnostics are
@@ -207,7 +212,7 @@ impl AnalysisComponent {
 }
 
 impl IncompleteReason {
-    fn diagnostic(&self) -> AnalysisDiagnostic {
+    fn diagnostic(&self, location: Option<SourceLocation>) -> AnalysisDiagnostic {
         // Single match over all status variants: each arm pairs a diagnostic
         // kind with a message template. Keeping them together ensures every
         // variant maps to exactly one (code, message) pair without drift.
@@ -280,8 +285,19 @@ impl IncompleteReason {
                 format!("scope collection encountered {count} structural issue(s)"),
             ),
         };
-        AnalysisDiagnostic::new(code.into(), message, None)
+        AnalysisDiagnostic::new(code.into(), message, location)
     }
+}
+
+fn file_location(path: &ProjectRelativePath) -> SourceLocation {
+    SourceLocation::new(
+        path.clone(),
+        SourceRange::new(
+            Position::new(1, 1).expect("one-based position"),
+            Position::new(1, 1).expect("one-based position"),
+        )
+        .expect("ordered source range"),
+    )
 }
 
 #[cfg(test)]

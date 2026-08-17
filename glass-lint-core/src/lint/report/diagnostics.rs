@@ -1,9 +1,7 @@
-use glass_lint_datastructures::{Position, SourceRange};
-
 use crate::{
     analysis::ProjectSemanticModel,
     lint::report::{ProjectReportSession, files::ReportFiles},
-    project::{Diagnostic, SourceLocation},
+    project::Diagnostic,
 };
 
 pub(super) fn attach_project_diagnostics(
@@ -12,15 +10,7 @@ pub(super) fn attach_project_diagnostics(
     files: &mut ReportFiles,
 ) {
     let (status_files, status_project) = session.status_diagnostics();
-    for (path, mut diagnostic) in status_files {
-        diagnostic.set_location(Some(SourceLocation::new(
-            path.clone(),
-            SourceRange::new(
-                Position::new(1, 1).expect("one-based position"),
-                Position::new(1, 1).expect("one-based position"),
-            )
-            .expect("ordered source range"),
-        )));
+    for (path, diagnostic) in status_files {
         files.push_file_diagnostic(&path, Diagnostic::project(diagnostic));
     }
 

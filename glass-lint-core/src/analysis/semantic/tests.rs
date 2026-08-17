@@ -136,7 +136,7 @@ fn large_semantic_budget_produces_complete_artifact_with_export_origins() {
 }
 
 #[test]
-fn invalid_parser_span_records_incomplete_without_fake_location() {
+fn invalid_parser_span_records_incomplete_at_file_location() {
     let source = "fetch('/remote');";
     let parsed = crate::parse_test_source(source, "main.js").unwrap();
     let invalid = SpanNormalizer::new(
@@ -157,5 +157,11 @@ fn invalid_parser_span_records_incomplete_without_fake_location() {
     assert_eq!(files.len(), 1);
     assert_eq!(project.len(), 0);
     assert_eq!(files[0].1.code().as_str(), "invalid_parser_span");
-    assert!(files[0].1.location().is_none());
+    assert_eq!(
+        files[0]
+            .1
+            .location()
+            .map(|location| location.path().as_str()),
+        Some("main.js")
+    );
 }
