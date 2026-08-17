@@ -52,6 +52,7 @@ pub(super) fn with_test_budget<R>(callback: impl FnOnce(&SemanticBudget) -> R) -
 /// Collected outputs that are finalized into the immutable scope artifact.
 #[derive(Default)]
 pub(super) struct ScopeCollectionArtifacts {
+    assignments: Vec<AliasAssignment>,
     property_assignments: Vec<PropertyAliasAssignment>,
     rooted_property_mutations: Vec<RootedPropertyMutation>,
     dynamic_evals: Vec<ScopedDynamicEval>,
@@ -60,6 +61,10 @@ pub(super) struct ScopeCollectionArtifacts {
 }
 
 impl ScopeCollectionArtifacts {
+    pub(super) fn record_assignment_fact(&mut self, assignment: AliasAssignment) {
+        self.assignments.push(assignment);
+    }
+
     pub(super) fn record_property_assignment(&mut self, assignment: PropertyAliasAssignment) {
         self.property_assignments.push(assignment);
     }
@@ -137,7 +142,6 @@ struct FunctionCollectionState {
 /// Source-order assignment facts and path-sensitive control-flow state.
 #[derive(Default)]
 struct AssignmentCollectionState {
-    assignments: Vec<AliasAssignment>,
     version_counters: HashMap<ScopedName, u32>,
     path: PathCollectionState,
 }

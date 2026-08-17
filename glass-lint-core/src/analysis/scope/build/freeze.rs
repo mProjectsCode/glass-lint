@@ -16,6 +16,7 @@ impl ScopeCollector<'_> {
         }
         let parameter_aliases = self.parameter_aliases();
         let ScopeCollectionArtifacts {
+            assignments,
             scope_issues: mut issues,
             mutable_static_objects,
             property_assignments,
@@ -31,7 +32,7 @@ impl ScopeCollector<'_> {
         let (binding_ids, function_ids, function_spans) =
             BindingIndex::allocate_ids(&self.lexical.scopes);
         let bindings = BindingIndex::from_freeze_input(BindingFreezeInput {
-            assignments: std::mem::take(&mut self.assignment.assignments),
+            assignments,
             binding_ids,
             function_ids,
             function_spans,

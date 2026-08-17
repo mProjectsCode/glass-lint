@@ -57,7 +57,7 @@ method. `ScopeCollector::freeze` now destructures its owned
 `ScopeCollectionArtifacts` directly; field capture order and downstream scope
 graph construction remain unchanged.
 
-#### [ ] READ-001 — `AssignmentCollectionState.assignments` stores a collected output inside the reversible traversal-state owner
+#### [x] READ-001 — `AssignmentCollectionState.assignments` stores a collected output inside the reversible traversal-state owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -93,7 +93,13 @@ pushed facts and the exact `AliasAssignment` construction; do not merge the
 collected output with control-flow/undo state, which must stay per-path and
 reversible.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved assignment facts into `ScopeCollectionArtifacts` with a
+narrow `record_assignment_fact` accessor. `AssignmentCollectionState` now owns
+only version counters and reversible path state; freeze consumes the assignment
+facts from the artifacts owner. The source-order push and exact
+`AliasAssignment` construction remain unchanged. `FunctionCollectionState.calls`
+was left untouched because this focused change addresses the assignment-state
+boundary without broadening the refactor.
 
 #### [ ] READ-003 — Binding-index freeze boundary is over-machined around a structurally unreachable unit error
 

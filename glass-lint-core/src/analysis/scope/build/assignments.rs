@@ -147,9 +147,8 @@ impl ScopeCollector<'_> {
                 .assignment_environment
                 .record_unknown(scope, name);
         }
-        self.assignment
-            .assignments
-            .push(AliasAssignment::from_alternatives(
+        self.artifacts
+            .record_assignment_fact(AliasAssignment::from_alternatives(
                 span,
                 scope,
                 name,
