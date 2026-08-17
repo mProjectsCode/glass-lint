@@ -2,7 +2,7 @@ use glass_lint_datastructures::{ByteRange, NameId, NamePath, PathId};
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    facts::{ResolvedCallee, stream::FactStreamToken},
+    facts::ResolvedCallee,
     model::{
         scope::FunctionId,
         value::{StaticObject, ValueId},
@@ -251,6 +251,34 @@ pub(in crate::analysis) struct CallEvent {
 }
 
 impl CallEvent {
+    /// Lower the producer's resolved call into the retained event owned here.
+    pub(in crate::analysis) fn from_resolved(
+        resolved: ResolvedCallee,
+        result: ValueId,
+        callee_name: Option<NameId>,
+        rooted_chain: Option<NamePath>,
+        returned_member: Option<(NamePath, NamePath)>,
+        effective_args: Vec<CallArgInfo>,
+        unwrap: Option<Box<CallUnwrap>>,
+    ) -> Self {
+        Self {
+            callee: resolved.value,
+            receiver: resolved.receiver,
+            result,
+            callee_span: resolved.callee_span,
+            callee_name,
+            call_provenance: resolved.call_provenance,
+            syntactic_path: resolved.syntactic_path,
+            rooted_chain,
+            module_member: resolved.module_member,
+            returned_member,
+            instance_class: resolved.instance_class,
+            target_function: resolved.target_function,
+            args: effective_args,
+            unwrap,
+        }
+    }
+
     pub(in crate::analysis) fn unknown(
         result: ValueId,
         callee_span: ByteRange,
@@ -347,38 +375,6 @@ impl FactPayload {
     }
 }
 
-impl ResolvedCallee {
-    /// Lower a resolved callee into the retained call event. The producer
-    /// interns names and paths first and passes the derived call outputs, so
-    /// the model stays free of the resolver and interner.
-    pub(in crate::analysis) fn into_call_event(
-        self,
-        result: ValueId,
-        callee_name: Option<NameId>,
-        rooted_chain: Option<NamePath>,
-        returned_member: Option<(NamePath, NamePath)>,
-        effective_args: Vec<CallArgInfo>,
-        unwrap: Option<Box<CallUnwrap>>,
-    ) -> CallEvent {
-        CallEvent {
-            callee: self.value,
-            receiver: self.receiver,
-            result,
-            callee_span: self.callee_span,
-            callee_name,
-            call_provenance: self.call_provenance,
-            syntactic_path: self.syntactic_path,
-            rooted_chain,
-            module_member: self.module_member,
-            returned_member,
-            instance_class: self.instance_class,
-            target_function: self.target_function,
-            args: effective_args,
-            unwrap,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(in crate::analysis) enum FactPayload {
     Reference {
@@ -449,8 +445,7 @@ pub(in crate::analysis) struct SemanticFact {
 }
 
 impl SemanticFact {
-    pub(in crate::analysis) fn new(
-        _authority: FactStreamToken,
+    pub(in crate::analysis) fn from_parts(
         id: FactId,
         span: ByteRange,
         function: FunctionId,

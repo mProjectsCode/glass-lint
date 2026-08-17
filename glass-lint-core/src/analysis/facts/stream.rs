@@ -45,6 +45,18 @@ impl FactStreamToken {
     }
 }
 
+impl SemanticFact {
+    pub(in crate::analysis) fn new(
+        _authority: FactStreamToken,
+        id: FactId,
+        span: glass_lint_datastructures::ByteRange,
+        function: FunctionId,
+        payload: FactPayload,
+    ) -> Self {
+        Self::from_parts(id, span, function, payload)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FactStreamIssueSet(u8);
 

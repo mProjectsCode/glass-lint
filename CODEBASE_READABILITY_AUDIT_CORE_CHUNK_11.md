@@ -163,7 +163,7 @@ consumers. Replaced `ArgumentView`'s one-shot mutating builder chain with a
 single constructor while preserving the evaluator's overlay-first
 static-string precedence. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — The model module defines behavior on two facts-layer types, inverting its boundary
+#### [x] READ-004 — The model module defines behavior on two facts-layer types, inverting its boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -198,7 +198,11 @@ are pre-interned by the producer before it is called (`calls/mod.rs:85-97`),
 and keep the `Building`→`Frozen` freeze ordering on `FactStream` unchanged
 (`stream.rs:329-340`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the resolved-call lowering onto the constructed
+`CallEvent` as `CallEvent::from_resolved`, leaving `ResolvedCallee` as data
+only. Also moved the token-gated `SemanticFact::new` implementation beside
+`FactStreamToken` in `facts/stream.rs`. Construction authority and the
+building/frozen transition remain unchanged. Verified with `make fmt && make ci`.
 
 #### [x] READ-005 — Requirement and sink readiness are re-conjoined by every sink-completion caller
 

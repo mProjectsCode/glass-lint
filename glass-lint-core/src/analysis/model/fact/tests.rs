@@ -3,6 +3,7 @@ use super::*;
 #[cfg(test)]
 mod test_support {
     use super::*;
+    use crate::analysis::facts::stream::FactStreamToken;
 
     /// Build a reference fact with the stable defaults used by model tests.
     pub(super) fn reference(id: FactId, span: ByteRange, owner: FunctionId) -> SemanticFact {

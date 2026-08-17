@@ -80,7 +80,8 @@ impl FactBuilder<'_, '_> {
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
         let rooted_chain = self.rooted_path(resolved.rooted_chain.as_ref());
         let returned_member = self.returned_path(resolved.returned_member.as_ref());
-        let event = resolved.into_call_event(
+        let event = CallEvent::from_resolved(
+            resolved,
             result,
             callee_name,
             rooted_chain,
