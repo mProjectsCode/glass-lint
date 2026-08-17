@@ -114,7 +114,7 @@ fn lifecycle_plan_from_normalized(
     let [NormalizedLifecycleEvent::PropertyWrite { property, value }] = events.as_ref() else {
         return None;
     };
-    let completion = lifecycle.completion()?;
+    let completion = lifecycle.completion();
     let crate::api::compiler::normalized::NormalizedLifecycleCompletion::AnySink(sinks) =
         completion
     else {

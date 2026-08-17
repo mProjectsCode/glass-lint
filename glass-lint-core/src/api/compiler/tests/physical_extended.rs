@@ -35,7 +35,7 @@ fn malformed_lifecycle_source_is_reported_instead_of_dropped() {
                 CanonicalArgumentConstraints::default(),
             )],
             None,
-            Some(crate::api::compiler::normalized::NormalizedLifecycleCompletion::Configuration),
+            crate::api::compiler::normalized::NormalizedLifecycleCompletion::Configuration,
         )),
         NormalizedEmission::new(MatchKind::Call, "lifecycle".into()),
     );

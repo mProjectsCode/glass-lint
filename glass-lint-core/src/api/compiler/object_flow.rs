@@ -139,28 +139,25 @@ impl CompiledObjectFlow {
                 ),
             },
         );
-        let (sinks, completion_mode) = lc.completion().map_or_else(
-            || (Vec::new(), CompletionMode::AnySink),
-            |comp| match comp {
-                NormalizedLifecycleCompletion::Configuration => {
-                    (Vec::new(), CompletionMode::Configuration)
-                }
-                NormalizedLifecycleCompletion::AnySink(sinks) => (
-                    sinks
-                        .iter()
-                        .map(CompiledObjectSink::from_normalized_lifecycle_sink)
-                        .collect(),
-                    CompletionMode::AnySink,
-                ),
-                NormalizedLifecycleCompletion::AllSinks(sinks) => (
-                    sinks
-                        .iter()
-                        .map(CompiledObjectSink::from_normalized_lifecycle_sink)
-                        .collect(),
-                    CompletionMode::AllSinks,
-                ),
-            },
-        );
+        let (sinks, completion_mode) = match lc.completion() {
+            NormalizedLifecycleCompletion::Configuration => {
+                (Vec::new(), CompletionMode::Configuration)
+            }
+            NormalizedLifecycleCompletion::AnySink(sinks) => (
+                sinks
+                    .iter()
+                    .map(CompiledObjectSink::from_normalized_lifecycle_sink)
+                    .collect(),
+                CompletionMode::AnySink,
+            ),
+            NormalizedLifecycleCompletion::AllSinks(sinks) => (
+                sinks
+                    .iter()
+                    .map(CompiledObjectSink::from_normalized_lifecycle_sink)
+                    .collect(),
+                CompletionMode::AllSinks,
+            ),
+        };
         let sources = lc
             .sources()
             .iter()

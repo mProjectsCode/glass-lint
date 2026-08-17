@@ -117,7 +117,7 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: "lifecycle root nested inside Any".into(),
                 });
             }
-            if lifecycle.sources().is_empty() || lifecycle.completion().is_none() {
+            if lifecycle.sources().is_empty() {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "normalized lifecycle is missing a required stage".into(),
                 });
@@ -303,7 +303,7 @@ fn normalize_lifecycle_root(lc: &LifecycleQuery) -> Result<NormalizedRoot, Query
                 )
             }
         });
-    let completion = Some(match lc.completion().kind() {
+    let completion = match lc.completion().kind() {
         crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
             NormalizedLifecycleCompletion::Configuration
         }
@@ -325,7 +325,7 @@ fn normalize_lifecycle_root(lc: &LifecycleQuery) -> Result<NormalizedRoot, Query
                     .into_boxed_slice(),
             )
         }
-    });
+    };
 
     Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle::new(
         sources, condition, completion,

@@ -150,7 +150,7 @@ fresh check.
 
 ### Lifecycle IR
 
-#### [ ] READ-003 — `Option<NormalizedLifecycleCompletion>` is a phantom option
+#### [x] READ-003 — `Option<NormalizedLifecycleCompletion>` is a phantom option
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -187,7 +187,11 @@ lifecycles cannot bypass the invariant. The `Configuration` versus empty-`AnySin
 distinction stays expressible through the enum variants (`normalized.rs:314-319`),
 which chunk 21 READ-001 relies on; only the unreachable `None` state is removed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `NormalizedLifecycle::completion` a required
+`NormalizedLifecycleCompletion`, removing the unreachable `None` plumbing from
+normalization validation, object-flow lowering, and reference lowering. The
+condition stage remains genuinely optional, and the existing normalized test
+fixture now constructs the required completion directly.
 
 ### Limits
 

@@ -323,14 +323,14 @@ pub(crate) enum NormalizedLifecycleCompletion {
 pub(crate) struct NormalizedLifecycle {
     sources: Vec<NormalizedEvent>,
     condition: Option<NormalizedLifecycleCondition>,
-    completion: Option<NormalizedLifecycleCompletion>,
+    completion: NormalizedLifecycleCompletion,
 }
 
 impl NormalizedLifecycle {
     pub(crate) fn new(
         sources: Vec<NormalizedEvent>,
         condition: Option<NormalizedLifecycleCondition>,
-        completion: Option<NormalizedLifecycleCompletion>,
+        completion: NormalizedLifecycleCompletion,
     ) -> Self {
         Self {
             sources,
@@ -347,8 +347,8 @@ impl NormalizedLifecycle {
         self.condition.as_ref()
     }
 
-    pub(crate) fn completion(&self) -> Option<&NormalizedLifecycleCompletion> {
-        self.completion.as_ref()
+    pub(crate) fn completion(&self) -> &NormalizedLifecycleCompletion {
+        &self.completion
     }
 }
 
