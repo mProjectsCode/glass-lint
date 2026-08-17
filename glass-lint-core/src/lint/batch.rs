@@ -245,7 +245,7 @@ impl<I> BatchDriver<I>
 where
     I: Iterator<Item = SourceFile>,
 {
-    pub(super) fn new(
+    fn new(
         input: I,
         linter: crate::Linter,
         pool: ThreadPool,

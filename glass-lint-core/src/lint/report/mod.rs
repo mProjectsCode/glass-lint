@@ -63,7 +63,7 @@ impl ProjectAnalysisTimings {
     }
 }
 
-pub(super) struct ProjectReportSession {
+struct ProjectReportSession {
     status: AnalysisStatus,
     trace_arena: Option<TraceArena>,
 }
@@ -108,7 +108,7 @@ impl ProjectReportSession {
         self.trace_arena = Some(trace_arena);
     }
 
-    pub(super) fn status_diagnostics(
+    fn status_diagnostics(
         &self,
     ) -> (
         Vec<(ProjectRelativePath, crate::project::AnalysisDiagnostic)>,
@@ -117,17 +117,17 @@ impl ProjectReportSession {
         self.status.diagnostics()
     }
 
-    pub(super) fn is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         self.status.is_complete()
     }
 
-    pub(super) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
+    fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
         self.trace_arena
             .as_ref()
             .and_then(|arena| arena.reconstruct_trace(head))
     }
 
-    pub(super) fn trace_node_count(&self) -> usize {
+    fn trace_node_count(&self) -> usize {
         self.trace_arena.as_ref().map_or(0, TraceArena::node_count)
     }
 }

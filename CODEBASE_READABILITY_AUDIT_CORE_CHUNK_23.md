@@ -207,7 +207,7 @@ documented boolean `enabled` field.
 
 ### Module visibility (`lint/batch`, `lint/report`)
 
-#### [ ] READ-005 — `pub(super)` items used only inside their own module subtree leak into the whole `lint` module
+#### [x] READ-005 — `pub(super)` items used only inside their own module subtree leak into the whole `lint` module
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -235,6 +235,11 @@ where a real cross-module call exists today (`BatchResults::new` is consumed by
 the batch protocol types remain crate-internal, and `report`'s public surface
 stays just `ProjectAnalysis`/`ProjectAnalysisTimings` (re-exported at
 `lint/mod.rs:16`).
+
+**Fix Applied:** Narrowed the batch-driver constructor, report session, and
+report-session helpers to module privacy. `CompletedBatch` remains `pub(super)`
+because its channel type crosses into `linter.rs` through `BatchResults::new`;
+the cross-module `BatchResults::new` visibility remains unchanged.
 
 ### Finding range conversion (`lint/report/evidence`)
 
