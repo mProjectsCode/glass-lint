@@ -62,7 +62,7 @@ impl Resolver<'_> {
         self.cache
             .resolved_values
             .get(&key)
-            .and_then(|value| value.syntactic_chain.clone())
+            .and_then(|value| value.provenance.syntactic_chain.clone())
             .or_else(|| crate::analysis::syntax::member_expression_chain(member))
     }
 
@@ -70,7 +70,7 @@ impl Resolver<'_> {
         &mut self,
         expr: &Expr,
     ) -> Option<(SmolStr, SmolStr)> {
-        match &self.resolve_expr(expr).call {
+        match &self.resolve_expr(expr).provenance.call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some((module.clone(), export.clone()))
             }

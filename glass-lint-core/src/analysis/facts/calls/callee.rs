@@ -43,12 +43,12 @@ impl ResolvedCallee {
             receiver,
             callee_span,
             callee_name,
-            call_provenance: resolved.call.clone(),
+            call_provenance: resolved.provenance.call.clone(),
             syntactic_path,
-            rooted_chain: resolved.rooted_chain.clone(),
-            module_member: resolved.module_member.clone(),
-            returned_member: resolved.returned_member.clone(),
-            bound_arguments: resolved.bound_arguments.clone(),
+            rooted_chain: resolved.provenance.rooted_chain.clone(),
+            module_member: resolved.provenance.module_member.clone(),
+            returned_member: resolved.provenance.returned_member.clone(),
+            bound_arguments: resolved.provenance.bound_arguments.clone(),
             instance_class,
             target_function,
         }
@@ -162,6 +162,7 @@ impl FactBuilder<'_, '_> {
             || self
                 .resolver
                 .resolve_expr(receiver)
+                .provenance
                 .rooted_chain
                 .as_ref()
                 .is_some_and(|chain| chain.eq_chain("this"));

@@ -223,7 +223,7 @@ other call shape; retain the full `ModuleRequestPolicy` for the collector
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — `ResolvedValue: Deref` and a public field create two access notations
+#### [x] READ-006 — `ResolvedValue: Deref` and a public field create two access notations
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -252,7 +252,11 @@ resolved-value clone used by `ResolutionStart::Cached` (expression.rs:321-322) a
 `ResolutionGuard::commit` (expression.rs:33-39); the rewrite must not reorder evidence or
 change the provenance record's sharing.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `ResolvedValue`'s `Deref` implementation and
+rewrote all provenance reads to use the explicit `resolved.provenance` field.
+The `Arc` ownership and clone paths remain unchanged, including cached
+resolution commits and unknown-value mutation. Verified with
+`make fmt && make ci`.
 
 #### [x] READ-007 — `Resolver::static_string_value` re-clones through `const_value` instead of the arena fast path
 

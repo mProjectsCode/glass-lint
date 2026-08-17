@@ -18,6 +18,7 @@ impl FactBuilder<'_, '_> {
         let effective_callee = effective_callee_expr(&new_expr.callee);
         let resolved = self.resolver.resolve_expr(effective_callee);
         let rooted_chain = resolved
+            .provenance
             .rooted_chain
             .as_ref()
             .and_then(|path| self.name_path(path));
@@ -33,7 +34,7 @@ impl FactBuilder<'_, '_> {
                 if let Some(SymbolMemberProvenance::ModuleNamespace {
                     ref module,
                     member: ref member_name,
-                }) = member_resolved.module_member
+                }) = member_resolved.provenance.module_member
                 {
                     (
                         Some(member_name.clone()),

@@ -13,7 +13,7 @@ mod call;
 mod constant;
 mod expression;
 
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
@@ -113,14 +113,6 @@ impl ResolvedValue {
     /// resolution path from accidentally inheriting provenance.
     pub(super) fn local(id: ValueId) -> Self {
         Self::with_provenance(id, ResolutionProvenance::local())
-    }
-}
-
-impl Deref for ResolvedValue {
-    type Target = ResolutionProvenance;
-
-    fn deref(&self) -> &Self::Target {
-        &self.provenance
     }
 }
 

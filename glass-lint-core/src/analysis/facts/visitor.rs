@@ -38,7 +38,7 @@ impl Visit for FactBuilder<'_, '_> {
             ident.span(),
             FactPayload::Reference {
                 value: resolved.id,
-                provenance: resolved.call.clone(),
+                provenance: resolved.provenance.call.clone(),
                 static_string_origin: self.static_string_origin(resolved.id),
             },
         );
