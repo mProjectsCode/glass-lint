@@ -82,7 +82,7 @@ all-features compilation, clippy, `make fmt`, and `make ci`.
 
 ### Parsing diagnostics (`parse.rs`, `analysis/semantic/status.rs`)
 
-#### [ ] READ-002 — Parse-failure messages are authored in two places and have drifted for the same failure kinds
+#### [x] READ-002 — Parse-failure messages are authored in two places and have drifted for the same failure kinds
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -121,7 +121,12 @@ report schema (`code.rs`), and the deliberate separation between the
 user-facing parse diagnostic (with range) and the completion-status code
 (status.rs:167-175); only the message text should be consolidated.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized parse-failure diagnostic codes and messages on
+`ParseFailureKind`. Bounded parser constructors now provide their numeric
+context to that formatter, while completion status uses its context-free
+fallback; parser-specific syntax detail and the separate parse/status
+presentation boundary remain unchanged. Verified with focused parse/status
+tests, clippy, `make fmt`, and `make ci`.
 
 #### [x] READ-003 — `parser_range` rebuilds a full `SourceLineIndex` for a single error span
 

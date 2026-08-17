@@ -221,10 +221,7 @@ impl IncompleteReason {
                 DiagnosticKind::InvalidParserSpan,
                 "parser produced a source range outside authored UTF-8 boundaries".into(),
             ),
-            Self::ParseFailure { kind } => {
-                let (code, text) = kind.diagnostic();
-                (code, text.into())
-            }
+            Self::ParseFailure { kind } => (kind.diagnostic(), kind.message(None)),
             Self::SemanticBudgetExhausted { limit, used } => (
                 DiagnosticKind::SemanticBudgetExhausted,
                 format!("semantic analysis exceeded its step budget; limit={limit}, used={used}"),

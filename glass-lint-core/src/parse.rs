@@ -51,7 +51,7 @@ impl ParseDiagnostic {
         range: Option<SourceRange>,
     ) -> Self {
         Self {
-            code: failure.diagnostic().0.into(),
+            code: failure.diagnostic().into(),
             message: message.into(),
             filename: filename.into(),
             range,
@@ -101,16 +101,24 @@ pub enum ParseFailureKind {
 }
 
 impl ParseFailureKind {
-    pub(crate) fn diagnostic(self) -> (DiagnosticKind, &'static str) {
+    pub(crate) fn diagnostic(self) -> DiagnosticKind {
         match self {
-            Self::Syntax => (DiagnosticKind::SyntaxError, "source could not be parsed"),
-            Self::SourceTooLarge => (
-                DiagnosticKind::SourceTooLarge,
-                "source exceeds the analysis limit",
+            Self::Syntax => DiagnosticKind::SyntaxError,
+            Self::SourceTooLarge => DiagnosticKind::SourceTooLarge,
+            Self::SyntaxDepth => DiagnosticKind::SyntaxDepthExceeded,
+        }
+    }
+
+    pub(crate) fn message(self, limit: Option<usize>) -> String {
+        match self {
+            Self::Syntax => "source could not be parsed".into(),
+            Self::SourceTooLarge => limit.map_or_else(
+                || "source exceeds the analysis limit".into(),
+                |limit| format!("source exceeds the {limit} byte analysis limit"),
             ),
-            Self::SyntaxDepth => (
-                DiagnosticKind::SyntaxDepthExceeded,
-                "source exceeds the nesting-depth analysis limit",
+            Self::SyntaxDepth => limit.map_or_else(
+                || "source exceeds the nesting-depth analysis limit".into(),
+                |limit| format!("source exceeds the {limit} nesting-depth analysis limit"),
             ),
         }
     }
@@ -207,7 +215,7 @@ impl SourceParser {
         }
         Err(ParseDiagnostic::new(
             ParseFailureKind::SourceTooLarge,
-            format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
+            ParseFailureKind::SourceTooLarge.message(Some(MAX_SOURCE_BYTES)),
             source.path().to_string(),
             None,
         ))
@@ -279,10 +287,7 @@ impl SourceParser {
     fn syntax_depth_diagnostic(&self) -> ParseDiagnostic {
         ParseDiagnostic::new(
             ParseFailureKind::SyntaxDepth,
-            format!(
-                "source exceeds the {} nesting-depth analysis limit",
-                self.depth_guard.max_depth()
-            ),
+            ParseFailureKind::SyntaxDepth.message(Some(self.depth_guard.max_depth())),
             self.source.path().to_string(),
             None,
         )
