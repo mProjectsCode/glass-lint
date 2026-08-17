@@ -31,6 +31,12 @@ struct EvidenceRangeEntry<'a> {
     occurrences: Vec<ResolvedEvidenceOccurrence<'a>>,
 }
 
+struct ResolvedEvidence {
+    range: SourceRange,
+    evidence: EvidenceTraces,
+    certainty: MatchCertainty,
+}
+
 impl EvidenceRangeEntry<'_> {
     fn new(range: SourceRange) -> Self {
         Self {
@@ -49,7 +55,7 @@ impl EvidenceRangeEntry<'_> {
         self,
         renderer: &FindingRenderer<'_>,
         path: &ProjectRelativePath,
-    ) -> Option<(SourceRange, EvidenceTraces, MatchCertainty)> {
+    ) -> Option<ResolvedEvidence> {
         let Self { range, occurrences } = self;
         let mut traces = BTreeSet::new();
         let mut truncated = false;
@@ -87,7 +93,11 @@ impl EvidenceRangeEntry<'_> {
         } else {
             EvidenceTraces::new(traces.into_iter().collect()).ok()?
         };
-        Some((range, evidence, certainty))
+        Some(ResolvedEvidence {
+            range,
+            evidence,
+            certainty,
+        })
     }
 }
 
@@ -155,16 +165,19 @@ impl<'a> FindingRenderer<'a> {
         entries
             .into_iter()
             .filter_map(|entry| {
-                let (range, evidence, certainty) = entry.into_evidence(self, path)?;
-                Finding::new(
+                let ResolvedEvidence {
+                    range,
+                    evidence,
+                    certainty,
+                } = entry.into_evidence(self, path)?;
+                Some(Finding::new(
                     rule_id.clone(),
                     capability.label().to_string(),
                     capability.severity(),
                     SourceLocation::new(path.clone(), range),
                     evidence,
                     certainty,
-                )
-                .into()
+                ))
             })
             .collect()
     }

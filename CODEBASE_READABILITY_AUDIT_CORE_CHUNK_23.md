@@ -243,7 +243,7 @@ the cross-module `BatchResults::new` visibility remains unchanged.
 
 ### Finding range conversion (`lint/report/evidence`)
 
-#### [ ] READ-006 — `EvidenceRangeEntry::into_evidence` mixes trace resolution, certainty joining, and truncation policy, and leaks a 3-tuple plus an implicit `Some`
+#### [x] READ-006 — `EvidenceRangeEntry::into_evidence` mixes trace resolution, certainty joining, and truncation policy, and leaks a 3-tuple plus an implicit `Some`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -270,6 +270,11 @@ small owned helper on `MatchCertainty`/`EvidenceTraces` or a named
 empty-trace `EvidenceTrace::occurrence` fallback, and the deterministic
 `BTreeSet`-ordered trace set, which are pinned by the deterministic report
 contract.
+
+**Fix Applied:** Replaced the anonymous evidence tuple with a named
+`ResolvedEvidence` payload and made the caller’s successful `Finding` explicit
+with `Some(Finding::new(...))`; certainty, truncation, fallback, and ordering
+policies are unchanged.
 
 ## Systemic Themes
 
