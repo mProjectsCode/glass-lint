@@ -8,9 +8,7 @@ use smol_str::ToSmolStr;
 
 use crate::analysis::{
     model::{module::NAMESPACE_EXPORT, value::MAX_VALUES},
-    module_request::{
-        ModuleRequestContext, ModuleRequestKind, ModuleRequestPolicy, recognize_module_call,
-    },
+    module_request::{ModuleRequestContext, recognize_dynamic_import_call},
     resolution::{
         Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
         ValueId,
@@ -54,10 +52,7 @@ impl Resolver<'_> {
         &mut self,
         call: &swc_ecma_ast::CallExpr,
     ) -> ResolvedValue {
-        if let Some(request) =
-            recognize_module_call(call, self, ModuleRequestPolicy::alias_with_dynamic_import())
-            && request.kind() == ModuleRequestKind::DynamicImport
-        {
+        if let Some(request) = recognize_dynamic_import_call(call, self) {
             let import_call = SymbolCallProvenance::ModuleExport {
                 module: request.module().into(),
                 export: NAMESPACE_EXPORT.into(),

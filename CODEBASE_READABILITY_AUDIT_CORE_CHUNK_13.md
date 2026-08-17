@@ -192,7 +192,7 @@ shared.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — `resolve_call_expression` runs the full module-request recognizer for one variant
+#### [x] READ-005 — `resolve_call_expression` runs the full module-request recognizer for one variant
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -221,7 +221,10 @@ Guardrails: keep exactly the current dynamic-import criteria — first argument,
 other call shape; retain the full `ModuleRequestPolicy` for the collector
 (`alias`, `alias_with_dynamic_import`) and facts (`interface`) call sites.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the narrow `recognize_dynamic_import_call` entry point
+and routed resolver call-result handling through it, removing discarded
+require/interop recognition while preserving the policy-based recognizer for
+collector and interface callers. Verified with `make fmt && make ci`.
 
 #### [x] READ-006 — `ResolvedValue: Deref` and a public field create two access notations
 

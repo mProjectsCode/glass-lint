@@ -140,6 +140,13 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     })
 }
 
+pub(super) fn recognize_dynamic_import_call<C: ModuleRequestContext + ?Sized>(
+    call: &swc_ecma_ast::CallExpr,
+    context: &mut C,
+) -> Option<RecognizedModuleRequest> {
+    is_dynamic_import(&call.callee).then(|| dynamic_import(call, context))?
+}
+
 pub(super) fn recognize_module_expression<C: ModuleRequestContext + ?Sized>(
     expr: &Expr,
     context: &mut C,
