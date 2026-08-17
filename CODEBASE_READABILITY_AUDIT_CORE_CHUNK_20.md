@@ -22,7 +22,7 @@ No source was modified; this session edits only this audit document.
 
 ### Classification evidence API
 
-#### [ ] READ-001 — Classification accessors for the same type are split between `classification.rs` and `classification/result.rs` with no stated criterion
+#### [x] READ-001 — Classification accessors for the same type are split between `classification.rs` and `classification/result.rs` with no stated criterion
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -58,7 +58,11 @@ internal correlation keys (`classification.rs:16-18,85-87`) that report
 rendering still reads (`lint/report/evidence.rs:62,147`); leave the `MatchKind`
 re-export (`classification.rs:13`) untouched.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the `MatchedCapability` and `ClassificationEvidence`
+accessors into their owning type implementations in `classification.rs`, while
+leaving `ClassificationResult` and its accessors in `classification/result.rs`.
+Preserved the public and crate-private visibility split. Verified with
+`make fmt && make ci`.
 
 ### Normalize/validate correlation
 

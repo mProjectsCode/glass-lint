@@ -1,5 +1,4 @@
-use super::{ClassificationEvidence, MatchKind, MatchedCapability};
-use crate::api::rule::Severity;
+use super::MatchedCapability;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 /// Top-level classification result containing capabilities in catalog order.
@@ -16,34 +15,5 @@ impl ClassificationResult {
     /// Borrow the classified capabilities without copying them.
     pub fn capabilities(&self) -> &[MatchedCapability] {
         &self.capabilities
-    }
-}
-
-impl MatchedCapability {
-    /// Borrow the capability label.
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    /// Return the declared severity.
-    pub fn severity(&self) -> Severity {
-        self.severity
-    }
-
-    /// Borrow primary evidence for this capability.
-    pub fn evidence(&self) -> &[ClassificationEvidence] {
-        &self.evidence
-    }
-}
-
-impl ClassificationEvidence {
-    /// Return the occurrence kind.
-    pub fn kind(&self) -> MatchKind {
-        self.kind
-    }
-
-    /// Borrow the canonical matched symbol.
-    pub fn symbol(&self) -> &str {
-        &self.symbol
     }
 }

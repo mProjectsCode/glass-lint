@@ -105,6 +105,21 @@ impl MatchedCapability {
     pub(crate) fn rule_index(&self) -> RuleIndex {
         self.rule_index
     }
+
+    /// Borrow the capability label.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Return the declared severity.
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    /// Borrow primary evidence for this capability.
+    pub fn evidence(&self) -> &[ClassificationEvidence] {
+        &self.evidence
+    }
 }
 
 impl ClassificationEvidenceOccurrence {
@@ -190,6 +205,16 @@ impl ClassificationEvidence {
 
     pub fn occurrences(&self) -> &[ClassificationEvidenceOccurrence] {
         &self.occurrences
+    }
+
+    /// Return the occurrence kind.
+    pub fn kind(&self) -> MatchKind {
+        self.kind
+    }
+
+    /// Borrow the canonical matched symbol.
+    pub fn symbol(&self) -> &str {
+        &self.symbol
     }
 
     pub(crate) fn mark_truncated(&mut self) {
