@@ -148,7 +148,7 @@ absent-target/`is_internal_request` fallback vs
 
 ### Projection public surface (`analysis/project/projection.rs`, `analysis/project/model.rs`)
 
-#### [ ] READ-004 — Projection pipeline is published broader than its actual boundary
+#### [x] READ-004 — Projection pipeline is published broader than its actual boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low

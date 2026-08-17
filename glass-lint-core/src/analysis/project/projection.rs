@@ -41,7 +41,7 @@ use crate::{
     },
 };
 
-pub fn project_for_classification<'project, 'matchers>(
+pub(in crate::analysis) fn project_for_classification<'project, 'matchers>(
     project: &'project ProjectSemanticModel,
     matchers: CompiledRuleSelection<'matchers>,
 ) -> (
@@ -55,7 +55,7 @@ pub fn project_for_classification<'project, 'matchers>(
     (catalog, outcome, arena)
 }
 
-pub fn assemble_classification_results(
+pub(in crate::analysis) fn assemble_classification_results(
     matcher_catalog: &ProjectMatcherModel<'_, '_>,
     records: &[CompiledRuleRecord],
     selected: &[RuleIndex],
@@ -274,7 +274,7 @@ fn project_facts(
 
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
-pub struct ProjectMatcherModel<'project, 'matchers> {
+pub(in crate::analysis) struct ProjectMatcherModel<'project, 'matchers> {
     identity: ProjectMatcherIdentity,
     matchers: CompiledRuleSelection<'matchers>,
     projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
@@ -301,13 +301,13 @@ pub(in crate::analysis) enum EvidenceQueryError {
 
 /// An opaque reference to a module retained by one projection model.
 #[derive(Clone, Copy, Debug)]
-pub struct ProjectModuleHandle<'project> {
+pub(in crate::analysis) struct ProjectModuleHandle<'project> {
     module: &'project ProjectModule,
     owner: ProjectMatcherIdentity,
 }
 
 impl ProjectModuleHandle<'_> {
-    pub fn id(self) -> ModuleId {
+    pub(in crate::analysis) fn id(self) -> ModuleId {
         self.module.id()
     }
 }
@@ -352,7 +352,7 @@ impl ProjectSemanticModel {
     /// counts are returned in a `ProjectionOutcome` instead of being written
     /// back into `self`.
     #[cfg(test)]
-    pub fn project<'project, 'matchers>(
+    pub(in crate::analysis) fn project<'project, 'matchers>(
         &'project self,
         matchers: CompiledRuleSelection<'matchers>,
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
@@ -360,7 +360,7 @@ impl ProjectSemanticModel {
         self.project_with_arena(matchers, &mut arena)
     }
 
-    pub(crate) fn project_with_arena<'project, 'matchers>(
+    pub(in crate::analysis) fn project_with_arena<'project, 'matchers>(
         &'project self,
         matchers: CompiledRuleSelection<'matchers>,
         arena: &mut TraceArena,
@@ -407,7 +407,9 @@ impl ProjectSemanticModel {
 
 impl ProjectMatcherModel<'_, '_> {
     /// Return handles that can be used to query this model's evidence.
-    pub fn modules(&self) -> impl Iterator<Item = ProjectModuleHandle<'_>> + '_ {
+    pub(in crate::analysis) fn modules(
+        &self,
+    ) -> impl Iterator<Item = ProjectModuleHandle<'_>> + '_ {
         self.projections
             .values()
             .map(|projection| ProjectModuleHandle {
