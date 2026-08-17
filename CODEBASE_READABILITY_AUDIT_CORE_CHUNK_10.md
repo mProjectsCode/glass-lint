@@ -65,7 +65,7 @@ pre-removal events; undo remains responsible for restoring them. Added
 divergent checkpoint restore across a removal and replacement insertion.
 Verified with `cargo test -p glass-lint-core projector::state`.
 
-#### [ ] READ-002 — Sink-to-parameter binding searches are written three times with different acceptance rules
+#### [x] READ-002 — Sink-to-parameter binding searches are written three times with different acceptance rules
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -98,7 +98,12 @@ the shared value-matching helper (both value-predicate call sites reject it).
 The index/path predicate has no UNKNOWN term and must stay same-shape in both of
 its call sites.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized sink-path and value-based parameter lookup in
+`summary::sink::{find_sink_parameter, parameter_for_value}` and routed the
+projector evidence, local sink collection, and cross-function propagation
+callers through those helpers. The cross-function non-rest restriction and
+the local path-join logic remain at their owning call sites. Verified with
+`cargo test -p glass-lint-core analysis::flow::summary`.
 
 #### [ ] READ-003 — `StateAdmission` is a discarded production result that duplicates the fail-closed flag
 

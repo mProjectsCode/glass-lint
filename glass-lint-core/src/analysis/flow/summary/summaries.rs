@@ -10,10 +10,13 @@ use crate::analysis::{
         planning::BoundFlowPlan,
         summary::{
             MAX_SUMMARY_SINKS, MAX_SUMMARY_WORKLIST, SummaryPathStore,
-            sink::{FunctionSignature, FunctionSinkSummary, FunctionSummary},
+            sink::{
+                FunctionSignature, FunctionSinkSummary, FunctionSummary, find_sink_parameter,
+                parameter_for_value,
+            },
         },
     },
-    model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
+    model::{flow::FunctionTable, scope::FunctionId},
 };
 
 #[derive(Debug)]
@@ -322,16 +325,10 @@ fn try_project_sink(
     args: &[CallArgInfo],
     paths: &SummaryPathStore<'_>,
 ) -> Option<FunctionSinkSummary> {
-    let target_parameter = target_parameters.iter().find(|parameter| {
-        parameter.parameter_index() == sink.parameter_index()
-            && parameter.matches_sink_path(sink.path(), paths)
-    })?;
+    let target_parameter = find_sink_parameter(target_parameters, sink, paths)?;
     let argument = target_parameter.project_argument_at(stream, args, paths, sink.path())?;
-    let caller_parameter = caller_parameters.iter().find(|parameter| {
-        !parameter.is_rest()
-            && parameter.value() != ValueId::UNKNOWN
-            && parameter.value() == argument
-    })?;
+    let caller_parameter = parameter_for_value(caller_parameters, argument)
+        .filter(|parameter| !parameter.is_rest())?;
     let caller_path = paths.intern_frozen(caller_parameter.path())?;
     Some(FunctionSinkSummary::new(
         sink.flow(),

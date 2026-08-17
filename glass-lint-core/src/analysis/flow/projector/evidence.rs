@@ -15,6 +15,7 @@ use crate::{
                 CallArgInfo, ClassificationEvidence, FactId, FlowObjectId, FlowState, MatchKind,
                 ObjectFlowProjector, ValueId, history::ReportEvidenceKey,
             },
+            summary::find_sink_parameter,
         },
         model::{
             flow::{FlowId, FlowStateKey},
@@ -133,10 +134,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .into_iter()
                 .filter_map(|sink| {
                     let paths = self.inputs.helpers.path_interner();
-                    let parameter = parameters.iter().find(|parameter| {
-                        parameter.parameter_index() == sink.parameter_index()
-                            && parameter.matches_sink_path(sink.path(), paths)
-                    })?;
+                    let parameter = find_sink_parameter(parameters, sink, paths)?;
                     let value = parameter.project_argument_at(
                         self.inputs.stream,
                         args,

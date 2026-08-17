@@ -38,6 +38,30 @@ impl FunctionSinkSummary {
     }
 }
 
+pub(in crate::analysis::flow) fn find_sink_parameter<'a>(
+    parameters: &'a [ParameterBinding],
+    sink: &FunctionSinkSummary,
+    paths: &SummaryPathStore<'_>,
+) -> Option<&'a ParameterBinding> {
+    parameters.iter().find(|parameter| {
+        parameter.parameter_index() == sink.parameter_index()
+            && parameter.matches_sink_path(sink.path(), paths)
+    })
+}
+
+pub(in crate::analysis::flow) fn parameter_for_value(
+    parameters: &[ParameterBinding],
+    value: ValueId,
+) -> Option<&ParameterBinding> {
+    (value != ValueId::UNKNOWN)
+        .then(|| {
+            parameters
+                .iter()
+                .find(|parameter| parameter.value() == value)
+        })
+        .flatten()
+}
+
 #[derive(Debug, Clone, Default)]
 pub(in crate::analysis::flow) struct SinkSet {
     set: FastIndexSet<FunctionSinkSummary>,
@@ -217,12 +241,10 @@ impl FunctionSummary {
                 let Some(argument) = args.get(argument_index) else {
                     continue;
                 };
-                let Some(parameter) = self.parameter_bindings(stream).and_then(|parameters| {
-                    parameters.iter().find(|parameter| {
-                        parameter.value() != ValueId::UNKNOWN
-                            && parameter.value() == argument.base_value
-                    })
-                }) else {
+                let Some(parameter) = self
+                    .parameter_bindings(stream)
+                    .and_then(|parameters| parameter_for_value(parameters, argument.base_value))
+                else {
                     continue;
                 };
                 let Some(prefix_id) = paths.intern_frozen(parameter.path()) else {

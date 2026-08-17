@@ -20,6 +20,7 @@ mod sink;
 pub(super) mod store;
 mod summaries;
 
+pub(in crate::analysis::flow) use sink::find_sink_parameter;
 pub(super) use store::SummaryPathStore;
 pub(super) use summaries::FunctionSummaries;
 
