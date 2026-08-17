@@ -134,7 +134,6 @@ impl AnalyzedSource {
 pub struct SemanticAnalyzer<'a> {
     environment: &'a Environment,
     limits: &'a AnalysisLimits,
-    name_limit: usize,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -142,7 +141,6 @@ impl<'a> SemanticAnalyzer<'a> {
         Self {
             environment,
             limits,
-            name_limit: MAX_NAMES,
         }
     }
 
@@ -163,8 +161,17 @@ impl<'a> SemanticAnalyzer<'a> {
         program: &Program,
         coordinates: &SpanNormalizer,
     ) -> SemanticArtifact {
+        self.analyze_program_with_name_limit(program, coordinates, MAX_NAMES)
+    }
+
+    fn analyze_program_with_name_limit(
+        &self,
+        program: &Program,
+        coordinates: &SpanNormalizer,
+        name_limit: usize,
+    ) -> SemanticArtifact {
         let budget = SemanticBudget::new(self.limits.semantic_operations());
-        let names = NameTable::with_max_entries(self.name_limit);
+        let names = NameTable::with_max_entries(name_limit);
         let scoped_program =
             ScopeGraph::collect_scoped_program(program, self.environment, names, &budget);
 
@@ -176,12 +183,6 @@ impl<'a> SemanticAnalyzer<'a> {
             MAX_FACTS,
         )
         .freeze(self.environment, self.limits, program.span())
-    }
-
-    #[cfg(test)]
-    fn with_name_limit(mut self, name_limit: usize) -> Self {
-        self.name_limit = name_limit;
-        self
     }
 
     /// Analyze one source file into an immutable semantic artifact. The

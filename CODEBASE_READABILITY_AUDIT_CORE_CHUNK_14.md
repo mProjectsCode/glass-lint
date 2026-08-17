@@ -145,7 +145,7 @@ remains exactly `ArtifactCacheKey::new` with `env!("CARGO_PKG_VERSION")`.
 
 ### Semantic analysis boundary (`semantic/mod.rs`, `semantic/budget.rs`)
 
-#### [ ] READ-003 — `SemanticAnalyzer::name_limit` is a test-only knob stored as a production field
+#### [x] READ-003 — `SemanticAnalyzer::name_limit` is a test-only knob stored as a production field
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -176,7 +176,10 @@ semantics (test at `semantic/tests.rs:26-68` asserting
 today; default budget/limit wiring in `analyze_source` and `with_test_collection`
 is unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the production `name_limit` field and test-only
+builder setter. `analyze_program` now supplies `MAX_NAMES` through a shared
+explicit-limit helper, while exhaustion tests pass their cap directly; default
+analysis and exhaustion diagnostics remain unchanged.
 
 #### [ ] READ-004 — `check_fact_construction_incompleteness` duplicates the budget limit that `SemanticBudget` already owns
 

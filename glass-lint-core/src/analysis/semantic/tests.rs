@@ -28,12 +28,10 @@ fn name_exhaustion_invalidates_indexes_and_effects_with_an_accurate_status() {
     let parsed =
         crate::parse_test_source(source, "name-exhaustion.js").expect("source should parse");
     let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
-    let artifact = SemanticAnalyzer::new(
-        &crate::Environment::default(),
-        &crate::AnalysisLimits::default(),
-    )
-    .with_name_limit(2)
-    .analyze_program(&parsed.program, &coordinates);
+    let environment = crate::Environment::default();
+    let limits = crate::AnalysisLimits::default();
+    let analyzer = SemanticAnalyzer::new(&environment, &limits);
+    let artifact = analyzer.analyze_program_with_name_limit(&parsed.program, &coordinates, 2);
 
     assert!(!artifact.facts().stream().is_valid());
     assert!(!artifact.facts().is_projectable());
@@ -54,12 +52,7 @@ fn name_exhaustion_invalidates_indexes_and_effects_with_an_accurate_status() {
     assert!(file_diagnostics[0].1.message().contains("limit=2"));
     assert!(file_diagnostics[0].1.message().contains("attempted=3"));
 
-    let repeated = SemanticAnalyzer::new(
-        &crate::Environment::default(),
-        &crate::AnalysisLimits::default(),
-    )
-    .with_name_limit(2)
-    .analyze_program(&parsed.program, &coordinates);
+    let repeated = analyzer.analyze_program_with_name_limit(&parsed.program, &coordinates, 2);
     assert_eq!(
         format!("{:?}", artifact.facts().stream().facts()),
         format!("{:?}", repeated.facts().stream().facts())
