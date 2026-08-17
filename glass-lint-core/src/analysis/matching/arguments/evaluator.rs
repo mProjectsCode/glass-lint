@@ -53,18 +53,24 @@ impl PreparedClausePaths {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct EvaluationOperations {
     /// Number of candidates (facts) evaluated.
+    #[cfg(test)]
     pub(super) candidates: usize,
     /// Number of unique argument groups checked.
+    #[cfg(test)]
     pub(super) groups: usize,
     /// Number of individual predicate applications.
+    #[cfg(test)]
     pub(super) predicates: usize,
     /// Number of overlay-ready argument views constructed
     /// (one per unique group index per candidate).
+    #[cfg(test)]
     pub(super) argument_preparations: usize,
     /// Number of value-table resolutions performed while preparing groups.
+    #[cfg(test)]
     pub(super) value_resolutions: usize,
 }
 
+#[cfg(test)]
 impl EvaluationOperations {
     pub(super) fn charge_candidate(&mut self) {
         self.candidates = self.candidates.saturating_add(1);
@@ -85,6 +91,18 @@ impl EvaluationOperations {
     pub(super) fn charge_value_resolution(&mut self) {
         self.value_resolutions = self.value_resolutions.saturating_add(1);
     }
+}
+
+#[cfg(test)]
+macro_rules! charge_operation {
+    ($operations:expr, $method:ident) => {
+        $operations.$method();
+    };
+}
+
+#[cfg(not(test))]
+macro_rules! charge_operation {
+    ($operations:expr, $method:ident) => {};
 }
 
 pub(super) struct MatcherEvaluator<'a> {
@@ -115,7 +133,7 @@ impl<'a> MatcherEvaluator<'a> {
         paths: &PreparedClausePaths,
         ops: &mut EvaluationOperations,
     ) -> bool {
-        ops.charge_candidate();
+        charge_operation!(ops, charge_candidate);
         let FactPayload::Call(call) = fact.payload() else {
             return false;
         };
@@ -173,6 +191,7 @@ impl<'a> MatcherEvaluator<'a> {
         ArgumentView::new(static_string, object, rooted_chain)
     }
 
+    #[cfg_attr(not(test), allow(unused_variables, clippy::needless_pass_by_ref_mut))]
     fn constraints_match(
         &self,
         constraints: &CanonicalArgumentConstraints,
@@ -184,12 +203,12 @@ impl<'a> MatcherEvaluator<'a> {
             let Some(value) = args.get(idx) else {
                 return false;
             };
-            ops.charge_group();
-            ops.charge_argument_preparation();
-            ops.charge_value_resolution();
+            charge_operation!(ops, charge_group);
+            charge_operation!(ops, charge_argument_preparation);
+            charge_operation!(ops, charge_value_resolution);
             let view = self.argument_with_overlay(value);
             group.predicates().iter().all(|matcher| {
-                ops.charge_predicate();
+                charge_operation!(ops, charge_predicate);
                 matcher.matches(&view, self.names, self.values)
             })
         })

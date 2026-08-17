@@ -128,6 +128,11 @@ preparation, and value-resolution totals the extended tests assert
 saturating-add pattern as `overlay_ops`, and keep the count deterministic under
 rule ordering.
 
+**Fix Applied:** Kept `EvaluationOperations` and its exact extended-test
+counts, but gated its stored fields and charge updates behind `cfg(test)`.
+Production constrained evaluation still uses the same inner path and matching
+semantics, without performing accounting that no production consumer reads.
+
 #### [ ] READ-003 — Prepared root clause fields are re-shaped once, then re-threaded through a six-parameter predicate
 
 - **Severity:** Medium
