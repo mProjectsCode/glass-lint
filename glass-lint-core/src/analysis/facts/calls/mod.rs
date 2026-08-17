@@ -4,6 +4,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
     model::{fact::CallEvent, value::ValueId},
+    syntax::is_dynamic_import,
 };
 
 mod callee;
@@ -20,7 +21,7 @@ impl FactBuilder<'_, '_> {
                 return;
             };
             let resolved = self.resolver.resolve_call_expression(call);
-            let result = if matches!(call.callee, Callee::Import(_)) {
+            let result = if is_dynamic_import(&call.callee) {
                 resolved.id
             } else {
                 self.call_result(call.span())
@@ -121,7 +122,7 @@ impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn value_for_expr(&mut self, expr: &Expr) -> ValueId {
         match expr {
             Expr::Call(call) => {
-                if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
+                if is_dynamic_import(&call.callee) {
                     return self.resolver.resolve_expr_id(expr);
                 }
                 self.call_result(call.span())

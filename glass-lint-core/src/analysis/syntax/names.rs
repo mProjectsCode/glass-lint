@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{
-    Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
+    Callee, Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp,
+    OptChainBase, Pat,
 };
 
 use crate::analysis::syntax::constant::{NoLookup, contextual_member_property_name};
@@ -59,6 +60,10 @@ pub(in crate::analysis) fn unwrap_transparent_expr(expr: &Expr) -> Option<&Expr>
         Expr::TsTypeAssertion(value) => unwrap_transparent_expr(&value.expr),
         _ => Some(expr),
     }
+}
+
+pub(in crate::analysis) fn is_dynamic_import(callee: &Callee) -> bool {
+    matches!(callee, Callee::Import(_))
 }
 
 /// Walk every `Ident` binding introduced by a destructuring pattern.

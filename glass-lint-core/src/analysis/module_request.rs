@@ -8,7 +8,7 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{Callee, Expr, Ident, Lit};
 
-use crate::analysis::model::module::COMMONJS_REQUIRE;
+use crate::analysis::{model::module::COMMONJS_REQUIRE, syntax::is_dynamic_import};
 
 const INTEROP_WRAPPERS: &[&str] = &[
     "__toESM",
@@ -96,7 +96,7 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     policy: ModuleRequestPolicy,
 ) -> Option<RecognizedModuleRequest> {
     let Callee::Expr(callee) = &call.callee else {
-        if !policy.allows_dynamic_import() || !matches!(call.callee, Callee::Import(_)) {
+        if !policy.allows_dynamic_import() || !is_dynamic_import(&call.callee) {
             return None;
         }
         return dynamic_import(call, context);

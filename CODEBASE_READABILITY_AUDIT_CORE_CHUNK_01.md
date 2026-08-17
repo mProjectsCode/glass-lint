@@ -276,7 +276,7 @@ return.
 
 ### Call lowering and model
 
-#### [ ] READ-009 — Dynamic-import `Callee::Import` special case written twice
+#### [x] READ-009 — Dynamic-import `Callee::Import` special case written twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -296,7 +296,9 @@ decision, and a fourth copy exists at `scope/expression.rs:52`.
 paths. Guardrails: keep `Callee::Super`/`Import` behavior intact — the
 `call_result` identity path must not start producing values for imports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the shared `syntax::is_dynamic_import` predicate and
+routed fact, module-request, and scope consumers through it. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-010 — `ResolvedCallee` and `CallEvent` are parallel 12/14-field records with a hand-written field copy
 

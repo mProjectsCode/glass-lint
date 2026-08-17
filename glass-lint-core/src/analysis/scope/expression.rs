@@ -6,7 +6,7 @@
 use smol_str::SmolStr;
 use swc_ecma_ast::{CallExpr, Expr, Ident, MemberExpr};
 
-use crate::analysis::syntax::literal_member_property_name;
+use crate::analysis::syntax::{is_dynamic_import, literal_member_property_name};
 
 pub(in crate::analysis) enum ScopeExpression<'a> {
     Ident(&'a Ident),
@@ -47,10 +47,14 @@ pub(in crate::analysis) fn normalize_scope_expression(
             literal_property: literal_member_property_name(&member.prop),
         }),
         Expr::Call(call) => {
-            let callee = match &call.callee {
-                swc_ecma_ast::Callee::Expr(callee) => Some(&**callee),
-                swc_ecma_ast::Callee::Import(_) => None,
-                swc_ecma_ast::Callee::Super(_) => return None,
+            let callee = if is_dynamic_import(&call.callee) {
+                None
+            } else {
+                match &call.callee {
+                    swc_ecma_ast::Callee::Expr(callee) => Some(&**callee),
+                    swc_ecma_ast::Callee::Super(_) => return None,
+                    swc_ecma_ast::Callee::Import(_) => None,
+                }
             };
             Some(ScopeExpression::Call {
                 expression,
