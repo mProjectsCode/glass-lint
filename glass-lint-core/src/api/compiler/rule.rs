@@ -62,6 +62,14 @@ impl<'a> CompiledRuleSelection<'a> {
             .map(move |&index| (index, &self.rules[index.get()].matcher))
     }
 
+    pub(crate) fn selected_records(
+        &self,
+    ) -> impl Iterator<Item = (RuleIndex, &CompiledRuleRecord)> {
+        self.selected
+            .iter()
+            .map(move |&index| (index, &self.rules[index.get()]))
+    }
+
     pub fn is_selected(&self, index: RuleIndex) -> bool {
         self.selected.binary_search(&index).is_ok()
     }

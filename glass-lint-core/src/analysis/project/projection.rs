@@ -35,7 +35,7 @@ use crate::{
             RuleEvidenceError, RuleEvidenceTable, RuleIndex,
         },
         compiler::{
-            CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection, physical::PhysicalRoot,
+            CompiledMatcherPlan, CompiledRuleSelection, physical::PhysicalRoot,
             requirements::PlanRequirements,
         },
     },
@@ -57,27 +57,21 @@ pub(in crate::analysis) fn project_for_classification<'project, 'matchers>(
 
 pub(in crate::analysis) fn assemble_classification_results(
     matcher_catalog: &ProjectMatcherModel<'_, '_>,
-    records: &[CompiledRuleRecord],
-    selected: &[RuleIndex],
     evidence_limit: usize,
 ) -> BTreeMap<ModuleId, ClassificationResult> {
     matcher_catalog
         .modules()
         .map(|module| {
             let mut result = ClassificationResult::default();
-            for rule_index in selected {
-                let index = rule_index.get();
-                let Some(record) = records.get(index) else {
-                    continue;
-                };
+            for (rule_index, record) in matcher_catalog.selection().selected_records() {
                 let evidence =
-                    matcher_catalog.evidence_for_lossy(module, *rule_index, evidence_limit);
+                    matcher_catalog.evidence_for_lossy(module, rule_index, evidence_limit);
                 if evidence.is_empty() {
                     continue;
                 }
 
                 result.push_capability(MatchedCapability::new(
-                    *rule_index,
+                    rule_index,
                     record.description.clone(),
                     record.severity,
                     evidence,
@@ -406,6 +400,10 @@ impl ProjectSemanticModel {
 }
 
 impl ProjectMatcherModel<'_, '_> {
+    fn selection(&self) -> &CompiledRuleSelection<'_> {
+        &self.matchers
+    }
+
     /// Return handles that can be used to query this model's evidence.
     pub(in crate::analysis) fn modules(
         &self,

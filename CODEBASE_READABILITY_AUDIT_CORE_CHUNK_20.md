@@ -325,7 +325,7 @@ test-only validation/printer helpers now live on that type, while the
 production sealing boundary and the plan exposure used by projection remain
 unchanged.
 
-#### [ ] READ-008 — "Which rules ran" bookkeeping and its index-bound validation are duplicated across lint selection, projection, and evidence
+#### [x] READ-008 — "Which rules ran" bookkeeping and its index-bound validation are duplicated across lint selection, projection, and evidence
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -358,7 +358,13 @@ preserve the fail-closed `RuleEvidenceError::RuleOutOfRange` and
 expected errors, do not panic), keep the bounded, deterministic catalog order,
 and do not collapse `RuleIndex`'s opacity (`classification.rs:16-28`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `PreparedRuleSelection` the linter’s single owner of
+the validated catalog and enabled index slice. Classification now consumes
+the `CompiledRuleSelection` retained by the projection model and iterates its
+validated records directly, removing the tolerant out-of-range skip. The
+shared `RuleEvidenceCapacity` owns index validation used by both local and
+cross-file evidence; the defensive `RuleEvidenceError` boundary remains
+intact rather than being replaced with a panic or unchecked write.
 
 ## Systemic Themes
 

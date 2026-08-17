@@ -5,7 +5,6 @@ use rayon::ThreadPoolBuilder;
 use crate::{
     AnalysisLimits, Environment, ProjectAdmissionLimits, RuleId,
     analysis::ArtifactCacheHandle,
-    api::classification::RuleIndex,
     lint::{
         batch::{BatchOptions, BatchResults, BatchStartError},
         catalog::RuleCatalog,
@@ -91,12 +90,10 @@ impl LinterConfig {
 /// Immutable configuration shared across cloned linters.
 #[derive(Clone)]
 struct LinterSharedConfig {
-    /// Validated rule catalog and compiled matcher plans.
-    catalog: RuleCatalog,
+    /// Validated catalog and its enabled indexes.
+    rules: PreparedRuleSelection,
     /// Host environment used during semantic fact construction.
     environment: Environment,
-    /// Enabled rule indexes in deterministic catalog order.
-    enabled: Vec<RuleIndex>,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
     /// Aggregate source bounds for direct project sessions.
@@ -132,8 +129,8 @@ impl Linter {
             self.analysis_environment(),
             self.analysis_limits(),
             self.artifact_cache_handle(),
-            &self.shared.catalog,
-            &self.shared.enabled,
+            self.shared.rules.catalog(),
+            self.shared.rules.enabled(),
             self.shared.limits.evidence_items(),
             self.shared.project_limits,
         );
@@ -145,8 +142,8 @@ impl Linter {
     /// unified catalog (rejecting duplicate fully-qualified IDs), rule
     /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
-        let (catalog, enabled) = match config.rules {
-            LinterRuleInputs::Prepared(prepared) => prepared.into_parts(),
+        let prepared = match config.rules {
+            LinterRuleInputs::Prepared(prepared) => prepared,
             LinterRuleInputs::Unprepared {
                 catalogs,
                 selection,
@@ -154,7 +151,7 @@ impl Linter {
                 let catalog =
                     RuleCatalog::combine(catalogs).map_err(LintConfigError::DuplicateRule)?;
                 let enabled = selection.resolve(&catalog)?;
-                (catalog, enabled)
+                PreparedRuleSelection::from_resolved(catalog, enabled)
             }
         };
 
@@ -163,9 +160,8 @@ impl Linter {
         // is needed.
         Ok(Self {
             shared: Arc::new(LinterSharedConfig {
-                catalog,
+                rules: prepared,
                 environment: config.environment,
-                enabled,
                 limits: config.limits,
                 project_limits: config.project_limits,
             }),
@@ -176,16 +172,17 @@ impl Linter {
     #[must_use]
     /// Borrow the validated catalog.
     pub fn catalog(&self) -> &RuleCatalog {
-        &self.shared.catalog
+        self.shared.rules.catalog()
     }
 
     /// Returns the enabled rule IDs in deterministic catalog order.
     #[must_use]
     pub fn enabled_rule_ids(&self) -> Vec<RuleId> {
         self.shared
-            .enabled
+            .rules
+            .enabled()
             .iter()
-            .filter_map(|&index| self.shared.catalog.rule_id(index).cloned())
+            .filter_map(|&index| self.shared.rules.catalog().rule_id(index).cloned())
             .collect()
     }
 

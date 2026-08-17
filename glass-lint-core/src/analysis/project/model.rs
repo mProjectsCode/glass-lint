@@ -478,8 +478,6 @@ impl ProjectSemanticModel {
             crate::analysis::project::projection::project_for_classification(self, selection);
         let results = crate::analysis::project::projection::assemble_classification_results(
             &matcher_catalog,
-            records,
-            selected,
             evidence_limit,
         );
         Ok((results, outcome, arena))

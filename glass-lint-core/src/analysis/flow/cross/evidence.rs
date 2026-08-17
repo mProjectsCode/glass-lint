@@ -67,7 +67,9 @@ impl ModuleEvidence {
     }
 
     fn rule_mut(&mut self, rule: RuleIndex) -> Option<&mut RuleEvidence> {
-        (rule.get() < self.capacity.len()).then(|| self.rules.entry(rule).or_default())
+        self.capacity
+            .contains(rule)
+            .then(|| self.rules.entry(rule).or_default())
     }
 
     fn rule(&self, rule: RuleIndex) -> Option<&RuleEvidence> {

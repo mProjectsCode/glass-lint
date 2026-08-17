@@ -38,6 +38,19 @@ impl RuleEvidenceCapacity {
     pub(crate) const fn len(self) -> usize {
         self.0
     }
+
+    pub(crate) const fn contains(self, rule: RuleIndex) -> bool {
+        rule.get() < self.0
+    }
+
+    pub(crate) fn validate(self, rule: RuleIndex) -> Result<(), RuleEvidenceError> {
+        self.contains(rule)
+            .then_some(())
+            .ok_or(RuleEvidenceError::RuleOutOfRange {
+                rule,
+                capacity: self.0,
+            })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,10 +280,7 @@ impl RuleEvidenceTable {
         &mut self,
         rule: RuleIndex,
     ) -> Result<&mut Vec<ClassificationEvidence>, RuleEvidenceError> {
-        let capacity = self.capacity.len();
-        if rule.get() >= capacity {
-            return Err(RuleEvidenceError::RuleOutOfRange { rule, capacity });
-        }
+        self.capacity.validate(rule)?;
         Ok(self.values.entry(rule).or_default())
     }
 

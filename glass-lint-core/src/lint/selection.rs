@@ -260,8 +260,20 @@ pub struct PreparedRuleSelection {
 }
 
 impl PreparedRuleSelection {
+    pub(crate) fn from_resolved(catalog: RuleCatalog, enabled: Vec<RuleIndex>) -> Self {
+        Self { catalog, enabled }
+    }
+
     pub(crate) fn into_parts(self) -> (RuleCatalog, Vec<RuleIndex>) {
         (self.catalog, self.enabled)
+    }
+
+    pub(crate) fn catalog(&self) -> &RuleCatalog {
+        &self.catalog
+    }
+
+    pub(crate) fn enabled(&self) -> &[RuleIndex] {
+        &self.enabled
     }
 }
 
