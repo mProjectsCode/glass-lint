@@ -22,7 +22,7 @@ fn lifecycle_evidence_bound_is_validated_at_the_physical_boundary() {
 fn malformed_lifecycle_source_is_reported_instead_of_dropped() {
     let query = crate::api::compiler::normalized::NormalizedQuery::new(
         NormalizedRoot::Lifecycle(NormalizedLifecycle::new(
-            vec![NormalizedEvent::new(
+            vec![NormalizedEvent::new_unchecked(
                 EventSlot::from_raw(0),
                 crate::api::rule::query::EventSpec::PropertyWrite {
                     property: SymbolPath::from("config.mode"),

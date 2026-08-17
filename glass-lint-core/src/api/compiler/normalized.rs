@@ -2,9 +2,12 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::api::rule::{
-    ArgumentConstraint, ArgumentIndex, ArgumentMatcher, MatchKind,
-    query::{EventSpec, IdentitySpec, VarId},
+use crate::api::{
+    compiler::validate::{SubjectRelationError, classify_subject_relation},
+    rule::{
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, MatchKind,
+        query::{EventSpec, IdentitySpec, VarId},
+    },
 };
 
 // ── Normalized IR ──────────────────────────────────────────────────────────
@@ -228,6 +231,22 @@ pub(crate) struct NormalizedEvent {
 
 impl NormalizedEvent {
     pub(crate) fn new(
+        slot: EventSlot,
+        event: EventSpec,
+        subject: NormalizedSubject,
+        arguments: CanonicalArgumentConstraints,
+    ) -> Result<Self, SubjectRelationError> {
+        classify_subject_relation(&event, &subject)?;
+        Ok(Self {
+            slot,
+            event,
+            subject,
+            arguments,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_unchecked(
         slot: EventSlot,
         event: EventSpec,
         subject: NormalizedSubject,

@@ -55,12 +55,8 @@ fn plan_event(
     event: &NormalizedEvent,
     evidence: &EvidenceDescriptor,
 ) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
-    let relation =
-        crate::api::compiler::validate::classify_subject_relation(event.event(), event.subject())
-            .map_err(|_| PhysicalPlanValidationError::ImpossibleDimensions)?;
-
-    match relation {
-        crate::api::compiler::validate::SubjectRelation::Direct { identity } => {
+    match (event.subject(), event.event()) {
+        (crate::api::compiler::normalized::NormalizedSubject::Direct { identity }, _) => {
             if event.arguments().is_empty() {
                 Ok(PhysicalRoot::indexed_scan(
                     IdentityConstraint::from(identity),
@@ -76,28 +72,33 @@ fn plan_event(
                 ))
             }
         }
-        crate::api::compiler::validate::SubjectRelation::Returned {
-            producer,
-            object_slot,
-            member,
-            event,
-        } => PhysicalRoot::returned_subject(
+        (
+            crate::api::compiler::normalized::NormalizedSubject::Returned {
+                producer,
+                object_slot,
+            },
+            crate::api::rule::query::EventSpec::MemberCall { member }
+            | crate::api::rule::query::EventSpec::MemberRead { member },
+        ) => PhysicalRoot::returned_subject(
             IdentityConstraint::from(producer),
-            object_slot,
+            *object_slot,
             member.clone(),
-            event.clone(),
+            event.event().clone(),
             evidence.clone(),
         ),
-        crate::api::compiler::validate::SubjectRelation::Instance {
-            constructor,
-            object_slot,
-            member,
-        } => PhysicalRoot::instance_subject(
+        (
+            crate::api::compiler::normalized::NormalizedSubject::Instance {
+                constructor,
+                object_slot,
+            },
+            crate::api::rule::query::EventSpec::MemberCall { member },
+        ) => PhysicalRoot::instance_subject(
             IdentityConstraint::from(constructor),
-            object_slot,
+            *object_slot,
             member.clone(),
             evidence.clone(),
         ),
+        _ => Err(PhysicalPlanValidationError::ImpossibleDimensions),
     }
 }
 

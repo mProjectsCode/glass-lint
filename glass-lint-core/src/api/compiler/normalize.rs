@@ -8,7 +8,7 @@ use crate::api::{
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
             NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
         },
-        validate::{QueryCompileError, classify_lifecycle_source, classify_subject_relation},
+        validate::{QueryCompileError, classify_lifecycle_source},
     },
     rule::query::{
         AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
@@ -102,11 +102,6 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
             {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "normalized argument constraint groups are not canonical".into(),
-                });
-            }
-            if let Err(error) = classify_subject_relation(ev.event(), ev.subject()) {
-                return Err(QueryCompileError::InternalInvariant {
-                    detail: error.detail().into(),
                 });
             }
         }
@@ -370,12 +365,15 @@ fn normalize_event_from_query(eq: &EventQuery) -> Result<NormalizedEvent, QueryC
     };
     detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &arguments)?;
 
-    Ok(NormalizedEvent::new(
+    NormalizedEvent::new(
         EventSlot::from_var(eq.var()),
         eq.event().clone(),
         subject,
         arguments,
-    ))
+    )
+    .map_err(|error| QueryCompileError::InternalInvariant {
+        detail: error.detail().into(),
+    })
 }
 
 // ── Sorting and deduplication helpers ──────────────────────────────────────

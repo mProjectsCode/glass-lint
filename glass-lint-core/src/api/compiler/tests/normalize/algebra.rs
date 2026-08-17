@@ -100,7 +100,7 @@ fn branches_with_distinct_subjects_have_a_total_order() {
     let identity = IdentitySpec::Global {
         name: SmolStr::new("create"),
     };
-    let event = NormalizedEvent::new(
+    let event = NormalizedEvent::new_unchecked(
         EventSlot::from_raw(0),
         EventSpec::Call,
         NormalizedSubject::Direct {
@@ -108,7 +108,7 @@ fn branches_with_distinct_subjects_have_a_total_order() {
         },
         CanonicalArgumentConstraints::default(),
     );
-    let returned = NormalizedEvent::new(
+    let returned = NormalizedEvent::new_unchecked(
         event.slot(),
         event.event().clone(),
         NormalizedSubject::Returned {
@@ -117,7 +117,7 @@ fn branches_with_distinct_subjects_have_a_total_order() {
         },
         event.arguments().clone(),
     );
-    let constructed = NormalizedEvent::new(
+    let constructed = NormalizedEvent::new_unchecked(
         event.slot(),
         event.event().clone(),
         NormalizedSubject::Instance {

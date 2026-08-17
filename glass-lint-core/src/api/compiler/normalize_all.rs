@@ -259,12 +259,11 @@ impl SameEventMerge {
         }
         detect_event_contradictions(event_var, &event, &identity, &subject, &arguments)?;
 
-        Ok(NormalizedRoot::Event(NormalizedEvent::new(
-            EventSlot::from_var(event_var),
-            event,
-            subject,
-            arguments,
-        )))
+        NormalizedEvent::new(EventSlot::from_var(event_var), event, subject, arguments)
+            .map(NormalizedRoot::Event)
+            .map_err(|error| QueryCompileError::InternalInvariant {
+                detail: error.detail().into(),
+            })
     }
 }
 

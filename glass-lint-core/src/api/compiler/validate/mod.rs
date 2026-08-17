@@ -8,7 +8,7 @@ pub(crate) use correlation_evidence::pass_correlation_evidence;
 #[cfg(test)]
 pub(crate) use error::is_identity_empty;
 pub(crate) use error::{
-    ContradictionKind, LifecycleSource, QueryCompileError, SubjectRelation, SubjectRelationError,
+    ContradictionKind, LifecycleSource, QueryCompileError, SubjectRelationError,
     classify_lifecycle_source, classify_subject_relation, is_valid_identity_event_pair,
 };
 #[cfg(test)]

@@ -114,7 +114,7 @@ made its no-common-event-variable fallback unconditionally report
 `UncorrelatedConjunction` diagnostic and its focused test; the direct
 normalization test was removed accordingly.
 
-#### [ ] READ-005 — Identity/event dimension compatibility and subject classification are re-derived at four sites per query
+#### [x] READ-005 — Identity/event dimension compatibility and subject classification are re-derived at four sites per query
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -154,7 +154,13 @@ plans (`physical.rs:78-83`, `planner.rs:60`), and keep
 (`normalize_all.rs:278`), where a merged identity/event pair genuinely needs a
 fresh check.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `NormalizedEvent::new` the sealing boundary for
+identity/event/subject classification. Authored and merged normalization now
+rejects impossible relations once, `validate_normalized` no longer repeats
+that post-condition, and physical planning consumes the normalized subject
+shape directly. Physical-root validation remains independent for hand-built
+plans; the malformed normalized fixture uses an explicit test-only unchecked
+constructor.
 
 ### Lifecycle IR
 
