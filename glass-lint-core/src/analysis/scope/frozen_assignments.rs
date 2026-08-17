@@ -92,11 +92,9 @@ impl<'a> BindingResolution<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(in crate::analysis) enum AssignmentAt<'a> {
     Absent,
-    /// A single known provenance.
-    Known(&'a AliasAssignment),
-    /// A synthetic post-join assignment with multiple provenance alternatives.
-    /// The assignment carries all alternatives; at least one is non-Local.
-    Ambiguous(&'a AliasAssignment),
+    /// The latest assignment, whether a branch-local write or a post-join
+    /// write carrying multiple provenance alternatives.
+    Assignment(&'a AliasAssignment),
 }
 
 impl<'a> AssignmentAt<'a> {
@@ -107,9 +105,7 @@ impl<'a> AssignmentAt<'a> {
         declaration: &'a BindingProvenance,
     ) -> BindingResolution<'a> {
         match self {
-            Self::Known(assignment) | Self::Ambiguous(assignment) => {
-                BindingResolution::assignment(assignment)
-            }
+            Self::Assignment(assignment) => BindingResolution::assignment(assignment),
             Self::Absent => parameter.map_or_else(
                 || BindingResolution::complete(declaration),
                 BindingResolution::complete,
@@ -172,13 +168,7 @@ impl FrozenAssignmentIndex {
         let Some(pos) = Self::latest_index(assignments, span) else {
             return AssignmentAt::Absent;
         };
-        if assignments[pos].is_joined() {
-            AssignmentAt::Ambiguous(&assignments[pos])
-        } else {
-            // A branch write is precise for a use inside that branch; only
-            // the synthetic post-join assignment is ambiguous.
-            AssignmentAt::Known(&assignments[pos])
-        }
+        AssignmentAt::Assignment(&assignments[pos])
     }
 
     /// Binding version visible at a source position.

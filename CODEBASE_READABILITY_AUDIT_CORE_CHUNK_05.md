@@ -182,7 +182,7 @@ phase-generic constructor and routed collection naming, frozen binding keys,
 and identifier binding seeds through it. Global fallback and missing-binding
 `Option` behavior are unchanged.
 
-#### [ ] READ-005 — `AssignmentAt::{Known, Ambiguous}` are behaviorally identical
+#### [x] READ-005 — `AssignmentAt::{Known, Ambiguous}` are behaviorally identical
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -210,7 +210,10 @@ must still return a non-`Absent` variant so callers never fall back to the
 declaration/parameter witness; that behavior is carried by the `Assignment`
 variant, not by the removed distinction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the two behaviorally identical present variants into
+`AssignmentAt::Assignment`. Latest writes, including conditional post-join
+writes, remain non-`Absent`; `BindingResolution::assignment` still derives the
+joined/incomplete status from the assignment itself.
 
 ## Systemic Themes
 
