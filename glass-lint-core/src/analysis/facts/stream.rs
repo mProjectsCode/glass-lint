@@ -156,6 +156,10 @@ impl<T: FactPhase> FactStream<T> {
         self.issues.contains(FactStreamIssue::InvalidParserSpan)
     }
 
+    pub(in crate::analysis) fn name_exhausted(&self) -> bool {
+        self.issues.contains(FactStreamIssue::NameExhausted)
+    }
+
     /// Look up a fact by its bounded dense identity.
     pub(in crate::analysis) fn fact(&self, id: FactId) -> Option<&SemanticFact> {
         self.facts.get(id.index()?)

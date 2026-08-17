@@ -172,13 +172,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     }
 
     fn intern_name(&mut self, name: Option<&str>) -> Option<glass_lint_datastructures::NameId> {
-        name.and_then(|name| {
-            let id = self.resolver.intern_name(name);
-            if id.is_none() && self.resolver.name_table_exhausted() {
-                self.stream.mark_name_exhausted();
-            }
-            id
-        })
+        name.and_then(|name| self.resolver.intern_name(name))
     }
 
     fn emit(&mut self, span: Span, payload: FactPayload) {
@@ -418,7 +412,9 @@ impl SemanticFacts {
     /// Whether this artifact has the complete local state required by
     /// project-level matching and flow projection.
     pub(in crate::analysis) fn is_projectable(&self) -> bool {
-        self.stream.is_valid() && self.values().get(ValueId::UNKNOWN).is_some()
+        self.stream.is_valid()
+            && !self.stream.name_exhausted()
+            && self.values().get(ValueId::UNKNOWN).is_some()
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.

@@ -74,7 +74,7 @@ visibility, and keep the `for_test` token path available to tests.
 from field access while retaining the token-gated constructor and dense-ID
 checks. Verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — `FactStreamIssue::NameExhausted` has no distinct consumer and is set by two owners
+#### [x] READ-002 — `FactStreamIssue::NameExhausted` has no distinct consumer and is set by two owners
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -109,7 +109,10 @@ artifacts must keep failing closed — indexing is gated by `stream.is_valid()`
 (`facts/mod.rs:419-421`, `projection.rs:155,252`), and `semantic/tests.rs:38-39`
 asserts a name-exhausted stream is neither valid nor projectable.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the redundant build-time name-exhaustion mark; the
+semantic sealing pass remains the sole producer of the retained latch. Added a
+`name_exhausted()` accessor alongside the other stream issue accessors, while
+preserving fail-closed validity and projectability behavior.
 
 ### Pattern normalization
 
