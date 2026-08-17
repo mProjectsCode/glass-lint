@@ -164,7 +164,7 @@ grammars and must pass unchanged.
 selectors only with `RuleId`, and store wildcard patterns as `Option<RulePattern>`.
 Exact selectors no longer allocate or validate an unused pattern.
 
-#### [ ] READ-004 — `RuleState` declares a lowercase-string serde vocabulary that no site uses; only the bool shim is reachable
+#### [x] READ-004 — `RuleState` declares a lowercase-string serde vocabulary that no site uses; only the bool shim is reachable
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -200,6 +200,10 @@ document) must keep serializing booleans, selector validation must still reject
 invalid selectors at deserialize time (`deserialize_selector`,
 `selection.rs:152-159`), and the `RuleOverride::new`/`state()` public surface
 stays intact for linter tests (`linter/tests.rs:89`).
+
+**Fix Applied:** Removed the unreachable lowercase-string serde vocabulary from
+`RuleState`; `RuleOverride` continues to serialize its state exclusively as the
+documented boolean `enabled` field.
 
 ### Module visibility (`lint/batch`, `lint/report`)
 
