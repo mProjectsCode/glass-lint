@@ -76,7 +76,7 @@ and keep the flow/completion tests behavior-identical (`flow/projector/tests.rs`
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `CallProjection` re-copies the entire `CallEvent` accessor surface before indexing
+#### [x] READ-002 — `CallProjection` re-copies the entire `CallEvent` accessor surface before indexing
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -108,7 +108,10 @@ occurrence anchors as `(fact.id, fact.callee_span())` — the callee span, not
 borrow lifetimes unchanged (`&CallEvent` comes from `fact.payload`, the
 `&SemanticFact` is already in scope).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the field-copying `CallProjection` façade. Call-index
+collection now borrows the original `CallEvent` and computes the canonical
+`(fact.id, callee_span)` occurrence once before passing it to the path and
+special-case helpers. Verified with `make fmt && make ci`.
 
 #### [ ] READ-003 — The cached `ArgumentView` re-implements the `CallArgInfo` argument-projection in a second place
 

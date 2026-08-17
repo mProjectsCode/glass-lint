@@ -9,51 +9,14 @@ use smol_str::SmolStr;
 
 use crate::analysis::{
     DerivedPhaseAvailability,
-    facts::{CallUnwrap, ClassFactRole, FactId, FactPayload, FactStream, Frozen, SemanticFact},
+    facts::{ClassFactRole, FactPayload, FactStream, Frozen, SemanticFact},
     matching::{
         OccurrenceIndexes,
         occurrence::{InstanceMemberKey, ModuleExportKey, Occurrence, ReturnedMemberKey},
     },
-    model::fact::ClassIdentity,
+    model::fact::CallEvent,
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
-
-struct CallProjection<'a> {
-    id: FactId,
-    callee_span: glass_lint_datastructures::ByteRange,
-    callee_name: Option<glass_lint_datastructures::NameId>,
-    call_provenance: &'a SymbolCallProvenance,
-    syntactic_path: Option<&'a NamePath>,
-    rooted_chain: Option<&'a NamePath>,
-    module_member: Option<&'a SymbolMemberProvenance>,
-    returned_member: Option<&'a (NamePath, NamePath)>,
-    instance_class: Option<&'a ClassIdentity>,
-    unwrap: Option<&'a CallUnwrap>,
-}
-
-impl<'a> CallProjection<'a> {
-    fn from_fact(fact: &'a SemanticFact) -> Option<Self> {
-        let FactPayload::Call(call) = fact.payload() else {
-            return None;
-        };
-        Some(Self {
-            id: fact.id(),
-            callee_span: call.callee_span(),
-            callee_name: call.callee_name(),
-            call_provenance: call.call_provenance(),
-            syntactic_path: call.syntactic_path(),
-            rooted_chain: call.rooted_chain(),
-            module_member: call.module_member(),
-            returned_member: call.returned_member(),
-            instance_class: call.instance_class(),
-            unwrap: call.unwrap(),
-        })
-    }
-
-    fn occurrence(&self) -> Occurrence {
-        Occurrence::new(self.id, self.callee_span)
-    }
-}
 
 impl OccurrenceIndexes {
     /// Build a normalized occurrence index from one validated fact stream.
@@ -175,53 +138,54 @@ impl OccurrenceIndexes {
     }
 
     fn record_call_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
-        let Some(call) = CallProjection::from_fact(fact) else {
+        let FactPayload::Call(call) = fact.payload() else {
             return;
         };
-        if let Some(name) = call.callee_name {
-            self.call_indexes.record_call(name, call.occurrence());
+        let occurrence = Occurrence::new(fact.id(), call.callee_span());
+        if let Some(name) = call.callee_name() {
+            self.call_indexes.record_call(name, occurrence);
         }
-        match call.call_provenance {
+        match call.call_provenance() {
             SymbolCallProvenance::Global { name } => {
                 self.call_indexes
-                    .record_global_call(name.clone(), call.occurrence());
+                    .record_global_call(name.clone(), occurrence);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.record_module_call(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    call.occurrence(),
+                    occurrence,
                 );
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
         }
-        self.record_call_paths(&call, names);
-        self.record_call_special_cases(&call);
+        self.record_call_paths(call, occurrence, names);
+        self.record_call_special_cases(call, occurrence);
     }
 
-    fn record_call_paths(&mut self, call: &CallProjection<'_>, names: &NameTable) {
-        if let Some(chain) = call.syntactic_path {
-            self.members.record_call(chain.clone(), call.occurrence());
+    fn record_call_paths(&mut self, call: &CallEvent, occurrence: Occurrence, names: &NameTable) {
+        if let Some(chain) = call.syntactic_path() {
+            self.members.record_call(chain.clone(), occurrence);
         }
-        if let Some(chain) = call.rooted_chain {
-            self.members
-                .record_rooted_call(chain.clone(), call.occurrence());
+        if let Some(chain) = call.rooted_chain() {
+            self.members.record_rooted_call(chain.clone(), occurrence);
         }
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = call.module_member
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
+            call.module_member()
         {
             self.record_module_call(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                call.occurrence(),
+                occurrence,
             );
         }
-        if let Some((source, member)) = call.returned_member {
+        if let Some((source, member)) = call.returned_member() {
             self.members.record_returned_call(
                 ReturnedMemberKey::new(source.clone(), member.clone()),
-                call.occurrence(),
+                occurrence,
             );
         }
-        if let Some(identity) = call.instance_class
+        if let Some(identity) = call.instance_class()
             && let Some(member_name) = call
-                .syntactic_path
+                .syntactic_path()
                 .and_then(NamePath::last_segment)
                 .copied()
                 .and_then(|id| names.resolve(id))
@@ -232,17 +196,16 @@ impl OccurrenceIndexes {
                     identity.export().clone(),
                     SmolStr::new(member_name),
                 ),
-                call.occurrence(),
+                occurrence,
             );
         }
     }
 
-    fn record_call_special_cases(&mut self, call: &CallProjection<'_>) {
-        if let Some(unwrap) = call.unwrap
+    fn record_call_special_cases(&mut self, call: &CallEvent, occurrence: Occurrence) {
+        if let Some(unwrap) = call.unwrap()
             && let Some(chain) = &unwrap.chain_path
             && chain.first_segment().is_some()
         {
-            let occurrence = call.occurrence();
             self.members.record_call(chain.clone(), occurrence);
             self.members.record_rooted_call(chain.clone(), occurrence);
         }
