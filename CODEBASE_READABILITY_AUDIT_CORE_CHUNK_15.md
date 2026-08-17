@@ -133,7 +133,7 @@ counts, but gated its stored fields and charge updates behind `cfg(test)`.
 Production constrained evaluation still uses the same inner path and matching
 semantics, without performing accounting that no production consumer reads.
 
-#### [ ] READ-003 — Prepared root clause fields are re-shaped once, then re-threaded through a six-parameter predicate
+#### [x] READ-003 — Prepared root clause fields are re-shaped once, then re-threaded through a six-parameter predicate
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -171,6 +171,13 @@ argument-projection duplication that also lives in this evaluator
 (`argument_with_overlay`/`ArgumentView`, `evaluator.rs:225-246`) is reported
 separately as chunk 11 READ-003; this finding stays on the prepared-root double
 shape and the predicate threading owned here.
+
+**Fix Applied:** Removed the redundant `ConstrainedRoot` copy and kept the
+physical-root fields directly on `PreparedConstrainedRoot` beside its prepared
+paths and lifecycle state. Added its `matches` method so indexed and fallback
+evaluation use the owner-held clause data without re-threading six arguments.
+The indexed/fallback/published transitions and short-circuit order are
+unchanged.
 
 #### [x] READ-004 — Fallback evidence uses `fact.span` while every indexed call occurrence uses `callee_span`
 

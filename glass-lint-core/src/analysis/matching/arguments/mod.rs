@@ -29,14 +29,6 @@ mod identity;
 
 use evaluator::{EvaluationOperations, MatcherEvaluator, PreparedClausePaths};
 
-struct ConstrainedRoot<'a> {
-    rule: RuleIndex,
-    identity: &'a IdentityConstraint,
-    event: &'a EventSpec,
-    constraints: &'a CanonicalArgumentConstraints,
-    evidence: &'a EvidenceDescriptor,
-}
-
 pub(in crate::analysis) struct ConstrainedRootInput<'a> {
     rule_index: RuleIndex,
     root: &'a PhysicalRoot,
@@ -55,7 +47,11 @@ enum ConstrainedState {
 }
 
 struct PreparedConstrainedRoot<'a> {
-    root: ConstrainedRoot<'a>,
+    rule: RuleIndex,
+    identity: &'a IdentityConstraint,
+    event: &'a EventSpec,
+    constraints: &'a CanonicalArgumentConstraints,
+    evidence: &'a EvidenceDescriptor,
     paths: PreparedClausePaths,
     state: ConstrainedState,
 }
@@ -72,16 +68,30 @@ impl<'a> PreparedConstrainedRoot<'a> {
             return None;
         };
         Some(Self {
-            root: ConstrainedRoot {
-                rule: input.rule_index,
-                identity,
-                event,
-                constraints,
-                evidence,
-            },
+            rule: input.rule_index,
+            identity,
+            event,
+            constraints,
+            evidence,
             paths: PreparedClausePaths::new(identity, event, names),
             state: ConstrainedState::Indexed,
         })
+    }
+
+    fn matches(
+        &self,
+        fact: &crate::analysis::facts::SemanticFact,
+        evaluator: &MatcherEvaluator<'_>,
+        operations: &mut EvaluationOperations,
+    ) -> bool {
+        evaluator.fact_matches_clause(
+            fact,
+            self.identity,
+            self.event,
+            self.constraints,
+            &self.paths,
+            operations,
+        )
     }
 
     fn mark_fallback(&mut self) {
@@ -106,9 +116,9 @@ impl<'a> PreparedConstrainedRoot<'a> {
         if !occurrences.is_empty() {
             push_owned_rule_evidence(
                 evidence,
-                self.root.rule,
-                self.root.evidence.kind,
-                self.root.evidence.symbol.clone(),
+                self.rule,
+                self.evidence.kind,
+                self.evidence.symbol.clone(),
                 occurrences,
             )?;
         }
@@ -381,10 +391,12 @@ impl ConstrainedEvaluation<'_> {
         evidence: &mut RuleEvidenceTable,
     ) -> Result<(), RuleEvidenceError> {
         for prepared_root in &mut self.roots {
-            let root = &prepared_root.root;
-            let Some(candidates) =
-                indexes.occurrences_for_indexed(root.identity, root.event, overlay, stream.names())
-            else {
+            let Some(candidates) = indexes.occurrences_for_indexed(
+                prepared_root.identity,
+                prepared_root.event,
+                overlay,
+                stream.names(),
+            ) else {
                 prepared_root.mark_fallback();
                 continue;
             };
@@ -393,16 +405,7 @@ impl ConstrainedEvaluation<'_> {
                 .filter_map(|occurrence| {
                     stream
                         .fact(occurrence.event())
-                        .filter(|fact| {
-                            evaluator.fact_matches_clause(
-                                fact,
-                                root.identity,
-                                root.event,
-                                root.constraints,
-                                &prepared_root.paths,
-                                operations,
-                            )
-                        })
+                        .filter(|fact| prepared_root.matches(fact, evaluator, operations))
                         .map(|_| occurrence)
                 })
                 .collect();
@@ -424,18 +427,10 @@ impl ConstrainedEvaluation<'_> {
         }
         for fact in stream.facts() {
             for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
-                let root = &prepared_root.root;
                 let FactPayload::Call(call) = fact.payload() else {
                     continue;
                 };
-                if evaluator.fact_matches_clause(
-                    fact,
-                    root.identity,
-                    root.event,
-                    root.constraints,
-                    &prepared_root.paths,
-                    operations,
-                ) {
+                if prepared_root.matches(fact, evaluator, operations) {
                     prepared_root.record_fallback(Occurrence::for_call(fact.id(), call));
                 }
             }
