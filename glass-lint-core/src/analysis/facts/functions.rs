@@ -14,7 +14,7 @@ use crate::analysis::{
         FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
     },
     model::fact::ClassIdentity,
-    syntax::literal_member_property_name,
+    syntax::{literal_member_property_name, unwrap_transparent_expr},
 };
 
 #[derive(Clone, Copy)]
@@ -280,18 +280,9 @@ impl FactBuilder<'_, '_> {
     }
 
     fn class_operand_name(expr: &Expr) -> Option<SmolStr> {
-        match expr {
+        match unwrap_transparent_expr(expr)? {
             Expr::Ident(ident) => Some(ident.sym.to_smolstr()),
             Expr::Member(member) => literal_member_property_name(&member.prop),
-            Expr::Paren(paren) => Self::class_operand_name(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| Self::class_operand_name(expr)),
-            Expr::TsAs(value) => Self::class_operand_name(&value.expr),
-            Expr::TsNonNull(value) => Self::class_operand_name(&value.expr),
-            Expr::TsSatisfies(value) => Self::class_operand_name(&value.expr),
-            Expr::TsTypeAssertion(value) => Self::class_operand_name(&value.expr),
             _ => None,
         }
     }

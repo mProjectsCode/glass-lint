@@ -108,7 +108,7 @@ members, and the fact-stream test now checks both an optional wrapper and an
 unrelated optional member call. Verified with
 `cargo test -p glass-lint-core analysis::facts::stream_tests::call_apply_unwrapping_populates_indexes`.
 
-#### [ ] READ-003 — TypeScript-assertion + sequence + paren unwrap arms repeated by hand in four resolvers
+#### [x] READ-003 — TypeScript-assertion + sequence + paren unwrap arms repeated by hand in four resolvers
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -141,7 +141,10 @@ here (sequence "last-expression" semantics and TS-assertion transparency are the
 only behaviors being consolidated); do not route these through the contextual
 constant evaluator, which changes accepted shapes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `unwrap_transparent_expr` in `analysis::syntax` and
+routed fact argument projections, class-name extraction, and call-origin
+resolution through it, preserving sequence side-effect traversal in the
+callee-child walker. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — `resolve_call_callee` contains two byte-identical fallback arms
 

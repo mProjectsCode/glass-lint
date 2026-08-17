@@ -8,7 +8,7 @@ use crate::analysis::{
         SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
     },
     model::{fact::ClassIdentity, scope::FunctionId},
-    syntax::{effective_callee_expr, literal_member_property_name},
+    syntax::{effective_callee_expr, literal_member_property_name, unwrap_transparent_expr},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,7 +165,7 @@ impl FactBuilder<'_, '_> {
         &mut self,
         expr: &Expr,
     ) -> Option<ClassIdentity> {
-        match expr {
+        match unwrap_transparent_expr(expr)? {
             Expr::New(new_expr) => {
                 let value = self.resolver.resolve_expr_id(expr);
                 if let Some(origin) = self.provenance.instance_origin(value) {
@@ -187,15 +187,6 @@ impl FactBuilder<'_, '_> {
                         .map(ClassIdentity::from)
                 })
             }
-            Expr::Paren(paren) => self.instance_origin_for_expr(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.instance_origin_for_expr(expr)),
-            Expr::TsAs(value) => self.instance_origin_for_expr(&value.expr),
-            Expr::TsNonNull(value) => self.instance_origin_for_expr(&value.expr),
-            Expr::TsSatisfies(value) => self.instance_origin_for_expr(&value.expr),
-            Expr::TsTypeAssertion(value) => self.instance_origin_for_expr(&value.expr),
             _ => None,
         }
     }
@@ -204,33 +195,28 @@ impl FactBuilder<'_, '_> {
         &mut self,
         constructor: &Expr,
     ) -> Option<ClassIdentity> {
+        let unwrapped = unwrap_transparent_expr(constructor);
         self.resolver
             .class_provenance(constructor)
             .map(ClassIdentity::from)
             .or_else(|| {
                 let value = self.resolver.resolve_expr_id(constructor);
-                self.provenance
-                    .class_origin(value)
-                    .or_else(|| match constructor {
+                self.provenance.class_origin(value).or_else(|| {
+                    if let Some(expr) = unwrapped
+                        && !std::ptr::eq(expr, constructor)
+                    {
+                        return self.constructor_origin_for_expr(expr);
+                    }
+                    match unwrapped.unwrap_or(constructor) {
                         Expr::Class(class_expr) => class_expr
                             .class
                             .super_class
                             .as_deref()
                             .and_then(|expr| self.resolver.class_provenance(expr))
                             .map(ClassIdentity::from),
-                        Expr::Paren(paren) => self.constructor_origin_for_expr(&paren.expr),
-                        Expr::Seq(sequence) => sequence
-                            .exprs
-                            .last()
-                            .and_then(|expr| self.constructor_origin_for_expr(expr)),
-                        Expr::TsAs(value) => self.constructor_origin_for_expr(&value.expr),
-                        Expr::TsNonNull(value) => self.constructor_origin_for_expr(&value.expr),
-                        Expr::TsSatisfies(value) => self.constructor_origin_for_expr(&value.expr),
-                        Expr::TsTypeAssertion(value) => {
-                            self.constructor_origin_for_expr(&value.expr)
-                        }
                         _ => None,
-                    })
+                    }
+                })
             })
     }
 

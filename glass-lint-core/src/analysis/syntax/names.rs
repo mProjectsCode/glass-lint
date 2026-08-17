@@ -44,6 +44,23 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
     }
 }
 
+/// Unwrap expression wrappers that preserve the inner expression's identity.
+/// Empty sequences have no effective expression and therefore return `None`.
+pub(in crate::analysis) fn unwrap_transparent_expr(expr: &Expr) -> Option<&Expr> {
+    match expr {
+        Expr::Paren(paren) => unwrap_transparent_expr(&paren.expr),
+        Expr::Seq(sequence) => sequence
+            .exprs
+            .last()
+            .and_then(|expr| unwrap_transparent_expr(expr)),
+        Expr::TsAs(value) => unwrap_transparent_expr(&value.expr),
+        Expr::TsNonNull(value) => unwrap_transparent_expr(&value.expr),
+        Expr::TsSatisfies(value) => unwrap_transparent_expr(&value.expr),
+        Expr::TsTypeAssertion(value) => unwrap_transparent_expr(&value.expr),
+        _ => Some(expr),
+    }
+}
+
 /// Walk every `Ident` binding introduced by a destructuring pattern.
 /// The walker handles all standard JavaScript pattern forms (Ident, Assign,
 /// Rest, Array, Object, Expr, Invalid) and calls `f` for each name.

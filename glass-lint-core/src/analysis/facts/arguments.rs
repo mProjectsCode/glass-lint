@@ -9,7 +9,7 @@ use crate::analysis::{
         ValueId, literal_member_property_name,
     },
     model::value::StaticObject,
-    syntax::constant as syntax_constant,
+    syntax::{constant as syntax_constant, unwrap_transparent_expr},
 };
 
 impl FactBuilder<'_, '_> {
@@ -32,6 +32,9 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn arg_info_projection(&mut self, expr: &Expr) -> CallArgInfo {
+        let Some(expr) = unwrap_transparent_expr(expr) else {
+            return CallArgInfo::unknown();
+        };
         match expr {
             Expr::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
@@ -55,11 +58,6 @@ impl FactBuilder<'_, '_> {
                     provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
                 }
             }
-            Expr::Paren(paren) => self.arg_info_projection(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .map_or_else(CallArgInfo::unknown, |last| self.arg_info_projection(last)),
             _ => {
                 let resolved = self.resolver.resolve_expr(expr);
                 let value = Self::resolve_or_eval(expr, resolved.id, self.resolver);
@@ -93,31 +91,26 @@ impl FactBuilder<'_, '_> {
     /// For `a.b.c`, returns the value of `a` and path `["b", "c"]`
     /// by walking the member chain to the deepest non-member identity.
     fn member_chain_projection(&mut self, expr: &Expr) -> (ValueId, PathId) {
-        match expr {
-            Expr::Member(member) => {
-                let (base_val, base_path) = self.member_chain_projection(&member.obj);
-                let Some(property) = literal_member_property_name(&member.prop) else {
+        let Some(expr) = unwrap_transparent_expr(expr) else {
+            return (ValueId::UNKNOWN, PathId::EMPTY);
+        };
+        if let Expr::Member(member) = expr {
+            let (base_val, base_path) = self.member_chain_projection(&member.obj);
+            let Some(property) = literal_member_property_name(&member.prop) else {
+                return (ValueId::UNKNOWN, PathId::EMPTY);
+            };
+            let extended = if let Ok(index) = property.parse::<usize>() {
+                let Ok(index) = u32::try_from(index) else {
                     return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
-                let extended = if let Ok(index) = property.parse::<usize>() {
-                    let Ok(index) = u32::try_from(index) else {
-                        return (ValueId::UNKNOWN, PathId::EMPTY);
-                    };
-                    self.append_path(base_path, PathSegmentInput::Index(index))
-                } else {
-                    self.append_path(base_path, PathSegmentInput::Property(property.as_str()))
-                };
-                (base_val, extended)
-            }
-            Expr::Paren(paren) => self.member_chain_projection(&paren.expr),
-            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
-                || (ValueId::UNKNOWN, PathId::EMPTY),
-                |last| self.member_chain_projection(last),
-            ),
-            _ => {
-                let value = self.resolver.resolve_expr_id(expr);
-                (value, PathId::EMPTY)
-            }
+                self.append_path(base_path, PathSegmentInput::Index(index))
+            } else {
+                self.append_path(base_path, PathSegmentInput::Property(property.as_str()))
+            };
+            (base_val, extended)
+        } else {
+            let value = self.resolver.resolve_expr_id(expr);
+            (value, PathId::EMPTY)
         }
     }
 
@@ -133,6 +126,9 @@ impl FactBuilder<'_, '_> {
     // Kept as a single dispatch match: each Expr arm recurses or delegates,
     // and the object/array arms are the substantive branches.
     fn analyze_argument_tree(&mut self, expr: &Expr) -> ValueId {
+        let Some(expr) = unwrap_transparent_expr(expr) else {
+            return self.resolver.resolve_expr_id(expr);
+        };
         // Match over Expr variants; each arm is a self-contained builder step.
         // Extracting per-variant helpers would add dispatch boilerplate without
         // reducing overall complexity.
@@ -172,14 +168,6 @@ impl FactBuilder<'_, '_> {
                     elements.push(child_value);
                 }
                 self.resolver.static_array(elements).id
-            }
-            Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr),
-            Expr::Seq(sequence) => {
-                if let Some(last) = sequence.exprs.last() {
-                    self.analyze_argument_tree(last)
-                } else {
-                    self.resolver.resolve_expr_id(expr)
-                }
             }
             _ => self.resolver.resolve_expr_id(expr),
         }
