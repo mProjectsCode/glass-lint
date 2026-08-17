@@ -77,7 +77,7 @@ flags remain available to test-only plan summaries and validation.
 
 ### Linker ownership boundary (`analysis/project/linker/mod.rs`, `analysis/project/model.rs`)
 
-#### [ ] READ-002 — `LinkedProjectState` re-lists the linker's retained field set field by field
+#### [x] READ-002 — `LinkedProjectState` re-lists the linker's retained field set field by field
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -107,7 +107,11 @@ budget state must not survive into the immutable model; `edge_count` (from
 `Send + Sync` post-link model contract stays intact; the test-only
 `single_with_limits` path keeps constructing `LinkedProjectState` directly.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the existing `LinkedProjectState` the retained-state
+owner inside `ProjectLinker`. The linker now keeps only transient graph,
+partition, lookup-cache, and budget fields; `finish` moves the state directly
+and fills its `edge_count` from the transient graph. The test-only single-file
+model construction remains unchanged.
 
 ### Export lookup layer (`analysis/project/resolver.rs`, `linker/mod.rs`, `model.rs`)
 

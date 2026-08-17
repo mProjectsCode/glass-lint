@@ -20,7 +20,7 @@ use crate::{
         project::state::{ExportLookupCache, ExportTable, NormalizedModuleGraph, SccPartition},
         semantic::status::AnalysisStatus,
     },
-    project::{AnalysisDiagnostic, SourceLocation},
+    project::SourceLocation,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,20 +28,16 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// Transient linker that owns the module graph, SCC partition, mutable export
-/// table, budgets, diagnostics, modules, and resolutions. Consumed into a
+/// table, budgets, and transient graph state. Retained modules, resolutions,
+/// diagnostics, and status are held in the linked state consumed into a
 /// [`ProjectSemanticModel`](super::model::ProjectSemanticModel).
 pub(super) struct ProjectLinker {
-    modules: BTreeMap<ModuleId, ProjectModule>,
-    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    state: super::model::LinkedProjectState,
     graph: NormalizedModuleGraph,
     scc_partition: Option<SccPartition>,
-    exports: ExportTable,
     lookup_session: ExportLookupCache,
     link_budget: BudgetTracker,
     link_limit: usize,
-    link_cycle_rounds: usize,
-    diagnostics: Vec<AnalysisDiagnostic>,
-    status: AnalysisStatus,
 }
 
 impl ProjectLinker {
@@ -50,9 +46,9 @@ impl ProjectLinker {
         operation: impl FnOnce(&mut ExportResolver<'_>) -> T,
     ) -> T {
         resolver::with_export_resolver(
-            &self.modules,
-            &self.resolutions,
-            &self.exports,
+            &self.state.modules,
+            &self.state.resolutions,
+            &self.state.exports,
             &mut self.lookup_session,
             operation,
         )
@@ -66,15 +62,18 @@ impl ProjectLinker {
         export_lookup_capacity: usize,
     ) -> Self {
         Self {
-            modules,
-            resolutions,
+            state: super::model::LinkedProjectState {
+                modules,
+                resolutions,
+                exports: ExportTable::default(),
+                edge_count: 0,
+                link_cycle_rounds: 0,
+                diagnostics: Vec::new(),
+                status: AnalysisStatus::default(),
+            },
             graph: NormalizedModuleGraph::default(),
             scc_partition: None,
-            exports: ExportTable::default(),
             lookup_session: ExportLookupCache::new(export_lookup_capacity),
-            link_cycle_rounds: 0,
-            diagnostics: Vec::new(),
-            status: AnalysisStatus::default(),
             link_budget: BudgetTracker::default(),
             link_limit,
         }
@@ -85,9 +84,9 @@ impl ProjectLinker {
     // -----------------------------------------------------------------------
 
     pub(super) fn propagate_local_status(&mut self) {
-        let Self {
+        let super::model::LinkedProjectState {
             modules, status, ..
-        } = self;
+        } = &mut self.state;
         for module in modules.values() {
             let file_status = module.local().status().materialize_file(module.path());
             let path = module.path().clone();
@@ -107,8 +106,12 @@ impl ProjectLinker {
     // -----------------------------------------------------------------------
 
     pub(super) fn collect_graph_edges(&mut self) {
-        let result = graph::GraphBuild::build(&self.modules, &self.resolutions, self.link_limit);
-        self.status.extend(&result.status);
+        let result = graph::GraphBuild::build(
+            &self.state.modules,
+            &self.state.resolutions,
+            self.link_limit,
+        );
+        self.state.status.extend(&result.status);
         if result.exhausted {
             self.link_budget.mark_exhausted();
         }
@@ -124,7 +127,7 @@ impl ProjectLinker {
             self.resolve_export_table();
             self.validate_imported_exports();
         }
-        self.diagnostics.sort_by(|left, right| {
+        self.state.diagnostics.sort_by(|left, right| {
             (
                 left.location().map(SourceLocation::path),
                 left.code().as_str(),
@@ -136,7 +139,7 @@ impl ProjectLinker {
                     right.message(),
                 ))
         });
-        self.diagnostics.dedup();
+        self.state.diagnostics.dedup();
     }
 
     /// Consume the linker and construct the final semantic model.
@@ -144,18 +147,8 @@ impl ProjectLinker {
         self,
         limits: &crate::AnalysisLimits,
     ) -> super::model::ProjectSemanticModel {
-        let edge_count = self.graph.edge_count();
-        super::model::ProjectSemanticModel::from_linker(
-            super::model::LinkedProjectState {
-                modules: self.modules,
-                resolutions: self.resolutions,
-                exports: self.exports,
-                edge_count,
-                link_cycle_rounds: self.link_cycle_rounds,
-                diagnostics: self.diagnostics,
-                status: self.status,
-            },
-            limits,
-        )
+        let mut state = self.state;
+        state.edge_count = self.graph.edge_count();
+        super::model::ProjectSemanticModel::from_linker(state, limits)
     }
 }

@@ -21,7 +21,8 @@ use crate::{
 
 impl ProjectLinker {
     fn module_exports(&self, module: ModuleId) -> Vec<(SmolStr, module::ModuleExport)> {
-        self.modules
+        self.state
+            .modules
             .get(&module)
             .into_iter()
             .flat_map(|project_module| {
@@ -53,17 +54,17 @@ impl ProjectLinker {
             }
         }
 
-        self.link_cycle_rounds = total_cycle_rounds;
+        self.state.link_cycle_rounds = total_cycle_rounds;
         let has_components = !partition.is_empty();
         self.scc_partition = Some(partition);
 
         if has_components && self.link_budget.is_exhausted() {
-            self.status.record(
+            self.state.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
                     component: AnalysisComponent::Linking,
                     limit: self.link_limit,
-                    observed: Some(self.exports.len()),
+                    observed: Some(self.state.exports.len()),
                 },
             );
         }
@@ -84,7 +85,8 @@ impl ProjectLinker {
         let module_exports: Vec<(ModuleId, Vec<(SmolStr, module::ModuleExport)>)> = scc
             .iter()
             .filter_map(|&module| {
-                self.modules
+                self.state
+                    .modules
                     .get(&module)
                     .map(|_| (module, self.module_exports(module)))
             })
@@ -108,8 +110,10 @@ impl ProjectLinker {
             for (module, exports) in &module_exports {
                 for (name, _) in exports {
                     let id = QualifiedExportId::new(*module, name.clone());
-                    if self.exports.resolve(&id).is_some() {
-                        self.exports.set_resolution(id, ExportResolution::Unknown);
+                    if self.state.exports.resolve(&id).is_some() {
+                        self.state
+                            .exports
+                            .set_resolution(id, ExportResolution::Unknown);
                     }
                 }
             }
@@ -128,12 +132,13 @@ impl ProjectLinker {
     ) -> bool {
         let resolved = self.resolve_export(module, name, export);
         let id = QualifiedExportId::new(module, name.clone());
-        if self.exports.resolve(&id).is_none() && self.exports.len() >= self.link_limit {
+        if self.state.exports.resolve(&id).is_none() && self.state.exports.len() >= self.link_limit
+        {
             self.link_budget.mark_exhausted();
             return false;
         }
         !matches!(
-            self.exports.set_resolution(id, resolved),
+            self.state.exports.set_resolution(id, resolved),
             ExportUpdate::Unchanged
         )
     }
@@ -142,10 +147,11 @@ impl ProjectLinker {
     /// ambiguous after linking.
     pub(super) fn validate_imported_exports(&mut self) {
         let mut checks = Vec::new();
-        for module in self.modules.values() {
+        for module in self.state.modules.values() {
             for (request_id, request) in module.local().interface().request_entries() {
                 let key = QualifiedRequestId::new(module.id(), request_id);
-                let Some(LinkedModuleTarget::Internal { id }) = self.resolutions.get(&key) else {
+                let Some(LinkedModuleTarget::Internal { id }) = self.state.resolutions.get(&key)
+                else {
                     continue;
                 };
                 let ModuleRequestRole::Import { bindings } = request.role() else {
@@ -162,8 +168,8 @@ impl ProjectLinker {
         for (importer, target, request_id, imported) in checks {
             match self.lookup_export(&QualifiedExportId::new(target, imported.clone())) {
                 Some(ExportResolution::Ambiguous) => {
-                    if let Some(module) = self.modules.get(&importer) {
-                        self.status.record(
+                    if let Some(module) = self.state.modules.get(&importer) {
+                        self.state.status.record(
                             StatusScope::File(module.path().clone()),
                             IncompleteReason::AmbiguousStarExport {
                                 request: imported.to_string(),
@@ -172,10 +178,10 @@ impl ProjectLinker {
                     }
                 }
                 None => {
-                    self.diagnostics.push(AnalysisDiagnostic::new(
+                    self.state.diagnostics.push(AnalysisDiagnostic::new(
                         crate::project::types::DiagnosticKind::MissingImportedExport.into(),
                         format!("module does not export `{imported}`"),
-                        self.modules.get(&importer).and_then(|module| {
+                        self.state.modules.get(&importer).and_then(|module| {
                             Some(crate::project::SourceLocation::new(
                                 ProjectRelativePath::from_normalized(module.path().to_string()),
                                 module.local().interface().request(request_id).and_then(
@@ -218,7 +224,7 @@ impl ProjectLinker {
     }
 
     fn resolve_local_export(&mut self, module: ModuleId, name: &SmolStr) -> ExportResolution {
-        let Some(project_module) = self.modules.get(&module) else {
+        let Some(project_module) = self.state.modules.get(&module) else {
             return ExportResolution::Unknown;
         };
         let is_local = project_module.local().interface().is_local(name);
@@ -251,6 +257,7 @@ impl ProjectLinker {
 
     fn resolve_value_export(&self, module: ModuleId, export_name: &SmolStr) -> ExportResolution {
         let static_string = self
+            .state
             .modules
             .get(&module)
             .and_then(|project_module| {
@@ -274,7 +281,7 @@ impl ProjectLinker {
         module: ModuleId,
         request_index: module::ModuleRequestId,
     ) -> ExportResolution {
-        let Some(project_module) = self.modules.get(&module) else {
+        let Some(project_module) = self.state.modules.get(&module) else {
             return ExportResolution::Unknown;
         };
         if !project_module
@@ -285,7 +292,8 @@ impl ProjectLinker {
             return ExportResolution::Unknown;
         }
         let key = QualifiedRequestId::new(module, request_index);
-        self.resolutions
+        self.state
+            .resolutions
             .get(&key)
             .map_or(ExportResolution::Unknown, |target| {
                 linked_target_to_export_resolution(target, NAMESPACE_EXPORT)
@@ -314,7 +322,7 @@ impl ProjectLinker {
         request_index: module::ModuleRequestId,
         imported: &SmolStr,
     ) -> ExportResolution {
-        let Some(project_module) = self.modules.get(&module) else {
+        let Some(project_module) = self.state.modules.get(&module) else {
             return ExportResolution::Unknown;
         };
         if !project_module
