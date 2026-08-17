@@ -236,7 +236,7 @@ operations)` pair must keep their current shape and accounting.
 
 ### Occurrence indexes and evidence (`indexes.rs`, `build.rs`, `evidence.rs`, `identity_map.rs`)
 
-#### [ ] READ-006 — The four index groups carry inconsistent `Clone` derives that no caller uses
+#### [x] READ-006 — The four index groups carry inconsistent `Clone` derives that no caller uses
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -259,6 +259,11 @@ intended, add it to all four plus `OccurrenceIndexes` deliberately). Guardrail:
 the normalization contract stays on `OccurrenceIndexes::from_stream` → per-group
 `normalize`; no caller currently needs an owned index copy, so keep the shared
 artifact immutable and borrowed.
+
+**Fix Applied:** Removed the unused `Clone` derives from `MemberIndexes`,
+`ConstructionIndexes`, and `LiteralIndexes`, aligning the groups with
+`CallIndexes` and the non-cloneable `OccurrenceIndexes` owner. Borrowed index
+queries and normalization are unchanged.
 
 ## Systemic Themes
 

@@ -57,7 +57,7 @@ impl CallIndexes {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(super) struct MemberIndexes {
     calls: OccurrenceIndex<NamePath>,
     rooted_calls: OccurrenceIndex<NamePath>,
@@ -180,7 +180,7 @@ impl MemberIndexes {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(super) struct ConstructionIndexes {
     classes: Occurrences,
     module_classes: ModuleOccurrences,
@@ -276,7 +276,7 @@ impl ConstructionIndexes {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(super) struct LiteralIndexes {
     imports: Occurrences,
     strings: Occurrences,
