@@ -94,7 +94,7 @@ fn unknown_namespace_wildcard_masks_base_module_occurrences() {
         ModuleExportKey::wildcard("namespace"),
         ExportResolution::Unknown,
     );
-    let (view, _) = LinkedOccurrenceView::build(&indexes, &identities);
+    let view = LinkedOccurrenceView::build(&indexes, &identities);
 
     assert!(
         view.resolve_module(

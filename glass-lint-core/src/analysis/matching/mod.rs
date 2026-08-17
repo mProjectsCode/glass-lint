@@ -86,11 +86,9 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
         &mut self,
         source: ModuleOverlaySource<'a>,
         identities: &ModuleIdentityMap,
-    ) -> (usize, Vec<(SmolStr, &'a [Occurrence])>) {
-        let mut operations = 0usize;
+    ) -> Vec<(SmolStr, &'a [Occurrence])> {
         let mut globals = Vec::new();
         source.occurrences.for_each_bucket(|key, occurrences| {
-            operations = operations.saturating_add(1);
             let Some(identity) = LinkedOccurrenceView::identity_for(identities, key) else {
                 return;
             };
@@ -114,7 +112,7 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
                 | ExportResolution::Unknown => {}
             }
         });
-        (operations, globals)
+        globals
     }
 
     fn buckets_mut(&mut self, kind: ModuleOverlayKind) -> &mut BorrowedModuleBuckets<'a> {
@@ -165,14 +163,12 @@ impl<'a> LinkedOccurrenceView<'a> {
     /// Build the linked occurrence overlay from the module identities.
     ///
     /// Identity remapping, masking, and global promotion belong to this view;
-    /// callers receive only the completed overlay and its bounded operation
-    /// count.
+    /// callers receive only the completed overlay.
     pub(in crate::analysis) fn build(
         indexes: &'a OccurrenceIndexes,
         identities: &ModuleIdentityMap,
-    ) -> (Self, usize) {
+    ) -> Self {
         let mut view = Self::default();
-        let mut operations = 0usize;
         for source in [
             ModuleOverlaySource {
                 occurrences: indexes.call_indexes.module_calls(),
@@ -200,13 +196,12 @@ impl<'a> LinkedOccurrenceView<'a> {
                 global_promotion: GlobalPromotion::Disabled,
             },
         ] {
-            let (count, globals) = view.module.remap(source, identities);
-            operations += count;
+            let globals = view.module.remap(source, identities);
             for (name, occurrences) in globals {
                 view.global_calls.entry(name).or_default().push(occurrences);
             }
         }
-        (view, operations)
+        view
     }
 
     fn identity_for(

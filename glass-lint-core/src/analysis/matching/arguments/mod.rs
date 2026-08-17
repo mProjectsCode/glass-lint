@@ -159,29 +159,24 @@ impl<'a> MatcherArtifact<'a> {
         facts: &'a SemanticFacts,
         project: MatcherProjectOverlay<'_>,
         overlay_policy: MatcherOverlayPolicy,
-    ) -> (Self, usize) {
-        let (overlay, operations) = match overlay_policy {
-            MatcherOverlayPolicy::Disabled => (None, 0),
+    ) -> Self {
+        let overlay = match overlay_policy {
+            MatcherOverlayPolicy::Disabled => None,
             MatcherOverlayPolicy::Enabled => {
                 if facts.matcher_index().is_available() {
-                    project.identities.map_or((None, 0), |identities| {
-                        let (overlay, operations) =
-                            LinkedOccurrenceView::build(facts.matcher_index(), identities);
-                        (Some(overlay), operations)
+                    project.identities.map(|identities| {
+                        LinkedOccurrenceView::build(facts.matcher_index(), identities)
                     })
                 } else {
-                    (None, 0)
+                    None
                 }
             }
         };
-        (
-            Self {
-                stream: facts.stream(),
-                indexes: facts.matcher_index(),
-                overlay,
-            },
-            operations,
-        )
+        Self {
+            stream: facts.stream(),
+            indexes: facts.matcher_index(),
+            overlay,
+        }
     }
 
     #[cfg(test)]
@@ -244,9 +239,9 @@ impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
         facts: &'facts SemanticFacts,
         project: MatcherProjectOverlay<'project>,
         overlay_policy: MatcherOverlayPolicy,
-    ) -> (Self, usize) {
-        let (artifact, operations) = MatcherArtifact::from_facts(facts, project, overlay_policy);
-        (Self { artifact, project }, operations)
+    ) -> Self {
+        let artifact = MatcherArtifact::from_facts(facts, project, overlay_policy);
+        Self { artifact, project }
     }
 
     pub(in crate::analysis) fn artifact(&self) -> &MatcherArtifact<'facts> {

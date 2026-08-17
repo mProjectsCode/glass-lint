@@ -12,8 +12,6 @@ fn flow_observed_excludes_non_flow_projection_work() {
     };
     outcome.record_cross(&cross);
     outcome.status.flow.mark_incomplete();
-    outcome.metrics.operations = 100;
-
     let finished = outcome.finish();
 
     assert_eq!(finished.status.flow_observed, Some(12));

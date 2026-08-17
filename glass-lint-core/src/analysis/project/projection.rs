@@ -168,9 +168,8 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 };
                 let project_overlay =
                     MatcherProjectOverlay::new(identities.as_ref(), result_identities.as_ref());
-                let (matcher_context, overlay_ops) =
+                let matcher_context =
                     MatcherProjectContext::from_facts(facts, project_overlay, overlay_policy);
-                outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = self.plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
                     && effects.is_available()

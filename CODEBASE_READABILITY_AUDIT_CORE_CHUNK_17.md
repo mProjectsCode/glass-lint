@@ -185,7 +185,7 @@ must keep failing closed), and keep the evidence-order/determinism contract of
 
 ### Projection outcome accounting (`analysis/project/projection/outcome.rs`, `projection.rs`)
 
-#### [ ] READ-005 — `ProjectionMetrics::operations` is write-only and `record_local`/`record_cross` duplicate the same accumulation
+#### [x] READ-005 — `ProjectionMetrics::operations` is write-only and `record_local`/`record_cross` duplicate the same accumulation
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -220,7 +220,11 @@ reporting semantics, the `effect_projections` assignment in `record_cross`,
 and the `flow_operations`-excludes-overlay-ops distinction asserted in
 projection/tests.rs:3-20.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the write-only projection `operations` metric and its
+overlay accounting. Shared flow completion, operation, and trace-head
+accumulation now lives in `ProjectionOutcome::record_flow`, used by both local
+and cross recording; report-facing metric getters and flow observation remain
+unchanged.
 
 ### Export identity conversions (`analysis/project/linker/export.rs`, `analysis/project/identities.rs`)
 

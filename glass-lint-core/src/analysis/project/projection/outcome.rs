@@ -98,7 +98,6 @@ pub struct ProjectionMetrics {
     coalescing_comparisons: usize,
     /// Local loop fixed-point iterations.
     fixed_point_iterations: usize,
-    pub(in crate::analysis::project::projection) operations: usize,
 }
 
 impl ProjectionOutcome {
@@ -137,10 +136,7 @@ impl ProjectionOutcome {
     }
 
     pub(super) fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
-        if local.is_exhausted() {
-            self.status.flow.mark_incomplete();
-        }
-        self.status.flow_operations = self.status.flow_operations.saturating_add(local.operations);
+        self.record_flow(local.is_exhausted(), local.operations);
         self.metrics.max_live_alternatives = self
             .metrics
             .max_live_alternatives
@@ -154,17 +150,19 @@ impl ProjectionOutcome {
             .fixed_point_iterations
             .saturating_add(local.fixed_point_iterations);
         self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(local.trace_heads);
-        self.metrics.operations = self.metrics.operations.saturating_add(local.operations);
     }
 
     pub(super) fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
-        if cross.completion.is_incomplete() {
-            self.status.flow.mark_incomplete();
-        }
-        self.status.flow_operations = self.status.flow_operations.saturating_add(cross.operations);
+        self.record_flow(cross.completion.is_incomplete(), cross.operations);
         self.metrics.effect_projections = cross.projections;
         self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(cross.trace_heads);
-        self.metrics.operations = self.metrics.operations.saturating_add(cross.operations);
+    }
+
+    fn record_flow(&mut self, incomplete: bool, operations: usize) {
+        if incomplete {
+            self.status.flow.mark_incomplete();
+        }
+        self.status.flow_operations = self.status.flow_operations.saturating_add(operations);
     }
 
     pub(super) fn finish(mut self) -> Self {
