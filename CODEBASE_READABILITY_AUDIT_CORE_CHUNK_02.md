@@ -154,7 +154,7 @@ and centralized segment appending/invalidation so a failed append always sets
 
 ### Origin-map journaling
 
-#### [ ] READ-004 — `OriginMap: Clone` silently drops the open journal and is unused
+#### [x] READ-004 — `OriginMap: Clone` silently drops the open journal and is unused
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -182,7 +182,9 @@ the operation itself. Guardrails: `snapshot`/`restore_snapshot`/`retain_common`
 remain the only supported join-point capture paths, and the checkpoint-count /
 budget invoicing behavior must stay unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unused journal-dropping `Clone` implementation;
+transactional snapshots remain explicit through `snapshot`/`restore_snapshot`.
+Verified with `make fmt && make ci`.
 
 ### Interface construction
 

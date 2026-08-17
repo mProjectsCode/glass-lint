@@ -189,15 +189,5 @@ impl<V: std::fmt::Debug> std::fmt::Debug for OriginMap<V> {
     }
 }
 
-impl<V: Clone> Clone for OriginMap<V> {
-    fn clone(&self) -> Self {
-        Self {
-            map: self.map.clone(),
-            log: Vec::new(),
-            open_checkpoints: 0,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests;
