@@ -179,8 +179,7 @@ fn classify_candidates(
                 .const_provenance(expr)
                 .and_then(|provenance| binding(name, provenance)),
             Candidate::StaticObject => collector
-                .static_object_values(expr)
-                .or_else(|| collector.const_provenance(expr))
+                .static_object_or_const_provenance(expr)
                 .and_then(|provenance| binding(name, provenance)),
             Candidate::ReturnedObject => {
                 let rooted_path = collector.rooted_name_path(expr);

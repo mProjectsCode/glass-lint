@@ -83,7 +83,7 @@ fn declare_classify(
 fn assign_prov(collector: &mut ScopeCollector, source: &str) -> BindingProvenance {
     let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
     let expr = find_first_assign(&parsed.program);
-    assignment_provenance(collector, &expr)
+    collector.assignment_provenance(&expr)
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn caches_subresults_so_views_share_one_classification() {
     let source = "var config = { flag: host.value }; use(config);";
     with_collector(source, |collector| {
         let (classification, expr, kind) = declare_classify(collector, source, false);
-        assert!(expression_is_mutable_static_object(collector, &expr, kind));
+        assert!(collector.expression_is_mutable_static_object(&expr, kind));
         assert!(
             matches!(
                 classification,
@@ -188,16 +188,8 @@ fn mutability_requires_var_declaration_kind() {
     with_collector(source, |collector| {
         let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
         let (_, expr, _) = find_first_declarator(&parsed.program);
-        assert!(!expression_is_mutable_static_object(
-            collector,
-            &expr,
-            VarDeclKind::Const
-        ));
-        assert!(!expression_is_mutable_static_object(
-            collector,
-            &expr,
-            VarDeclKind::Let
-        ));
+        assert!(!collector.expression_is_mutable_static_object(&expr, VarDeclKind::Const));
+        assert!(!collector.expression_is_mutable_static_object(&expr, VarDeclKind::Let));
     });
 }
 

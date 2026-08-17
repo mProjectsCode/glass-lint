@@ -5,7 +5,7 @@
 //! of widening a strict match from a name-only resemblance.
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_ecma_ast::{Callee, Expr};
+use swc_ecma_ast::{Callee, Expr, VarDeclKind};
 
 use crate::analysis::{
     model::StaticProperties,
@@ -116,6 +116,43 @@ impl ScopeCollector<'_> {
     pub(super) fn const_provenance(&mut self, init: &Expr) -> Option<BindingProvenance> {
         let value = constant::evaluate(init, self);
         const_value_to_provenance(value, &mut |name| self.lookup_or_intern_name(name))
+    }
+
+    /// Resolve the static-object forms shared by declaration classification
+    /// and mutable-object tracking.
+    pub(super) fn static_object_or_const_provenance(
+        &mut self,
+        expr: &Expr,
+    ) -> Option<BindingProvenance> {
+        self.static_object_values(expr)
+            .or_else(|| self.const_provenance(expr))
+    }
+
+    pub(super) fn expression_is_mutable_static_object(
+        &mut self,
+        expr: &Expr,
+        kind: VarDeclKind,
+    ) -> bool {
+        if kind != VarDeclKind::Var {
+            return false;
+        }
+        matches!(
+            self.static_object_or_const_provenance(expr),
+            Some(BindingProvenance::StaticObjectKeys(_) | BindingProvenance::StaticObjectValues(_))
+        )
+    }
+
+    pub(super) fn assignment_provenance(&mut self, expr: &Expr) -> BindingProvenance {
+        self.constructed_instance_provenance(expr)
+            .or_else(|| self.bound_callable_provenance(expr))
+            .or_else(|| self.module_alias_provenance(expr))
+            .or_else(|| self.returned_object_provenance(expr))
+            .or_else(|| self.const_provenance(expr))
+            .or_else(|| {
+                self.rooted_name_path(expr)
+                    .map(|target| BindingProvenance::ValueAlias { target })
+            })
+            .unwrap_or(BindingProvenance::Local)
     }
 
     /// Resolve the strict provenance forms accepted for a call argument.

@@ -19,10 +19,7 @@ use crate::analysis::{
         build::{
             CompactPat, ControlFlowFrame, PropertyAliasAssignment, RootedPropertyMutation,
             ScopeCollectionIssue, ScopedDynamicEval,
-            analysis::{
-                DeclarationClassification, assignment_provenance, classify_declaration,
-                expression_is_mutable_static_object,
-            },
+            analysis::{DeclarationClassification, classify_declaration},
             traversal::{ScopeEntry, ScopePass},
         },
     },
@@ -485,7 +482,7 @@ impl ScopeCollector<'_> {
         init: Option<&Expr>,
     ) {
         let mutable_object =
-            init.is_some_and(|init| expression_is_mutable_static_object(self, init, kind));
+            init.is_some_and(|init| self.expression_is_mutable_static_object(init, kind));
         self.record_mutable_static_object(scope, mutable_object, declarator);
         self.record_pending_function_name(scope, &declarator.name, init);
         self.record_function_alias(scope, &declarator.name, init);
@@ -555,7 +552,7 @@ impl ScopeCollector<'_> {
         ident: &swc_ecma_ast::BindingIdent,
         assignment: &AssignExpr,
     ) {
-        let provenance = assignment_provenance(self, &assignment.right);
+        let provenance = self.assignment_provenance(&assignment.right);
         let Some(name_id) = self.name_id(ident.id.sym.as_ref()) else {
             return;
         };

@@ -149,7 +149,7 @@ documents the collector invariant that all function-binding targets receive
 IDs during allocation. The named `BindingFreezeInput` phase bundle and empty
 fallback remain unchanged.
 
-#### [ ] READ-004 — Assignment-effect helpers are a caller-side free-function chain over `ScopeCollector` state that duplicates the provenance.rs composition
+#### [x] READ-004 — Assignment-effect helpers are a caller-side free-function chain over `ScopeCollector` state that duplicates the provenance.rs composition
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -192,7 +192,12 @@ precedence order tested in `analysis/tests.rs` (bound-callable before rooted
 alias, constant after module, `Local` failure fallback) and fail-closed behavior
 for dynamic values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved assignment provenance and mutable-static-object
+classification onto `ScopeCollector` beside the existing provenance methods,
+then removed the caller-side `assignment` helper module. The exact assignment
+precedence remains unchanged. Declaration classification and mutable-object
+tracking now share the collector-owned static-object/constant probe without
+merging their distinct surrounding policies.
 
 #### [x] READ-005 — `Candidate::BoundCallable` is provably dead in `classify_call`'s fallthrough candidate list
 
