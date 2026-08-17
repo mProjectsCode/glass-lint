@@ -95,23 +95,17 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn intern_static_string(&mut self, value: String) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::StaticString(value), None);
+        let id = self.values.intern_value(Value::StaticString(value));
         self.interned_value(id)
     }
 
     pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::StaticNumber(value), None);
+        let id = self.values.intern_value(Value::StaticNumber(value));
         self.interned_value(id)
     }
 
     pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::StaticArray(values), None);
+        let id = self.values.intern_value(Value::StaticArray(values));
         self.interned_value(id)
     }
 
@@ -119,9 +113,7 @@ impl Resolver<'_> {
         &mut self,
         object: crate::analysis::model::value::StaticObject,
     ) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::StaticObject(object), None);
+        let id = self.values.intern_value(Value::StaticObject(object));
         self.interned_value(id)
     }
 
@@ -129,16 +121,12 @@ impl Resolver<'_> {
         &mut self,
         object: crate::analysis::model::value::ResolvedObjectId,
     ) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::Object(object), None);
+        let id = self.values.intern_value(Value::Object(object));
         self.interned_value(id)
     }
 
     pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
-        let id = self
-            .values
-            .intern_value_with_binding(Value::RootedMember { path }, None);
+        let id = self.values.intern_value(Value::RootedMember { path });
         self.interned_value(id)
     }
 

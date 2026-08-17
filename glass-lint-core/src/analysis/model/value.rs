@@ -155,7 +155,7 @@ impl Default for ValueTable {
 }
 
 impl ValueTable {
-    fn intern_value(&mut self, value: Value) -> ValueId {
+    pub(in crate::analysis) fn intern_value(&mut self, value: Value) -> ValueId {
         let binding_terminal = match &value {
             Value::Binding { target, .. } => {
                 let Some(target_index) = usize::try_from(target.raw()).ok() else {

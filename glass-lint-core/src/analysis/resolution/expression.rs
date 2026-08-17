@@ -320,9 +320,9 @@ impl Resolver<'_> {
             )
         };
         let final_id = match &call {
-            SymbolCallProvenance::Global { name } => self
-                .values
-                .intern_value_with_binding(Value::Global(name.clone()), None),
+            SymbolCallProvenance::Global { name } => {
+                self.values.intern_value(Value::Global(name.clone()))
+            }
             _ => seed.provisional_id,
         };
         let module_member = seed

@@ -155,7 +155,7 @@ matcher behavior and evidence order identical.
 the flow matcher and argument overlay through those accessors. Added a value
 table test covering static-object and rooted-member extraction.
 
-#### [ ] READ-005 — Interning surface pushes `intern_value_with_binding(.., None)` onto 8 of 10 production calls
+#### [x] READ-005 — Interning surface pushes `intern_value_with_binding(.., None)` onto 8 of 10 production calls
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -184,6 +184,10 @@ behavior identical for both entry points — `intern_value` already performs the
 binding-terminal and `MAX_VALUES` bookkeeping (value.rs:158-194), so the exposed
 entry must not change it — and do not change the `Value::Binding`
 chaining used by the two binding-aware callers.
+
+**Fix Applied:** Exposed `ValueTable::intern_value` within the analysis boundary
+and routed all no-binding production callers through it. Binding-aware callers
+continue to use `intern_value_with_binding`.
 
 ### Scope and binding identity model
 

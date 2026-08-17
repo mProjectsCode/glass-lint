@@ -78,9 +78,7 @@ impl Resolver<'_> {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);
-        let id = self
-            .values
-            .intern_value_with_binding(Value::Callable(target), None);
+        let id = self.values.intern_value(Value::Callable(target));
         self.interned_value(id)
     }
 
