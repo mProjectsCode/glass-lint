@@ -46,7 +46,7 @@ impl ScopeTypes {
     fn collect(&mut self, expr: &QueryExpr) -> Result<(), QueryCompileError> {
         match expr.kind() {
             QueryExprKind::Event(eq) => self.bind(eq.var(), eq.event().variable_type()),
-            QueryExprKind::SelectEvent(s) => self.bind(s.bind, VarType::Event),
+            QueryExprKind::SelectEvent(bind) => self.bind(*bind, VarType::Event),
             QueryExprKind::Require(predicate) => self.collect_require(predicate),
             QueryExprKind::Any(any) => self.collect_any(any),
             QueryExprKind::All(all) => {

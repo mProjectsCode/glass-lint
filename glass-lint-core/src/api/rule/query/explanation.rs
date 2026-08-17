@@ -6,7 +6,7 @@ use crate::api::rule::query::{
 pub(crate) fn explain_expression(expression: &QueryExpr) -> String {
     match expression.kind() {
         QueryExprKind::Event(query) => explain_event(query),
-        QueryExprKind::SelectEvent(selection) => format!("event {} is selected", selection.bind),
+        QueryExprKind::SelectEvent(bind) => format!("event {bind} is selected"),
         QueryExprKind::Require(predicate) => explain_predicate(predicate),
         QueryExprKind::Any(any) => format!(
             "any of: {}",

@@ -2,9 +2,7 @@
 
 use std::fmt;
 
-use super::{
-    EventQuery, EventSelection, LifecycleQuery, QueryBuildError, QueryPredicate, VarId, limits,
-};
+use super::{EventQuery, LifecycleQuery, QueryBuildError, QueryPredicate, VarId, limits};
 
 /// A typed logical query expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,7 +14,7 @@ pub struct QueryExpr {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum QueryExprKind {
     Event(EventQuery),
-    SelectEvent(EventSelection),
+    SelectEvent(VarId),
     Require(QueryPredicate),
     Any(AnyExpr),
     All(AllExpr),
@@ -57,7 +55,7 @@ impl QueryExpr {
 
     pub(crate) fn select_event(bind: VarId) -> Self {
         Self {
-            kind: QueryExprKind::SelectEvent(EventSelection { bind }),
+            kind: QueryExprKind::SelectEvent(bind),
         }
     }
 
@@ -116,7 +114,7 @@ impl QueryExpr {
     fn walk_vars_until(&self, f: &mut impl FnMut(VarId, VarRole) -> bool) -> bool {
         match &self.kind {
             QueryExprKind::Event(q) => f(q.var(), VarRole::Binding),
-            QueryExprKind::SelectEvent(s) => f(s.bind, VarRole::Binding),
+            QueryExprKind::SelectEvent(bind) => f(*bind, VarRole::Binding),
             QueryExprKind::Require(p) => match p {
                 QueryPredicate::EventKind { event, .. }
                 | QueryPredicate::EventIdentity { event, .. } => f(*event, VarRole::Reference),
@@ -172,7 +170,7 @@ impl fmt::Display for QueryExpr {
                 q.event().diagnostic_name(),
                 q.identity().diagnostic_name()
             ),
-            QueryExprKind::SelectEvent(selection) => write!(f, "bind {}", selection.bind),
+            QueryExprKind::SelectEvent(bind) => write!(f, "bind {bind}"),
             QueryExprKind::Require(predicate) => match predicate {
                 QueryPredicate::EventKind { event, expected } => {
                     write!(f, "kind({event})={}", expected.diagnostic_name())

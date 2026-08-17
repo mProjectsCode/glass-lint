@@ -119,7 +119,7 @@ keeps the same public signature and bounded-index error behavior, while
 `QueryDecl::all` maps the constructed requirement directly to the argument
 predicate.
 
-#### [ ] READ-005 — `EventSelection` is a one-field wrapper around `VarId`; the bound-variable numbering is implicit
+#### [x] READ-005 — `EventSelection` is a one-field wrapper around `VarId`; the bound-variable numbering is implicit
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -157,7 +157,10 @@ event variable from the member-subject object variable (pass1_3.rs:78 vs
 pass1_3.rs:112-117); the compiler's alpha-renumbering must remain the
 authoritative slot policy.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the behaviorless `EventSelection` wrapper and stored
+the bound `VarId` directly in `QueryExprKind::SelectEvent`. Updated compiler
+validation and explanation pattern matches without changing query semantics or
+diagnostic output.
 
 ### Lifecycle builders (`api/rule/query/lifecycle.rs`)
 

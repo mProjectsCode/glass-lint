@@ -143,12 +143,6 @@ impl VarType {
     }
 }
 
-/// Binding atom: selects one event variable at a call/member/import site.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct EventSelection {
-    pub(crate) bind: VarId,
-}
-
 /// A predicate that constrains an already-bound variable.
 ///
 /// `ReturnedObject` and `ConstructedObject` each bind their declared object

@@ -75,8 +75,8 @@ fn check_correlation_evidence(
             }
             Ok(())
         }
-        QueryExprKind::SelectEvent(s) => {
-            if scope.checks_primary() && s.bind != primary {
+        QueryExprKind::SelectEvent(bind) => {
+            if scope.checks_primary() && *bind != primary {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
