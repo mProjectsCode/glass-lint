@@ -13,13 +13,14 @@ use std::collections::BTreeMap;
 
 use crate::api::{
     compiler::{
+        CompiledMatcherPlan,
         normalized::{
             CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
             NormalizedLifecycleCondition, NormalizedLifecycleEvent, NormalizedLifecycleSink,
             NormalizedQuery, NormalizedRoot, NormalizedSubject,
         },
         object_flow::CompiledObjectFlow,
-        physical::{PhysicalPlan, PhysicalRoot},
+        physical::PhysicalRoot,
         rule::IdentityConstraint,
     },
     rule::{
@@ -368,7 +369,7 @@ fn has_producer_support(row: &ReferenceRow) -> bool {
 
 /// Evaluate the supported physical roots against the same synthetic rows.
 pub(crate) fn evaluate_supported_physical(
-    plan: &PhysicalPlan,
+    plan: &CompiledMatcherPlan,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = plan

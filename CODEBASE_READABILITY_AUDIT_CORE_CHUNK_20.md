@@ -285,7 +285,7 @@ cross-reference.
 
 ### Compiler boundaries
 
-#### [ ] READ-007 — `CompiledMatcherPlan` is a one-field façade over `PhysicalPlan`
+#### [x] READ-007 — `CompiledMatcherPlan` is a one-field façade over `PhysicalPlan`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -318,7 +318,12 @@ exposing `PhysicalPlan` directly to consumers is off the table: the chunk
 invariant that `CompiledMatcherPlan` is the only plan type consumed by
 `analysis`/`lint` is the intended boundary and must be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the physical roots and derived requirements into the
+existing `CompiledMatcherPlan`. Its production sealing constructor and
+test-only validation/printer helpers now live on that type, while the
+`PhysicalPlan` wrapper and all internal references were removed. The single
+production sealing boundary and the plan exposure used by projection remain
+unchanged.
 
 #### [ ] READ-008 — "Which rules ran" bookkeeping and its index-bound validation are duplicated across lint selection, projection, and evidence
 

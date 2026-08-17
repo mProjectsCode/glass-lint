@@ -1,6 +1,6 @@
-#[cfg(test)]
-use super::PhysicalPlan;
 use super::{PhysicalPlanValidationError, PhysicalRoot};
+#[cfg(test)]
+use crate::api::compiler::CompiledMatcherPlan;
 use crate::api::{
     compiler::{normalized::CanonicalArgumentConstraints, requirements::PlanRequirements},
     rule::{
@@ -11,7 +11,7 @@ use crate::api::{
 
 #[cfg(test)]
 pub(crate) fn validate_physical_plan(
-    plan: &PhysicalPlan,
+    plan: &CompiledMatcherPlan,
 ) -> Result<(), PhysicalPlanValidationError> {
     for root in plan.roots() {
         root.validate()?;

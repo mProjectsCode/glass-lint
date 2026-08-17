@@ -79,7 +79,7 @@ fn logical_witnesses(query: &NormalizedQuery, rows: &[ReferenceRow]) -> Vec<Refe
 }
 
 fn physical_witnesses(
-    plan: &crate::api::compiler::physical::PhysicalPlan,
+    plan: &crate::api::compiler::CompiledMatcherPlan,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     evaluate_supported_physical(plan, rows)
@@ -87,7 +87,7 @@ fn physical_witnesses(
 
 fn witnesses_equal(
     query: &NormalizedQuery,
-    plan: &crate::api::compiler::physical::PhysicalPlan,
+    plan: &crate::api::compiler::CompiledMatcherPlan,
     rows: &[ReferenceRow],
 ) -> bool {
     let logical = logical_witnesses(query, rows);

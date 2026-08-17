@@ -7,7 +7,7 @@ fn lifecycle_evidence_bound_is_validated_at_the_physical_boundary() {
         limits::MAX_LIFECYCLE_SINKS,
     );
     let roots = Box::new([PhysicalRoot::Lifecycle { flow }]);
-    let plan = PhysicalPlan::new(roots, PlanRequirements::default());
+    let plan = CompiledMatcherPlan::new(roots, PlanRequirements::default());
 
     assert_eq!(
         validate_physical_plan(&plan),
@@ -115,7 +115,7 @@ fn excessive_groups_fails_validation() {
         })
         .collect();
     let constraints = CanonicalArgumentConstraints::from_groups_for_test(groups.into_boxed_slice());
-    let plan = PhysicalPlan::new(
+    let plan = CompiledMatcherPlan::new(
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
@@ -149,7 +149,7 @@ fn excessive_predicate_count_fails_validation() {
             predicates.into_boxed_slice(),
         ),
     ]));
-    let plan = PhysicalPlan::new(
+    let plan = CompiledMatcherPlan::new(
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),

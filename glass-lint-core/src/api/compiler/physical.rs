@@ -4,6 +4,7 @@ use glass_lint_datastructures::SymbolPath;
 use crate::api::rule::ArgumentConstraint;
 use crate::api::{
     compiler::{
+        CompiledMatcherPlan,
         error::PhysicalPlanValidationError,
         limits as compiler_limits,
         normalized::{CanonicalArgumentConstraints, ObjectSlot as NormalizedObjectSlot},
@@ -240,13 +241,7 @@ impl PhysicalRoot {
     }
 }
 
-// ── PhysicalPlan ────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PhysicalPlan {
-    roots: Box<[PhysicalRoot]>,
-    requirements: PlanRequirements,
-}
+// ── CompiledMatcherPlan construction ───────────────────────────────────
 
 #[derive(Debug, Default)]
 pub(crate) struct RootBudget {
@@ -267,7 +262,7 @@ impl RootBudget {
     }
 }
 
-impl PhysicalPlan {
+impl CompiledMatcherPlan {
     /// Seal roots produced by the normalized-query planner.
     ///
     /// The production compiler validates the planned roots at this one
@@ -314,6 +309,7 @@ impl PhysicalPlan {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn roots(&self) -> &[PhysicalRoot] {
         &self.roots
     }

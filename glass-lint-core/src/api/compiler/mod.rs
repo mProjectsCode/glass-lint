@@ -53,7 +53,6 @@ use smol_str::SmolStr;
 use crate::api::{
     compiler::{
         normalized::{NormalizedEmission, NormalizedQuery},
-        physical::PhysicalPlan,
         validate::validate_query_decl,
     },
     rule::{
@@ -64,9 +63,10 @@ use crate::api::{
 };
 
 /// Canonical compiled matcher plan consumed by analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompiledMatcherPlan {
-    physical_plan: PhysicalPlan,
+    roots: Box<[physical::PhysicalRoot]>,
+    requirements: requirements::PlanRequirements,
 }
 
 fn identity_text_is_empty(value: &str) -> bool {
@@ -189,7 +189,7 @@ impl From<&IdentitySpec> for IdentityConstraint {
 }
 
 /// Compile query declarations into one deterministic, aggregate physical plan.
-fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
+fn compile_queries(queries: &[QueryDecl]) -> Result<CompiledMatcherPlan, MatcherBuildError> {
     let mut budget = physical::RootBudget::new();
     let mut roots = Vec::new();
 
@@ -207,8 +207,8 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
 /// Seal the accumulated roots into a validated, optimized physical plan.
 fn seal_planned_roots(
     roots: Vec<physical::PhysicalRoot>,
-) -> Result<PhysicalPlan, MatcherBuildError> {
-    PhysicalPlan::from_planned_roots(physical::optimize_roots(roots))
+) -> Result<CompiledMatcherPlan, MatcherBuildError> {
+    CompiledMatcherPlan::from_planned_roots(physical::optimize_roots(roots))
         .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
 }
 
@@ -231,21 +231,16 @@ fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildEr
 
 impl CompiledMatcherPlan {
     pub(crate) fn physical_roots(&self) -> &[physical::PhysicalRoot] {
-        self.physical_plan.roots()
+        &self.roots
     }
 
     /// Explain the canonical executable plan for tests and profiling.
     #[cfg(test)]
     pub(crate) fn plan_explanation(&self) -> String {
-        self.physical_plan.explain()
-    }
-
-    pub(crate) fn requirements(&self) -> &requirements::PlanRequirements {
-        self.physical_plan.requirements()
+        self.explain()
     }
 
     pub(crate) fn compile(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {
-        let physical_plan = compile_queries(queries)?;
-        Ok(Self { physical_plan })
+        compile_queries(queries)
     }
 }

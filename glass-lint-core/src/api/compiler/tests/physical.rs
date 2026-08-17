@@ -2,6 +2,7 @@ use glass_lint_datastructures::SymbolPath;
 
 use crate::api::{
     compiler::{
+        CompiledMatcherPlan,
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
         normalized::{
@@ -11,8 +12,7 @@ use crate::api::{
         },
         object_flow::CompiledObjectFlow,
         physical::{
-            PhysicalPlan, PhysicalRoot, RootBudget, optimize_roots, plan_normalized,
-            validate_physical_plan,
+            PhysicalRoot, RootBudget, optimize_roots, plan_normalized, validate_physical_plan,
         },
         requirements::PlanRequirements,
         rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
@@ -284,7 +284,7 @@ fn root_budget_rejects_the_first_root_over_the_limit() {
 #[test]
 fn physical_plan_rejects_empty_roots() {
     assert!(matches!(
-        PhysicalPlan::from_planned_roots(Box::new([])),
+        CompiledMatcherPlan::from_planned_roots(Box::new([])),
         Err(PhysicalPlanValidationError::EmptyRoots)
     ));
 }
@@ -380,10 +380,10 @@ fn empty_identity_fails_validation() {
         },
     }]);
     assert_eq!(
-        PhysicalPlan::try_new(roots.clone(), &PlanRequirements::default()),
+        CompiledMatcherPlan::try_new(roots.clone(), &PlanRequirements::default()),
         Err(PhysicalPlanValidationError::ImpossibleDimensions)
     );
-    let plan = PhysicalPlan::new(roots, PlanRequirements::default());
+    let plan = CompiledMatcherPlan::new(roots, PlanRequirements::default());
     assert_eq!(
         validate_physical_plan(&plan),
         Err(PhysicalPlanValidationError::ImpossibleDimensions)
@@ -423,7 +423,7 @@ fn valid_roots_pass_validation() {
             symbol: "fetch".into(),
         },
     }]);
-    let plan = PhysicalPlan::new(roots, PlanRequirements::default());
+    let plan = CompiledMatcherPlan::new(roots, PlanRequirements::default());
     assert!(validate_physical_plan(&plan).is_ok());
 }
 
@@ -441,7 +441,7 @@ fn requirements_must_match_executable_roots() {
     }]);
     let mut requirements = PlanRequirements::default();
     requirements.require_local_flow();
-    let plan = PhysicalPlan::new(roots, requirements);
+    let plan = CompiledMatcherPlan::new(roots, requirements);
     assert_eq!(
         validate_physical_plan(&plan),
         Err(PhysicalPlanValidationError::RequirementsMismatch)

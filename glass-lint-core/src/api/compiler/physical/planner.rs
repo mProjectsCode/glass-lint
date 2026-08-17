@@ -1,21 +1,21 @@
-#[cfg(test)]
-use super::PhysicalPlan;
 use super::{PhysicalPlanValidationError, PhysicalRoot, RootBudget};
+#[cfg(test)]
+use crate::api::compiler::CompiledMatcherPlan;
 use crate::api::compiler::{
     normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot},
     object_flow::CompiledObjectFlow,
     rule::{EvidenceDescriptor, IdentityConstraint},
 };
 
-/// Plan a normalized query into a [`PhysicalPlan`].
+/// Plan a normalized query into a [`CompiledMatcherPlan`].
 #[cfg(test)]
 pub(crate) fn plan_normalized(
     nq: &NormalizedQuery,
-) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
+) -> Result<CompiledMatcherPlan, PhysicalPlanValidationError> {
     let mut budget = RootBudget::new();
     let mut roots = Vec::new();
     plan_normalized_roots_into(nq, &mut budget, &mut roots)?;
-    PhysicalPlan::from_planned_roots(roots.into_boxed_slice())
+    CompiledMatcherPlan::from_planned_roots(roots.into_boxed_slice())
 }
 
 pub(crate) fn plan_normalized_roots_into(
