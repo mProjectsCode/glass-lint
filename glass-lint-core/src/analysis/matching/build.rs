@@ -141,7 +141,7 @@ impl OccurrenceIndexes {
         let FactPayload::Call(call) = fact.payload() else {
             return;
         };
-        let occurrence = Occurrence::new(fact.id(), call.callee_span());
+        let occurrence = Occurrence::for_call(fact.id(), call);
         if let Some(name) = call.callee_name() {
             self.call_indexes.record_call(name, occurrence);
         }

@@ -6,7 +6,7 @@ use super::{
     BorrowedPackageOccurrenceIter, ModuleExportKey, OccurrenceSelection, PackageKeyPredicate,
     PackageOverlay,
 };
-use crate::analysis::facts::FactId;
+use crate::analysis::{facts::FactId, model::fact::CallEvent};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -20,6 +20,10 @@ pub(in crate::analysis) struct Occurrence {
 impl Occurrence {
     pub(in crate::analysis::matching) fn new(event: FactId, span: ByteRange) -> Self {
         Self { event, span }
+    }
+
+    pub(in crate::analysis::matching) fn for_call(event: FactId, call: &CallEvent) -> Self {
+        Self::new(event, call.callee_span())
     }
 
     pub(in crate::analysis::matching) fn event(&self) -> FactId {

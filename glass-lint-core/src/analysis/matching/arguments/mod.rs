@@ -4,7 +4,7 @@ use glass_lint_datastructures::NameTable;
 
 use crate::{
     analysis::{
-        facts::{FactStream, Frozen, SemanticFacts},
+        facts::{FactPayload, FactStream, Frozen, SemanticFacts},
         matching::{
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
             evidence::EvidenceGroup,
@@ -386,6 +386,9 @@ impl ConstrainedEvaluation<'_> {
         for fact in stream.facts() {
             for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
                 let root = &prepared_root.root;
+                let FactPayload::Call(call) = fact.payload() else {
+                    continue;
+                };
                 if evaluator.fact_matches_clause(
                     fact,
                     root.identity,
@@ -394,7 +397,7 @@ impl ConstrainedEvaluation<'_> {
                     &prepared_root.paths,
                     operations,
                 ) {
-                    prepared_root.record_fallback(Occurrence::new(fact.id(), fact.span()));
+                    prepared_root.record_fallback(Occurrence::for_call(fact.id(), call));
                 }
             }
         }

@@ -167,7 +167,7 @@ argument-projection duplication that also lives in this evaluator
 separately as chunk 11 READ-003; this finding stays on the prepared-root double
 shape and the predicate threading owned here.
 
-#### [ ] READ-004 — Fallback evidence uses `fact.span` while every indexed call occurrence uses `callee_span`
+#### [x] READ-004 — Fallback evidence uses `fact.span` while every indexed call occurrence uses `callee_span`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
