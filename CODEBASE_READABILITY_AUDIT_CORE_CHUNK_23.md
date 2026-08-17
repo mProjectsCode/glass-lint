@@ -124,7 +124,7 @@ unchanged.
 
 ### Selector parsing (`lint/selection`)
 
-#### [ ] READ-003 — exact-id selectors build a `RulePattern` that is never consumed and re-validate the same string under a second grammar
+#### [x] READ-003 — exact-id selectors build a `RulePattern` that is never consumed and re-validate the same string under a second grammar
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -159,6 +159,10 @@ selector, keep the `?[]{}\` rejection in `RuleSelector::parse`
 (`selection.rs:358-375`); the exact-matching unit tests (`selection/tests.rs:7-29`)
 and the wildcard-part validation tests (`selection/tests.rs:101-109`) pin both
 grammars and must pass unchanged.
+
+**Fix Applied:** Detect wildcard selectors before parsing, validate exact
+selectors only with `RuleId`, and store wildcard patterns as `Option<RulePattern>`.
+Exact selectors no longer allocate or validate an unused pattern.
 
 #### [ ] READ-004 — `RuleState` declares a lowercase-string serde vocabulary that no site uses; only the bool shim is reachable
 

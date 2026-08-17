@@ -85,14 +85,6 @@ impl RulePattern {
         })
     }
 
-    fn has_wildcard(&self) -> bool {
-        self.ends_with_wildcard
-            || self
-                .segments
-                .iter()
-                .any(|segment| matches!(segment, PatternSegment::Wildcard))
-    }
-
     fn matches(&self, id: &str) -> bool {
         let mut pos = 0usize;
         for (index, segment) in self.segments.iter().enumerate() {
@@ -141,8 +133,8 @@ fn valid_pattern_part(part: &str, allow_dot: bool) -> bool {
 struct RuleSelector {
     /// Original selector text for serialization and display.
     raw: String,
-    /// Validated wildcard pattern used for O(n) matching.
-    pattern: RulePattern,
+    /// Validated wildcard pattern used for O(n) matching, when present.
+    pattern: Option<RulePattern>,
 }
 
 #[cfg(feature = "serde")]
@@ -196,11 +188,13 @@ impl RuleSelector {
         {
             return Err(LintConfigError::InvalidSelector(selector));
         }
-        let pattern = RulePattern::parse(&selector)?;
-        if !pattern.has_wildcard() {
+        let pattern = if selector.contains('*') {
+            Some(RulePattern::parse(&selector)?)
+        } else {
             RuleId::parse(selector.clone())
                 .map_err(|_| LintConfigError::InvalidSelector(selector.clone()))?;
-        }
+            None
+        };
 
         Ok(Self {
             raw: selector,
@@ -213,7 +207,7 @@ impl RuleSelector {
     }
 
     fn has_wildcard(&self) -> bool {
-        self.pattern.has_wildcard()
+        self.pattern.is_some()
     }
 
     fn matches(&self, id: &str) -> bool {
@@ -221,7 +215,9 @@ impl RuleSelector {
         if !self.has_wildcard() {
             return id == self.raw;
         }
-        self.pattern.matches(id)
+        self.pattern
+            .as_ref()
+            .is_some_and(|pattern| pattern.matches(id))
     }
 }
 
