@@ -193,7 +193,7 @@ impl<T: FactPhase> FactStream<T> {
         &self,
         event: FactId,
     ) -> Option<crate::analysis::model::value::ValueId> {
-        match &self.fact(event)?.payload {
+        match self.fact(event)?.payload() {
             FactPayload::PropertyWrite { value, .. } => Some(*value),
             _ => None,
         }

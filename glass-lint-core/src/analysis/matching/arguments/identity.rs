@@ -49,7 +49,7 @@ pub(super) fn member_identity_matches(
     fact: &SemanticFact,
     names: &NameTable,
 ) -> bool {
-    let FactPayload::Call(call) = &fact.payload else {
+    let FactPayload::Call(call) = fact.payload() else {
         return false;
     };
     match identity {

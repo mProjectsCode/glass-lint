@@ -33,11 +33,11 @@ struct CallProjection<'a> {
 
 impl<'a> CallProjection<'a> {
     fn from_fact(fact: &'a SemanticFact) -> Option<Self> {
-        let FactPayload::Call(call) = &fact.payload else {
+        let FactPayload::Call(call) = fact.payload() else {
             return None;
         };
         Some(Self {
-            id: fact.id,
+            id: fact.id(),
             callee_span: call.callee_span(),
             callee_name: call.callee_name(),
             call_provenance: call.call_provenance(),
@@ -105,7 +105,7 @@ impl OccurrenceIndexes {
     ) {
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
-        match &fact.payload {
+        match fact.payload() {
             FactPayload::Call(_) => self.record_call_fact(fact, names),
 
             FactPayload::MemberRead { .. } => self.record_member_read_fact(fact, names),
@@ -115,14 +115,14 @@ impl OccurrenceIndexes {
                 ..
             } => {
                 self.members
-                    .record_rooted_write(chain.clone(), Occurrence::new(fact.id, fact.span));
+                    .record_rooted_write(chain.clone(), Occurrence::new(fact.id(), fact.span()));
             }
 
             FactPayload::Construction { .. } => self.record_construction_fact(fact),
 
             FactPayload::Import { module } => {
                 self.literals
-                    .record_import(module.clone(), Occurrence::new(fact.id, fact.span));
+                    .record_import(module.clone(), Occurrence::new(fact.id(), fact.span()));
             }
 
             FactPayload::Reference {
@@ -136,7 +136,7 @@ impl OccurrenceIndexes {
                 }) {
                     self.literals.record_string(
                         static_string.clone(),
-                        Occurrence::new(fact.id, static_string_origin.unwrap_or(fact.span)),
+                        Occurrence::new(fact.id(), static_string_origin.unwrap_or(fact.span())),
                     );
                 }
             }
@@ -148,14 +148,14 @@ impl OccurrenceIndexes {
             } => {
                 if let Some(name) = name {
                     self.constructions
-                        .record_class(name.clone(), Occurrence::new(fact.id, fact.span));
+                        .record_class(name.clone(), Occurrence::new(fact.id(), fact.span()));
                 }
                 if !matches!(role, ClassFactRole::Declaration)
                     && let Some(identity) = provenance
                 {
                     self.constructions.record_module_class(
                         ModuleExportKey::new(identity.module().clone(), identity.export().clone()),
-                        Occurrence::new(fact.id, fact.span),
+                        Occurrence::new(fact.id(), fact.span()),
                     );
                 }
             }
@@ -255,28 +255,28 @@ impl OccurrenceIndexes {
             module_member,
             returned_member,
             ..
-        } = &fact.payload
+        } = fact.payload()
         else {
             return;
         };
         if let Some(chain) = syntactic_path {
             self.members
-                .record_read(chain.clone(), Occurrence::new(fact.id, fact.span));
+                .record_read(chain.clone(), Occurrence::new(fact.id(), fact.span()));
         }
         if let Some(chain) = rooted_chain {
             self.members
-                .record_rooted_read(chain.clone(), Occurrence::new(fact.id, fact.span));
+                .record_rooted_read(chain.clone(), Occurrence::new(fact.id(), fact.span()));
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.members.record_module_read(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                Occurrence::new(fact.id, fact.span),
+                Occurrence::new(fact.id(), fact.span()),
             );
         }
         if let Some((source, member)) = returned_member {
             self.members.record_returned_read(
                 ReturnedMemberKey::new(source.clone(), member.clone()),
-                Occurrence::new(fact.id, fact.span),
+                Occurrence::new(fact.id(), fact.span()),
             );
         }
     }
@@ -288,29 +288,29 @@ impl OccurrenceIndexes {
             provenance,
             rooted_chain,
             ..
-        } = &fact.payload
+        } = fact.payload()
         else {
             return;
         };
         if let Some(name) = callee_name {
             self.constructions
-                .record_constructor(*name, Occurrence::new(fact.id, *callee_span));
+                .record_constructor(*name, Occurrence::new(fact.id(), *callee_span));
         }
         if let Some(chain) = rooted_chain {
             self.constructions
-                .record_rooted_constructor(chain.clone(), Occurrence::new(fact.id, *callee_span));
+                .record_rooted_constructor(chain.clone(), Occurrence::new(fact.id(), *callee_span));
         }
         match provenance {
             SymbolCallProvenance::Global { name } => {
                 self.constructions.record_global_constructor(
                     name.clone(),
-                    Occurrence::new(fact.id, *callee_span),
+                    Occurrence::new(fact.id(), *callee_span),
                 );
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.constructions.record_module_constructor(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    Occurrence::new(fact.id, *callee_span),
+                    Occurrence::new(fact.id(), *callee_span),
                 );
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}

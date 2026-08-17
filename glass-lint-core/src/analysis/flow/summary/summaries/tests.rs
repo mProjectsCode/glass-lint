@@ -110,9 +110,9 @@ fn invoke_compatible_rejects_too_many_args() {
     let call_fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .find(|f| matches!(f.payload(), FactPayload::Call(_)))
         .expect("call fact should exist");
-    let FactPayload::Call(call) = &call_fact.payload else {
+    let FactPayload::Call(call) = call_fact.payload() else {
         unreachable!()
     };
     assert!(!f.is_invocation_compatible(&stream, call.args(), &summaries.paths));
@@ -132,9 +132,9 @@ fn invoke_compatible_rejects_spread_args() {
     let call_fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .find(|f| matches!(f.payload(), FactPayload::Call(_)))
         .expect("call fact should exist");
-    let FactPayload::Call(call) = &call_fact.payload else {
+    let FactPayload::Call(call) = call_fact.payload() else {
         unreachable!()
     };
     assert!(!f.is_invocation_compatible(&stream, call.args(), &summaries.paths));

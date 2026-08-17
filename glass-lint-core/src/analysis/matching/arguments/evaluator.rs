@@ -177,7 +177,7 @@ impl<'a> MatcherEvaluator<'a> {
         ops: &mut EvaluationOperations,
     ) -> bool {
         ops.charge_candidate();
-        let FactPayload::Call(call) = &fact.payload else {
+        let FactPayload::Call(call) = fact.payload() else {
             return false;
         };
         let callee = call.callee();
@@ -199,7 +199,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(&fact.payload, constraints, ops)
+                self.check_constrained_args(fact.payload(), constraints, ops)
             }
             EventSpec::MemberCall { .. } => {
                 let Some(ref member) = paths.member else {
@@ -216,7 +216,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(&fact.payload, constraints, ops)
+                self.check_constrained_args(fact.payload(), constraints, ops)
             }
             _ => false,
         }

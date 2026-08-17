@@ -170,7 +170,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
     let sink_span = stream
         .facts()
         .iter()
-        .find_map(|fact| match &fact.payload {
+        .find_map(|fact| match fact.payload() {
             FactPayload::Call(call)
                 if call.syntactic_path().is_some_and(|chain| {
                     stream
@@ -179,7 +179,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
                         .is_some_and(|s| s.eq_chain("document.head.appendChild"))
                 }) =>
             {
-                Some(fact.span)
+                Some(fact.span())
             }
             _ => None,
         })
@@ -221,8 +221,8 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         .facts()
         .iter()
         .find_map(|fact| {
-            matches!(fact.payload, FactPayload::PropertyWrite { .. })
-                .then_some((fact.id, fact.span))
+            matches!(fact.payload(), FactPayload::PropertyWrite { .. })
+                .then_some((fact.id(), fact.span()))
         })
         .expect("configuration write should be present");
     let flow = compile_flow(&flow);

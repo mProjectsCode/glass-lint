@@ -52,9 +52,9 @@ fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
             .facts()
             .iter()
             .filter(|fact| {
-                fact.span.start() == span.start()
-                    && fact.span.end() == span.end()
-                    && matches!(fact.payload, FactPayload::Call(_))
+                fact.span().start() == span.start()
+                    && fact.span().end() == span.end()
+                    && matches!(fact.payload(), FactPayload::Call(_))
             })
             .map(SemanticFact::id)
             .collect::<Vec<_>>(),
@@ -63,12 +63,12 @@ fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
     assert!(
         stream
             .fact(FactId::from_test(0))
-            .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call(_)) })
+            .is_some_and(|fact| { matches!(fact.payload(), FactPayload::Call(_)) })
     );
     assert!(
         stream
             .fact(FactId::from_test(2))
-            .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call(_)) })
+            .is_some_and(|fact| { matches!(fact.payload(), FactPayload::Call(_)) })
     );
     assert!(stream.fact(FactId::from_test(3)).is_none());
 }
@@ -84,9 +84,9 @@ fn dense_fact_stream_preserves_every_same_span_fact() {
         .facts()
         .iter()
         .filter(|fact| {
-            fact.span.start() == span.start()
-                && fact.span.end() == span.end()
-                && matches!(fact.payload, FactPayload::Call(_))
+            fact.span().start() == span.start()
+                && fact.span().end() == span.end()
+                && matches!(fact.payload(), FactPayload::Call(_))
         })
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 10_001);

@@ -445,10 +445,10 @@ pub(in crate::analysis) enum FactPayload {
 
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct SemanticFact {
-    pub(in crate::analysis) id: FactId,
-    pub(in crate::analysis) span: ByteRange,
-    pub(in crate::analysis) function: FunctionId,
-    pub(in crate::analysis) payload: FactPayload,
+    id: FactId,
+    span: ByteRange,
+    function: FunctionId,
+    payload: FactPayload,
 }
 
 impl SemanticFact {
@@ -467,9 +467,20 @@ impl SemanticFact {
         }
     }
 
-    #[cfg(test)]
-    pub fn id(&self) -> FactId {
+    pub(in crate::analysis) fn id(&self) -> FactId {
         self.id
+    }
+
+    pub(in crate::analysis) fn span(&self) -> ByteRange {
+        self.span
+    }
+
+    pub(in crate::analysis) fn function(&self) -> FunctionId {
+        self.function
+    }
+
+    pub(in crate::analysis) fn payload(&self) -> &FactPayload {
+        &self.payload
     }
 }
 

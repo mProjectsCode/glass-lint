@@ -124,7 +124,7 @@ mod semantic_fact_tests {
             FunctionId::from_test(0),
         );
         assert_eq!(fact.id(), FactId::from_test(1));
-        assert!(matches!(fact.payload, FactPayload::Reference { .. }));
+        assert!(matches!(fact.payload(), FactPayload::Reference { .. }));
     }
 
     #[test]

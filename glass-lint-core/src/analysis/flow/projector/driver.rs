@@ -71,10 +71,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
-        match &fact.payload {
+        match fact.payload() {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
             FactPayload::Control { kind, region } => {
-                self.transfer_control(*kind, *region, fact.id);
+                self.transfer_control(*kind, *region, fact.id());
             }
             FactPayload::Return { .. } => self.transfer_abrupt(AbruptExit::Return),
             FactPayload::Break => self.transfer_abrupt(AbruptExit::Break),
@@ -117,7 +117,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn transfer_fact(&mut self, fact: &crate::analysis::facts::SemanticFact) {
-        match &fact.payload {
+        match fact.payload() {
             FactPayload::Declaration { target, source } => self.assign(*target, *source),
             FactPayload::Assignment {
                 target,
@@ -143,7 +143,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     property.and_then(|id| self.inputs.stream.resolve_name(id)),
                     static_string,
                     *value_is_precise,
-                    fact.id,
+                    fact.id(),
                 );
             }
             FactPayload::Call(_) => self.transfer_call(fact),
@@ -247,23 +247,23 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         if !self.run.reachable {
             return;
         }
-        let FactPayload::Call(call) = &fact.payload else {
+        let FactPayload::Call(call) = fact.payload() else {
             return;
         };
-        let cref = self.inputs.stream.call_effect(fact.id);
+        let cref = self.inputs.stream.call_effect(fact.id());
         let Some(shape) = cref.shape() else {
             if let Some(function) = call.target_function() {
-                self.record_helper_sink(function, call.args(), fact.id);
+                self.record_helper_sink(function, call.args(), fact.id());
             }
             return;
         };
         let effective_args = shape.effective_args();
         if let Some(chain) = shape.chain() {
-            self.record_configuration(call.receiver(), chain, effective_args, fact.id);
+            self.record_configuration(call.receiver(), chain, effective_args, fact.id());
         }
-        self.record_sinks(&shape, effective_args, fact.id);
+        self.record_sinks(&shape, effective_args, fact.id());
         if let Some(function) = call.target_function() {
-            self.record_helper_sink(function, call.args(), fact.id);
+            self.record_helper_sink(function, call.args(), fact.id());
         }
     }
 

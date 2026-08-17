@@ -229,7 +229,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             .stream
             .fact(anchor)
             .map_or(glass_lint_datastructures::ByteRange::empty(), |fact| {
-                fact.span
+                fact.span()
             });
 
         // Build the trace chain: Source → Requirements (in declaration order) → Sink.

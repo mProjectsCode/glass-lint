@@ -170,7 +170,7 @@ impl FunctionEffect {
     }
 
     fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
-        let FactPayload::Call(call) = &fact.payload else {
+        let FactPayload::Call(call) = fact.payload() else {
             return;
         };
 
@@ -184,13 +184,13 @@ impl FunctionEffect {
             }
             self.uses.push(EffectUse::CallArgument {
                 call_id,
-                event: fact.id,
+                event: fact.id(),
                 argument_index: argument.index(),
             });
         }
         if budget.try_push() {
             self.calls.push(EffectCall {
-                event: fact.id,
+                event: fact.id(),
                 arguments,
             });
         } else {
@@ -199,7 +199,7 @@ impl FunctionEffect {
         if let Some(receiver) = call.receiver().and_then(|value| self.parameter_for(value)) {
             if budget.try_push() {
                 self.uses.push(EffectUse::CallReceiver {
-                    event: fact.id,
+                    event: fact.id(),
                     receiver,
                 });
             } else {
@@ -395,7 +395,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
             id,
             boundary: FunctionBoundary::Enter,
             ..
-        } = &fact.payload
+        } = fact.payload()
         {
             if !self.by_id.contains(*id) && !self.budget.try_push() {
                 return;
@@ -410,10 +410,10 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
             return;
         }
 
-        let Some(effect) = self.by_id.get_mut(fact.function) else {
+        let Some(effect) = self.by_id.get_mut(fact.function()) else {
             return;
         };
-        match &fact.payload {
+        match fact.payload() {
             FactPayload::Reference {
                 value, provenance, ..
             } => {
@@ -435,7 +435,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
                 rooted_chain: _,
                 value_is_precise,
             } => effect.record_property_write(
-                fact.id,
+                fact.id(),
                 *receiver,
                 property.and_then(|id| self.stream.resolve_name(id)),
                 *value_is_precise,
@@ -447,7 +447,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
             }
             _ => {}
         }
-        effect.mark_unsupported_control(&fact.payload);
+        effect.mark_unsupported_control(fact.payload());
     }
 
     pub(in crate::analysis) fn finish(self) -> FunctionEffects {

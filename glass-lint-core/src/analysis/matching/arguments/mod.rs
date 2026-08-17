@@ -399,7 +399,7 @@ impl ConstrainedEvaluation<'_> {
                     &prepared_root.paths,
                     operations,
                 ) {
-                    prepared_root.record_fallback(Occurrence::new(fact.id, fact.span));
+                    prepared_root.record_fallback(Occurrence::new(fact.id(), fact.span()));
                 }
             }
         }

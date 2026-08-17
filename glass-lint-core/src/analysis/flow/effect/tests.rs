@@ -17,9 +17,9 @@ fn chain_resolves_direct_call_with_rooted_chain() {
     let fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .find(|f| matches!(f.payload(), FactPayload::Call(_)))
         .expect("call fact should exist");
-    let cref = stream.call_effect(fact.id);
+    let cref = stream.call_effect(fact.id());
     let shape = cref.shape().expect("call fact should have a shape");
     let names = stream.names();
     let chain = shape.chain().expect("direct call should have a chain");
@@ -43,11 +43,11 @@ fn chain_falls_back_to_callee_name_for_alias_call() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let alias_call = call_facts[0];
-    let cref = stream.call_effect(alias_call.id);
+    let cref = stream.call_effect(alias_call.id());
     let shape = cref.shape().expect("call fact should have a shape");
     let chain = shape
         .chain()
@@ -67,11 +67,11 @@ fn rooted_is_false_for_non_global_call() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id);
+    let cref = stream.call_effect(call_fact.id());
     let shape = cref.shape().expect("call fact should have a shape");
     assert!(!shape.rooted(), "local function call should not be rooted");
 }
@@ -83,11 +83,11 @@ fn effective_args_unwraps_call_invocation() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id);
+    let cref = stream.call_effect(call_fact.id());
     let shape = cref.shape().expect("call fact should have a shape");
     let effective = shape.effective_args();
     assert_eq!(
@@ -111,11 +111,11 @@ fn effective_args_unwraps_apply_invocation() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = stream.call_effect(call_fact.id);
+    let cref = stream.call_effect(call_fact.id());
     let shape = cref.shape().expect("call fact should have a shape");
     let effective = shape.effective_args();
     assert_eq!(

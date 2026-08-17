@@ -311,7 +311,7 @@ fn resolve_call_target(
     call_id: FactId,
     stream: &FactStream<Frozen>,
 ) -> Option<(FunctionId, &[CallArgInfo])> {
-    let FactPayload::Call(call) = &stream.fact(call_id)?.payload else {
+    let FactPayload::Call(call) = stream.fact(call_id)?.payload() else {
         return None;
     };
     Some((call.target_function()?, call.args()))

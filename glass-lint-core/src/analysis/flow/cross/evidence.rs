@@ -214,7 +214,7 @@ pub(super) fn emit(
         .project
         .fact(QualifiedEvent::new(module, event))
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
-            fact.span
+            fact.span()
         });
 
     // Trace construction keeps execution order and the terminal sink separate

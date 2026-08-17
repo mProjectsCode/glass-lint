@@ -31,10 +31,10 @@ fn extract_call_args(source: &str) -> (FactStream<Frozen>, FunctionId, Vec<CallA
     let fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
+        .find(|f| matches!(f.payload(), FactPayload::Call(_)))
         .cloned()
         .expect("call fact should exist");
-    let (target, args) = match &fact.payload {
+    let (target, args) = match fact.payload() {
         FactPayload::Call(call) => (
             call.target_function()
                 .expect("target function should be resolved"),

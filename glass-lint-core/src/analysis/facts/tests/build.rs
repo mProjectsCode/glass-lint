@@ -28,22 +28,22 @@ fn fact_builder_emits_facts_for_diverse_program() {
     assert!(
         facts
             .iter()
-            .any(|fact| matches!(fact.payload, FactPayload::Declaration { .. }))
+            .any(|fact| matches!(fact.payload(), FactPayload::Declaration { .. }))
     );
     assert!(
         facts
             .iter()
-            .any(|fact| matches!(fact.payload, FactPayload::Call(_)))
+            .any(|fact| matches!(fact.payload(), FactPayload::Call(_)))
     );
     assert!(
         facts
             .iter()
-            .any(|fact| matches!(fact.payload, FactPayload::PropertyWrite { .. }))
+            .any(|fact| matches!(fact.payload(), FactPayload::PropertyWrite { .. }))
     );
     assert!(
         facts
             .iter()
-            .any(|fact| matches!(fact.payload, FactPayload::MemberRead { .. }))
+            .any(|fact| matches!(fact.payload(), FactPayload::MemberRead { .. }))
     );
 }
 
@@ -53,10 +53,10 @@ fn facts_record_the_lexical_function_owner() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| matches!(fact.payload, FactPayload::Call(_)))
+        .filter(|fact| matches!(fact.payload(), FactPayload::Call(_)))
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
-    assert_ne!(calls[0].function, calls[1].function);
+    assert_ne!(calls[0].function(), calls[1].function());
 }
 
 #[test]
@@ -68,12 +68,12 @@ fn fact_ids_are_sequential_and_deterministic() {
     let ids1: Vec<_> = stream1
         .facts()
         .iter()
-        .map(|f| f.id.raw_for_test())
+        .map(|f| f.id().raw_for_test())
         .collect();
     let ids2: Vec<_> = stream2
         .facts()
         .iter()
-        .map(|f| f.id.raw_for_test())
+        .map(|f| f.id().raw_for_test())
         .collect();
     assert_eq!(
         ids1, ids2,
@@ -142,7 +142,7 @@ fn optional_chain_does_not_double_record_roles() {
     assert_eq!(
         facts
             .iter()
-            .filter(|f| matches!(f.payload, FactPayload::Call(_)))
+            .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
             .count(),
         1,
         "optional call must emit exactly one Call fact"
@@ -150,7 +150,7 @@ fn optional_chain_does_not_double_record_roles() {
 
     let member_facts: Vec<_> = facts
         .iter()
-        .filter(|f| matches!(f.payload, FactPayload::MemberRead { .. }))
+        .filter(|f| matches!(f.payload(), FactPayload::MemberRead { .. }))
         .collect();
     assert!(
         member_facts.len() <= 3,
@@ -165,18 +165,18 @@ fn nested_call_and_member_roles_have_distinct_facts() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| matches!(fact.payload, FactPayload::Call(_)))
+        .filter(|fact| matches!(fact.payload(), FactPayload::Call(_)))
         .collect::<Vec<_>>();
     let members = stream
         .facts()
         .iter()
-        .filter(|fact| matches!(fact.payload, FactPayload::MemberRead { .. }))
+        .filter(|fact| matches!(fact.payload(), FactPayload::MemberRead { .. }))
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
     assert_eq!(members.len(), 1);
-    assert_ne!(calls[0].id, calls[1].id);
-    assert!(members[0].span.start() >= calls[0].span.start());
-    assert!(members[0].span.end() <= calls[0].span.end());
+    assert_ne!(calls[0].id(), calls[1].id());
+    assert!(members[0].span().start() >= calls[0].span().start());
+    assert!(members[0].span().end() <= calls[0].span().end());
 }
 
 #[test]
@@ -209,10 +209,10 @@ fn call_fact_captures_callee_provenance() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     assert_eq!(call_facts.len(), 1);
-    if let FactPayload::Call(call) = &call_facts[0].payload {
+    if let FactPayload::Call(call) = call_facts[0].payload() {
         assert!(
             matches!(call.call_provenance(), SymbolCallProvenance::Global { name } if name == "fetch"),
             "fetch should resolve to global provenance"
@@ -242,13 +242,13 @@ fn facts_retain_current_value_identities() {
 
     assert!(stream.facts().iter().any(|fact| {
         matches!(
-            &fact.payload,
+            fact.payload(),
             FactPayload::Reference { value, .. } if *value != ValueId::UNKNOWN
         )
     }));
     assert!(stream.facts().iter().any(|fact| {
         matches!(
-            &fact.payload,
+            fact.payload(),
             FactPayload::Call(call) if call.callee() != ValueId::UNKNOWN
         )
     }));
@@ -261,10 +261,10 @@ fn member_read_fact_captures_chain_info() {
     let member_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::MemberRead { .. }))
+        .filter(|f| matches!(f.payload(), FactPayload::MemberRead { .. }))
         .collect();
     assert!(!member_facts.is_empty(), "should have member read facts");
-    if let FactPayload::MemberRead { rooted_chain, .. } = &member_facts[0].payload {
+    if let FactPayload::MemberRead { rooted_chain, .. } = member_facts[0].payload() {
         assert!(
             rooted_chain.is_some(),
             "document.body should have a rooted chain"
@@ -279,10 +279,10 @@ fn import_fact_is_emitted() {
     let import_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Import { .. }))
+        .filter(|f| matches!(f.payload(), FactPayload::Import { .. }))
         .collect();
     assert_eq!(import_facts.len(), 1);
-    if let FactPayload::Import { module } = &import_facts[0].payload {
+    if let FactPayload::Import { module } = import_facts[0].payload() {
         assert_eq!(module, "module");
     }
 }
@@ -292,12 +292,12 @@ fn module_call_import_fact_precedes_call_event() {
     for source in [r"import('mod');", r"require('mod');"] {
         let stream = build_test_facts(source, "module-call-order.js");
         let import_index = stream.facts().iter().position(
-            |fact| matches!(&fact.payload, FactPayload::Import { module } if module == "mod"),
+            |fact| matches!(fact.payload(), FactPayload::Import { module } if module == "mod"),
         );
         let call_index = stream
             .facts()
             .iter()
-            .position(|fact| matches!(&fact.payload, FactPayload::Call(_)));
+            .position(|fact| matches!(fact.payload(), FactPayload::Call(_)));
         let (Some(import_index), Some(call_index)) = (import_index, call_index) else {
             panic!("{source} should emit Import and Call facts");
         };
@@ -321,7 +321,7 @@ fn string_literal_fact_is_emitted() {
         .facts()
         .iter()
         .filter(|f| {
-            matches!(&f.payload, FactPayload::Reference { value, .. }
+            matches!(f.payload(), FactPayload::Reference { value, .. }
                 if resolver.static_string_value(*value).is_some())
         })
         .collect();
@@ -330,7 +330,7 @@ fn string_literal_fact_is_emitted() {
         str_facts
             .iter()
             .filter_map(|f| {
-                if let FactPayload::Reference { value, .. } = &f.payload {
+                if let FactPayload::Reference { value, .. } = f.payload() {
                     resolver.static_string_value(*value)
                 } else {
                     None
@@ -348,10 +348,10 @@ fn class_fact_is_emitted_for_class_declaration() {
     let class_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Class { .. }))
+        .filter(|f| matches!(f.payload(), FactPayload::Class { .. }))
         .collect();
     assert!(!class_facts.is_empty(), "should have class facts");
-    if let FactPayload::Class { name, .. } = &class_facts[0].payload {
+    if let FactPayload::Class { name, .. } = class_facts[0].payload() {
         assert_eq!(name.as_deref(), Some("Foo"));
     }
 }
@@ -368,19 +368,19 @@ fn instance_class_is_captured_for_this_calls() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(f.payload, FactPayload::Call(_)))
+        .filter(|f| matches!(f.payload(), FactPayload::Call(_)))
         .collect();
     let this_call = call_facts
         .iter()
         .find(|f| {
-            if let FactPayload::Call(call) = &f.payload {
+            if let FactPayload::Call(call) = f.payload() {
                 call.instance_class().is_some()
             } else {
                 false
             }
         })
         .expect("should find this.baz() call with instance_class");
-    if let FactPayload::Call(call) = &this_call.payload {
+    if let FactPayload::Call(call) = this_call.payload() {
         assert!(
             call.instance_class().is_some(),
             "this.baz() inside a class with module superclass should capture instance_class"

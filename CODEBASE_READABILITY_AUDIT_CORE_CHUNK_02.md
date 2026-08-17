@@ -35,7 +35,7 @@ points (`control.rs`, `provenance.rs:100-161`).
 
 ### Fact stream and authority
 
-#### [ ] READ-001 — `FactStreamToken` grants no real construction authority because `SemanticFact` can be built by struct literal
+#### [x] READ-001 — `FactStreamToken` grants no real construction authority because `SemanticFact` can be built by struct literal
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -69,7 +69,10 @@ no authority — the primary recommendation is the single path. Guardrails: keep
 the dense-ID check in `FactStream::append`/`push`, preserve the frozen-phase
 visibility, and keep the `for_test` token path available to tests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Privatized `SemanticFact` storage and added `id`, `span`,
+`function`, and `payload` accessors, migrating all analysis consumers away
+from field access while retaining the token-gated constructor and dense-ID
+checks. Verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — `FactStreamIssue::NameExhausted` has no distinct consumer and is set by two owners
 

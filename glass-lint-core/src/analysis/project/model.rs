@@ -367,7 +367,7 @@ impl ProjectSemanticModel {
     pub(in crate::analysis) fn source_call_result(&self, event: QualifiedEvent) -> ValueId {
         self.module_fact_stream(event.module())
             .and_then(|stream| stream.fact(event.fact()))
-            .map_or(ValueId::UNKNOWN, |fact| match &fact.payload {
+            .map_or(ValueId::UNKNOWN, |fact| match fact.payload() {
                 crate::analysis::facts::FactPayload::Call(call) => call.result(),
                 _ => ValueId::UNKNOWN,
             })
@@ -378,7 +378,7 @@ impl ProjectSemanticModel {
     pub fn fact_location(&self, event: QualifiedEvent) -> Option<SourceLocation> {
         let module = self.module(event.module())?;
         let fact = module.local().facts().stream().fact(event.fact())?;
-        let range = module.source_context().range(fact.span).ok()?;
+        let range = module.source_context().range(fact.span()).ok()?;
 
         Some(SourceLocation::new(module.path().clone(), range))
     }

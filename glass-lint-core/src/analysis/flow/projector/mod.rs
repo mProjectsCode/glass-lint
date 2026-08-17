@@ -238,8 +238,8 @@ impl<'rules, 'stream> ProjectionInputs<'rules, 'stream> {
         let calls_by_result = stream
             .facts()
             .iter()
-            .filter_map(|fact| match &fact.payload {
-                FactPayload::Call(call) => Some((call.result(), fact.id)),
+            .filter_map(|fact| match fact.payload() {
+                FactPayload::Call(call) => Some((call.result(), fact.id())),
                 _ => None,
             })
             .collect();

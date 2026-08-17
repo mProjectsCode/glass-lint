@@ -146,7 +146,7 @@ impl FactStream<Frozen> {
 impl CallEffectRef<'_> {
     pub(super) fn call_fact(&self) -> Option<&CallEvent> {
         let fact = self.stream.fact(self.event)?;
-        let FactPayload::Call(call) = &fact.payload else {
+        let FactPayload::Call(call) = fact.payload() else {
             return None;
         };
         Some(call)
