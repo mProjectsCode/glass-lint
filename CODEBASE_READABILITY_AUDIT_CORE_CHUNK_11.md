@@ -226,7 +226,7 @@ sinks (via `sinks_ready`'s trivial-true arm, `flow.rs:426`).
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — `FlowLimits::test_new` duplicates `test_with_operation_limit` with a hard-coded budget
+#### [x] READ-006 — `FlowLimits::test_new` duplicates `test_with_operation_limit` with a hard-coded budget
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -252,7 +252,10 @@ limit-exhaustion tests in `tests_extended.rs` need the operation budget to not
 be the first dimension exhausted) and keep the `alternatives: states.max(1)`
 default identical in the remaining constructor.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `FlowLimits::test_new` delegate to
+`test_with_operation_limit` with `usize::MAX`, leaving the shared constructor
+as the single owner of field initialization and preserving the existing
+alternative-limit default and all callers.
 
 ## Systemic Themes
 

@@ -85,14 +85,7 @@ impl FlowLimits {
         emissions: usize,
         mutation: usize,
     ) -> Self {
-        Self {
-            objects,
-            states,
-            emissions,
-            mutation,
-            alternatives: states.max(1),
-            operations: usize::MAX,
-        }
+        Self::test_with_operation_limit(objects, states, emissions, mutation, usize::MAX)
     }
 
     #[cfg(test)]
