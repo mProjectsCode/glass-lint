@@ -2,9 +2,7 @@ use glass_lint_datastructures::NameId;
 use swc_common::Span;
 
 use crate::analysis::{
-    model::scope::{
-        BindingId, BindingKey, BindingProvenance, BindingVersion, FunctionId, ScopeId,
-    },
+    model::scope::{BindingId, BindingKey, BindingProvenance, BindingVersion, FunctionId, ScopeId},
     scope::{
         binding_index::BindingIndex, frozen_assignments::AssignmentAt, name_env::NameEnvironment,
         scope_index::LexicalScopeIndex,
@@ -60,6 +58,19 @@ pub(super) struct ScopeReadView<'a, M> {
 impl<'a, M> ScopeReadView<'a, M> {
     pub(super) fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.data.scopes.scope_at(span, self.scope_shape_valid)
+    }
+
+    pub(super) fn preferred_binding_witness_at(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Option<&'a BindingProvenance> {
+        let name = self.data.names.name_id(name)?;
+        let (scope, declaration) = self.nearest_binding_at(name, span)?;
+        let parameter = self.parameter_alias_for_scope(scope, name);
+        self.assignment_at(scope, name, span)
+            .resolve(parameter, declaration)
+            .preferred_witness()
     }
 
     pub(super) fn nearest_binding_at(

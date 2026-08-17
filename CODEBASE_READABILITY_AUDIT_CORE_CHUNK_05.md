@@ -63,7 +63,7 @@ lookups, moved frozen-phase leaf reads directly to `ScopeData` and its owning
 indexes, and made `function_scope_at` the single frozen function-scope API.
 The shape-validity gating and shared binding-key construction remain unchanged.
 
-#### [ ] READ-002 — Collection- and frozen-phase `preferred_binding_witness_at` are the same query implemented twice
+#### [x] READ-002 — Collection- and frozen-phase `preferred_binding_witness_at` are the same query implemented twice
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -101,7 +101,10 @@ first-non-local-witness order; `scope_shape_valid` must continue gating
 `scope_at`; keep `Resolver` and the fact builders feeding from
 `ident_value_seed` (callable.rs:114-159) unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the preferred-witness chain onto the phase-generic
+`ScopeReadView` and delegated both `ScopeGraph` and `FrozenScopeGraph` to it.
+Status-aware `binding_resolution_at`/`resolve_binding` remain separate for
+completeness and fallback decisions.
 
 #### [ ] READ-003 — `MutationIndex` exposes storage-shaped sorted slices and leaks the sort invariant
 

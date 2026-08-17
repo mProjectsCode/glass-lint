@@ -117,10 +117,6 @@ impl ScopeGraph {
 
     // -- Name-related helpers kept on ScopeGraph for collection --
 
-    pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
-        self.data.names.name_id(name)
-    }
-
     pub(in crate::analysis) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.data.names.name_path(path)
     }
@@ -187,13 +183,7 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<&BindingProvenance> {
-        let name = self.name_id(name)?;
-        let view = self.read_view();
-        let (scope, declaration) = view.nearest_binding_at(name, span)?;
-        let parameter = view.parameter_alias_for_scope(scope, name);
-        view.assignment_at(scope, name, span)
-            .resolve(parameter, declaration)
-            .preferred_witness()
+        self.read_view().preferred_binding_witness_at(name, span)
     }
 
     /// Build a stable key for a name, using a global root when unbound.
@@ -260,6 +250,14 @@ impl FrozenScopeGraph {
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.read_view().scope_at(span)
+    }
+
+    pub(in crate::analysis) fn preferred_binding_witness_at(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Option<&BindingProvenance> {
+        self.read_view().preferred_binding_witness_at(name, span)
     }
 
     /// Yield a scope and then each ancestor scope up to the root.

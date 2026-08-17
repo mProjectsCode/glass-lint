@@ -29,19 +29,6 @@ impl FrozenScopeGraph {
         }
     }
 
-    /// Resolve one strict binding provenance visible at a use position.
-    ///
-    /// This is a convenience projection that intentionally discards joined
-    /// and incomplete status. Callers making fallback or certainty decisions
-    /// must use [`Self::binding_resolution_at`] instead.
-    pub(in crate::analysis) fn preferred_binding_witness_at(
-        &self,
-        name: &str,
-        span: Span,
-    ) -> Option<&BindingProvenance> {
-        self.binding_resolution_at(name, span).preferred_witness()
-    }
-
     /// Resolve a binding only when its provenance is complete at the use
     /// position. Joined or incomplete alternatives cannot establish a
     /// definite positive classification.
