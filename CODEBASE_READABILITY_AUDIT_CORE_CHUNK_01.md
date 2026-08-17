@@ -199,7 +199,7 @@ derived phase together.
 `availability()` accessor and migrated all callers. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-006 — `ConstructionMetadata` is a one-call relay struct between two phases
+#### [x] READ-006 — `ConstructionMetadata` is a one-call relay struct between two phases
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -222,7 +222,9 @@ children, and emits (matching the existing `record_assignment` /
 the child visit strictly between resolution and emission so provenance
 recording and deterministic evidence order are unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed construction metadata resolution, child visitation,
+and fact emission into `record_new_expr`, preserving the resolve → visit →
+emit order. Verified with `make fmt && make ci`.
 
 #### [ ] READ-007 — Duplicated function-scope lookup and `set_function` in enter/exit facts
 

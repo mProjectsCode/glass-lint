@@ -123,9 +123,7 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget().exhausted() {
             return;
         }
-        let metadata = self.resolve_construction_metadata(new_expr);
-        self.visit_construction_children(new_expr);
-        self.emit_construction_fact(new_expr, metadata);
+        self.record_new_expr(new_expr);
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {

@@ -1,5 +1,4 @@
-use glass_lint_datastructures::NamePath;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::ToSmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::NewExpr;
 
@@ -9,18 +8,8 @@ use crate::analysis::facts::{
     literal_member_property_name,
 };
 
-pub(super) struct ConstructionMetadata {
-    callee_span: Span,
-    callee_name: Option<SmolStr>,
-    provenance: SymbolCallProvenance,
-    rooted_chain: Option<NamePath>,
-}
-
 impl FactBuilder<'_, '_> {
-    pub(super) fn resolve_construction_metadata(
-        &mut self,
-        new_expr: &NewExpr,
-    ) -> ConstructionMetadata {
+    pub(super) fn record_new_expr(&mut self, new_expr: &NewExpr) {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.constructor_origin_for_expr(&new_expr.callee) {
             self.provenance
@@ -63,34 +52,18 @@ impl FactBuilder<'_, '_> {
             _ => (None, resolved.provenance.call.clone()),
         };
 
-        ConstructionMetadata {
-            callee_span,
-            callee_name,
-            provenance,
-            rooted_chain,
-        }
-    }
-
-    pub(super) fn visit_construction_children(&mut self, new_expr: &NewExpr) {
         new_expr.visit_children_with(self);
-    }
-
-    pub(super) fn emit_construction_fact(
-        &mut self,
-        new_expr: &NewExpr,
-        metadata: ConstructionMetadata,
-    ) {
-        let Some(callee_span) = self.byte_range(metadata.callee_span) else {
+        let Some(callee_span) = self.byte_range(callee_span) else {
             return;
         };
-        let callee_name = self.intern_name(metadata.callee_name.as_deref());
+        let callee_name = self.intern_name(callee_name.as_deref());
         self.emit(
             new_expr.span(),
             FactPayload::Construction {
                 callee_span,
                 callee_name,
-                provenance: metadata.provenance,
-                rooted_chain: metadata.rooted_chain,
+                provenance,
+                rooted_chain,
             },
         );
     }
