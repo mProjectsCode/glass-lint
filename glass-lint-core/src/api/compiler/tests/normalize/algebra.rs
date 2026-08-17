@@ -317,38 +317,6 @@ fn compatible_identities_in_all_pass() {
 }
 
 #[test]
-fn uncorrelated_all_fails_with_uncorrelated_conjunction() {
-    let a = QueryExpr::event(EventQuery::from_parts_for_test(
-        VarId::new(0),
-        EventSpec::Call,
-        IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        vec![],
-    ));
-    let b = QueryExpr::event(EventQuery::from_parts_for_test(
-        VarId::new(1),
-        EventSpec::MemberCall {
-            member: SymbolPath::from("doc.createElement"),
-        },
-        IdentitySpec::Rooted {
-            path: SymbolPath::from("doc.createElement"),
-        },
-        vec![],
-    ));
-    let all = AllExpr::new(vec![a, b]).unwrap();
-    let d = decl(QueryExpr::all(all), 0, "test");
-    let result = normalize::normalize_query_decl(&d);
-    assert!(
-        matches!(
-            result,
-            Err(crate::api::compiler::validate::QueryCompileError::UncorrelatedConjunction)
-        ),
-        "expected UncorrelatedConjunction, got {result:?}"
-    );
-}
-
-#[test]
 fn simple_query_has_no_matcher_specific_preparation_requirements() {
     let d = decl(event(0, "fetch"), 0, "fetch");
     let nq = normalize_ok(&d);

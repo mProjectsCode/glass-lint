@@ -66,7 +66,7 @@ Preserved the public and crate-private visibility split. Verified with
 
 ### Normalize/validate correlation
 
-#### [ ] READ-002 — Same-event correlation is computed twice on identical `QueryShapeFacts`
+#### [x] READ-002 — Same-event correlation is computed twice on identical `QueryShapeFacts`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -108,7 +108,11 @@ express and which cannot be dropped; and leave the reachable
 `UncorrelatedConjunction` returns in the merge path (`normalize_all.rs:249,275`)
 untouched.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed normalization's duplicate first-branch overlap scan and
+made its no-common-event-variable fallback unconditionally report
+`UnsupportedRelation`. Validation remains the owner of the authored-input
+`UncorrelatedConjunction` diagnostic and its focused test; the direct
+normalization test was removed accordingly.
 
 #### [ ] READ-005 — Identity/event dimension compatibility and subject classification are re-derived at four sites per query
 
