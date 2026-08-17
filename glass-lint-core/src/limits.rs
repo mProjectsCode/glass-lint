@@ -1,6 +1,6 @@
 //! Validated limits for parsing and semantic analysis.
 
-use std::fmt;
+use std::{fmt, num::NonZeroUsize};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -51,23 +51,6 @@ impl fmt::Display for AnalysisLimitError {
 
 impl std::error::Error for AnalysisLimitError {}
 
-/// A validated non-zero `usize`.
-///
-/// Construction via [`PositiveLimit::new`] guarantees the value is positive.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
-struct PositiveLimit(usize);
-
-impl PositiveLimit {
-    fn new(value: usize) -> Result<Self, ()> {
-        if value == 0 { Err(()) } else { Ok(Self(value)) }
-    }
-
-    fn get(self) -> usize {
-        self.0
-    }
-}
-
 /// Validated limits for parser and semantic-analysis bounds.
 ///
 /// Every field is guaranteed positive. The only way to obtain a value is
@@ -76,21 +59,21 @@ impl PositiveLimit {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct AnalysisLimits {
-    syntax_depth: PositiveLimit,
-    semantic_operations: PositiveLimit,
-    effect_operations: PositiveLimit,
-    evidence_items: PositiveLimit,
-    link_operations: PositiveLimit,
-    flow_operations: PositiveLimit,
-    trace_nodes: PositiveLimit,
+    syntax_depth: NonZeroUsize,
+    semantic_operations: NonZeroUsize,
+    effect_operations: NonZeroUsize,
+    evidence_items: NonZeroUsize,
+    link_operations: NonZeroUsize,
+    flow_operations: NonZeroUsize,
+    trace_nodes: NonZeroUsize,
 }
 
 /// Validated aggregate bounds for sources retained by a direct project
 /// session. Filesystem loaders may apply stricter policies before admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProjectAdmissionLimits {
-    max_sources: usize,
-    max_source_bytes: usize,
+    max_sources: NonZeroUsize,
+    max_source_bytes: NonZeroUsize,
 }
 
 pub const DEFAULT_MAX_PROJECT_SOURCES: usize = 10_000;
@@ -99,8 +82,10 @@ pub const DEFAULT_MAX_PROJECT_SOURCE_BYTES: usize = 512 * 1024 * 1024;
 impl Default for ProjectAdmissionLimits {
     fn default() -> Self {
         Self {
-            max_sources: DEFAULT_MAX_PROJECT_SOURCES,
-            max_source_bytes: DEFAULT_MAX_PROJECT_SOURCE_BYTES,
+            max_sources: NonZeroUsize::new(DEFAULT_MAX_PROJECT_SOURCES)
+                .expect("default max sources is non-zero"),
+            max_source_bytes: NonZeroUsize::new(DEFAULT_MAX_PROJECT_SOURCE_BYTES)
+                .expect("default max source bytes is non-zero"),
         }
     }
 }
@@ -110,12 +95,10 @@ impl ProjectAdmissionLimits {
         max_sources: usize,
         max_source_bytes: usize,
     ) -> Result<Self, ProjectAdmissionLimitError> {
-        if max_sources == 0 {
-            return Err(ProjectAdmissionLimitError::MaxSources);
-        }
-        if max_source_bytes == 0 {
-            return Err(ProjectAdmissionLimitError::MaxSourceBytes);
-        }
+        let max_sources =
+            NonZeroUsize::new(max_sources).ok_or(ProjectAdmissionLimitError::MaxSources)?;
+        let max_source_bytes = NonZeroUsize::new(max_source_bytes)
+            .ok_or(ProjectAdmissionLimitError::MaxSourceBytes)?;
         Ok(Self {
             max_sources,
             max_source_bytes,
@@ -123,19 +106,19 @@ impl ProjectAdmissionLimits {
     }
 
     pub fn max_sources(&self) -> usize {
-        self.max_sources
+        self.max_sources.get()
     }
 
     pub fn max_source_bytes(&self) -> usize {
-        self.max_source_bytes
+        self.max_source_bytes.get()
     }
 
     pub fn with_max_sources(self, value: usize) -> Result<Self, ProjectAdmissionLimitError> {
-        Self::new(value, self.max_source_bytes)
+        Self::new(value, self.max_source_bytes())
     }
 
     pub fn with_max_source_bytes(self, value: usize) -> Result<Self, ProjectAdmissionLimitError> {
-        Self::new(self.max_sources, value)
+        Self::new(self.max_sources(), value)
     }
 }
 
@@ -166,13 +149,20 @@ const fn default_trace_nodes() -> usize {
 impl Default for AnalysisLimits {
     fn default() -> Self {
         Self {
-            syntax_depth: PositiveLimit::new(default_syntax_depth()).unwrap(),
-            semantic_operations: PositiveLimit::new(default_semantic_operations()).unwrap(),
-            effect_operations: PositiveLimit::new(default_effect_operations()).unwrap(),
-            evidence_items: PositiveLimit::new(default_evidence_items()).unwrap(),
-            link_operations: PositiveLimit::new(default_link_operations()).unwrap(),
-            flow_operations: PositiveLimit::new(default_flow_operations()).unwrap(),
-            trace_nodes: PositiveLimit::new(default_trace_nodes()).unwrap(),
+            syntax_depth: NonZeroUsize::new(default_syntax_depth())
+                .expect("default syntax depth is non-zero"),
+            semantic_operations: NonZeroUsize::new(default_semantic_operations())
+                .expect("default semantic operations are non-zero"),
+            effect_operations: NonZeroUsize::new(default_effect_operations())
+                .expect("default effect operations are non-zero"),
+            evidence_items: NonZeroUsize::new(default_evidence_items())
+                .expect("default evidence items are non-zero"),
+            link_operations: NonZeroUsize::new(default_link_operations())
+                .expect("default link operations are non-zero"),
+            flow_operations: NonZeroUsize::new(default_flow_operations())
+                .expect("default flow operations are non-zero"),
+            trace_nodes: NonZeroUsize::new(default_trace_nodes())
+                .expect("default trace nodes are non-zero"),
         }
     }
 }
@@ -181,8 +171,8 @@ impl AnalysisLimits {
     fn validated(
         value: usize,
         error: AnalysisLimitError,
-    ) -> Result<PositiveLimit, AnalysisLimitError> {
-        PositiveLimit::new(value).map_err(|()| error)
+    ) -> Result<NonZeroUsize, AnalysisLimitError> {
+        NonZeroUsize::new(value).ok_or(error)
     }
 
     pub fn syntax_depth(&self) -> usize {
@@ -268,7 +258,7 @@ impl AnalysisLimits {
         mut self,
         value: usize,
         error: AnalysisLimitError,
-        assign: impl FnOnce(&mut Self, PositiveLimit),
+        assign: impl FnOnce(&mut Self, NonZeroUsize),
     ) -> Result<Self, AnalysisLimitError> {
         let limit = Self::validated(value, error)?;
         assign(&mut self, limit);

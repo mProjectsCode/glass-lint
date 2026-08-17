@@ -35,7 +35,7 @@ per-error full line-index rebuild on the parser diagnostic path.
 
 ### Limits (`limits.rs`)
 
-#### [ ] READ-001 — `PositiveLimit` re-implements `NonZeroUsize`, and the same non-zero invariant is enforced two ways in one module
+#### [x] READ-001 — `PositiveLimit` re-implements `NonZeroUsize`, and the same non-zero invariant is enforced two ways in one module
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -74,7 +74,11 @@ impossible on the standard type), the `Copy`-ability of `ProjectAdmissionLimits`
 which can keep routing through the validated builders unchanged; the `.get()`
 accessors (limits.rs:125-131, 188-214) need no changes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the private `PositiveLimit` wrapper and the raw
+`usize` admission fields with `NonZeroUsize`. Public accessors and typed zero
+errors remain unchanged, while the standard non-zero type now owns the
+invariant for both limit aggregates. Verified with limits-focused tests,
+all-features compilation, clippy, `make fmt`, and `make ci`.
 
 ### Parsing diagnostics (`parse.rs`, `analysis/semantic/status.rs`)
 
