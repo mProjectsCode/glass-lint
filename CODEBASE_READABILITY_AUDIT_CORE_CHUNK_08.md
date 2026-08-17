@@ -66,7 +66,7 @@ normalization, and per-module construction (each module has its own `NameTable`)
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `PropertyRequirementMatch` has two consumers, and `value_matches` is load-bearing beyond its cross-flow filter (the one-caller premise is corrected)
+#### [x] READ-002 — `PropertyRequirementMatch` has two consumers, and `value_matches` is load-bearing beyond its cross-flow filter (the one-caller premise is corrected)
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -108,7 +108,9 @@ deterministic ordering; and keep both consumers' distinct projections (the
 value-filtering of cross-flow and the flag-preserving `PropertyWriteUpdate`
 mapping of the local projector).
 
-**Fix Applied:** None so far.
+**Fix Applied:** No code change. Review confirmed the wrapper is the correct
+shared carrier: cross-flow needs the precise-value filter, while local flow
+must preserve `value_matches` to distinguish partial writes from completion.
 
 ### Flow effect summaries (`flow/effect/domain.rs`, `effect/mod.rs`)
 
