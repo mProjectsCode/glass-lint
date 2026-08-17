@@ -4,14 +4,6 @@ use crate::api::compiler::IdentityConstraint;
 
 // ── Plan requirements ─────────────────────────────────────────────────────
 
-/// Which value-resolution capabilities the physical plan needs.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ValueResolutionRequirement {
-    LocalStaticValues,
-    ModuleIdentityValues,
-    CallResultIdentities,
-}
-
 /// Whether local or cross-call flow projection is required.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct FlowRequirements {
@@ -68,17 +60,11 @@ impl ProjectRequirement {
 /// collections and flow flags stay private.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct PlanRequirements {
-    value_resolution: BTreeSet<ValueResolutionRequirement>,
     flow: FlowRequirements,
     project: BTreeSet<ProjectRequirement>,
 }
 
 impl PlanRequirements {
-    #[cfg(test)]
-    pub(crate) fn value_resolution(&self) -> &BTreeSet<ValueResolutionRequirement> {
-        &self.value_resolution
-    }
-
     pub(crate) fn flow(&self) -> &FlowRequirements {
         &self.flow
     }
@@ -88,45 +74,27 @@ impl PlanRequirements {
         &self.project
     }
 
-    /// Record that matching must resolve the static values of call arguments.
-    pub(crate) fn require_local_static_values(&mut self) {
-        self.value_resolution
-            .insert(ValueResolutionRequirement::LocalStaticValues);
-    }
-
-    /// Record the value-resolution and project capabilities required to match
-    /// the given identity constraint.
+    /// Record the project capabilities required to match the given identity
+    /// constraint.
     pub(crate) fn require_identity(&mut self, identity: &IdentityConstraint) {
         match identity {
             IdentityConstraint::ModuleExport { .. } => {
-                self.value_resolution.extend([
-                    ValueResolutionRequirement::ModuleIdentityValues,
-                    ValueResolutionRequirement::CallResultIdentities,
-                ]);
                 self.project.extend([
                     ProjectRequirement::ExactModuleExports,
                     ProjectRequirement::CallResultIdentities,
                 ]);
             }
             IdentityConstraint::PackageModuleExport { .. } => {
-                self.value_resolution.extend([
-                    ValueResolutionRequirement::ModuleIdentityValues,
-                    ValueResolutionRequirement::CallResultIdentities,
-                ]);
                 self.project.extend([
                     ProjectRequirement::PackageModuleExports,
                     ProjectRequirement::CallResultIdentities,
                 ]);
             }
             IdentityConstraint::ModuleNamespace { .. } => {
-                self.value_resolution
-                    .insert(ValueResolutionRequirement::ModuleIdentityValues);
                 self.project
                     .insert(ProjectRequirement::ExactModuleNamespaces);
             }
             IdentityConstraint::PackageModuleNamespace { .. } => {
-                self.value_resolution
-                    .insert(ValueResolutionRequirement::ModuleIdentityValues);
                 self.project
                     .insert(ProjectRequirement::PackageModuleNamespaces);
             }
@@ -157,9 +125,6 @@ impl PlanRequirements {
         self.project
             .iter()
             .any(ProjectRequirement::needs_call_result_identities)
-            || self
-                .value_resolution
-                .contains(&ValueResolutionRequirement::CallResultIdentities)
     }
 
     /// Whether a project identity overlay is needed for any matched plan.
@@ -170,8 +135,6 @@ impl PlanRequirements {
     }
 
     pub(crate) fn merge_from(&mut self, other: &Self) {
-        self.value_resolution
-            .extend(other.value_resolution.iter().cloned());
         self.flow.local |= other.flow.local;
         self.flow.cross_call |= other.flow.cross_call;
         self.project.extend(other.project.iter().cloned());

@@ -167,7 +167,7 @@ re-exports and pass order. Verified with validation-focused tests, clippy,
 
 ### [api::compiler::requirements]
 
-#### [ ] READ-004 — PlanRequirements: parallel capability sets where value_resolution is unread in production and require_identity must update both in lockstep
+#### [x] READ-004 — PlanRequirements: parallel capability sets where value_resolution is unread in production and require_identity must update both in lockstep
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -212,6 +212,12 @@ and stay unchanged. Deletion target: the above, plus updating
 of the summary assertions at `tests/physical.rs:298,347`. Guardrail: preserve
 `ProjectRequirement`'s module-identity vs call-result-identity distinction that
 drives `needs_module_identities`/`needs_project_overlay` in `projection.rs`.
+
+**Fix Applied:** Removed the unused `value_resolution` capability set and its
+static-value requirement, keeping project preparation as the single identity
+capability dimension. Identity requirements, merging, summaries, and tests now
+derive from `ProjectRequirement`; constrained argument evaluation remains owned
+by the matcher evaluator.
 
 ### [api::compiler::physical]
 

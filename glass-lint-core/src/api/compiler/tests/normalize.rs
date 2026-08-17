@@ -9,7 +9,7 @@ use crate::api::{
         normalize::{self},
         normalized::{NormalizedQuery, NormalizedRoot},
         physical,
-        requirements::{PlanRequirements, ProjectRequirement, ValueResolutionRequirement},
+        requirements::{PlanRequirements, ProjectRequirement},
     },
     rule::{
         MatchKind, ValueMatcher,

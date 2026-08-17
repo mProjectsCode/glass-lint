@@ -295,7 +295,7 @@ fn plan_summary_counts_roots() {
     ));
     assert_eq!(
         summary,
-        "roots=1 indexed_scans=1 constrained_scans=0 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={} project_requirements={}"
+        "roots=1 indexed_scans=1 constrained_scans=0 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no project_requirements={}"
     );
 }
 
@@ -344,7 +344,7 @@ fn plan_summary_shows_constrained_scan() {
     let summary = physical_summary(&d);
     assert_eq!(
         summary,
-        "roots=1 indexed_scans=0 constrained_scans=1 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={LocalStaticValues} project_requirements={}"
+        "roots=1 indexed_scans=0 constrained_scans=1 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no project_requirements={}"
     );
     assert!(summary.contains("indexed_scans=0"), "summary: {summary}");
 }

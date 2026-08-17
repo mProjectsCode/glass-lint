@@ -153,7 +153,6 @@ impl PhysicalRoot {
         match self {
             Self::IndexedScan { identity, .. } => requirements.require_identity(identity),
             Self::ConstrainedScan { identity, .. } => {
-                requirements.require_local_static_values();
                 requirements.require_identity(identity);
             }
             Self::ReturnedSubject { .. } => {}
@@ -360,7 +359,7 @@ impl PhysicalPlan {
             }
         }
         format!(
-            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} local_flow={} cross_call_flow={} project_overlay={} value_resolution={:?} project_requirements={:?}",
+            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} local_flow={} cross_call_flow={} project_overlay={} project_requirements={:?}",
             self.roots.len(),
             indexed,
             constrained,
@@ -382,7 +381,6 @@ impl PhysicalPlan {
             } else {
                 "no"
             },
-            self.requirements.value_resolution(),
             self.requirements.project_requirements(),
         )
     }
@@ -398,8 +396,7 @@ impl PhysicalPlan {
             lines.push(format!("root[{index}] {}", explain_root(root)));
         }
         lines.push(format!(
-            "requirements value_resolution={:?} flow={{local={}, cross_call={}}} project={:?}",
-            self.requirements.value_resolution(),
+            "requirements flow={{local={}, cross_call={}}} project={:?}",
             self.requirements.flow().local(),
             self.requirements.flow().cross_call(),
             self.requirements.project_requirements(),

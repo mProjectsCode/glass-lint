@@ -45,7 +45,6 @@ fn global_query_has_only_calls_requirement() {
     let d = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_ok(&d);
     let req = super::plan_requirements(&nq);
-    assert!(req.value_resolution().is_empty());
     assert!(!req.flow().local());
     assert!(!req.flow().cross_call());
     assert!(!req.needs_project_overlay());

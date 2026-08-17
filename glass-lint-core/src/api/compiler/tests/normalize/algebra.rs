@@ -183,8 +183,6 @@ fn normalization_is_idempotent() {
     let normalized = normalize_ok(&d);
     let slots = normalized.root().collect_slots();
     assert_eq!(slots, vec![0, 1, 2]);
-    let plan = super::plan_requirements(&normalized);
-    assert!(plan.value_resolution().is_empty());
     match normalized.root() {
         NormalizedRoot::Any(branches) => {
             assert!(
@@ -355,13 +353,12 @@ fn simple_query_has_no_matcher_specific_preparation_requirements() {
     let d = decl(event(0, "fetch"), 0, "fetch");
     let nq = normalize_ok(&d);
     let req = super::plan_requirements(&nq);
-    assert!(req.value_resolution().is_empty());
     assert!(!req.flow().local());
     assert!(!req.needs_project_overlay());
 }
 
 #[test]
-fn constrained_query_has_fact_stream() {
+fn constrained_query_has_no_extra_preparation_requirement() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
         .with_arg(0, ValueMatcher::static_string())
@@ -369,10 +366,7 @@ fn constrained_query_has_fact_stream() {
     let d = eq.into_query();
     let nq = normalize_ok(&d);
     let req = super::plan_requirements(&nq);
-    assert!(
-        req.value_resolution()
-            .contains(&ValueResolutionRequirement::LocalStaticValues)
-    );
+    assert!(!req.needs_project_overlay());
 }
 
 #[test]
