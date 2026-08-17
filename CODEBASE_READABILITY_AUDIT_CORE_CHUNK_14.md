@@ -258,7 +258,7 @@ entry (`status/tests.rs:59`) through the new `LocalAnalysisStatus` API.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — `IncompleteReason::ParseFailure` diagnostic arm is unreachable; the skip is duplicated at the consumer
+#### [x] READ-006 — `IncompleteReason::ParseFailure` diagnostic arm is unreachable; the skip is duplicated at the consumer
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -293,7 +293,11 @@ structured diagnostic, delivered via the parse-diagnostic split at
 parser reporting path, and `ParseFailure` keeps making analysis incomplete (it
 is deliberately a completion side channel, per the comment at `status.rs:167-172`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `IncompleteReason::diagnostic` return `Option`, with
+parse failures returning `None`, and moved the skip into that owner method.
+`AnalysisStatus::diagnostics` now handles the fallible result without a
+duplicated parse-failure match; parser presentation and completion semantics
+remain separate.
 
 ## Systemic Themes
 

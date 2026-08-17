@@ -166,18 +166,11 @@ impl AnalysisStatus {
         let mut files = Vec::new();
         let mut project = Vec::new();
         for entry in &self.entries {
-            // Parse status and parser presentation deliberately have separate
-            // payloads. The status entry is always recorded from the parser
-            // code and is the sole completion input; the structured parser
-            // diagnostic separately retains its original message and range.
-            // Skipping it here prevents duplicate presentation without making
-            // the presentation diagnostic a completion side channel.
-            if matches!(entry.reason, IncompleteReason::ParseFailure { .. }) {
-                continue;
-            }
-            let diagnostic = match &entry.scope {
+            let Some(diagnostic) = (match &entry.scope {
                 StatusScope::File(path) => entry.reason.diagnostic(Some(file_location(path))),
                 StatusScope::Local | StatusScope::Project => entry.reason.diagnostic(None),
+            }) else {
+                continue;
             };
             match &entry.scope {
                 // Local status is an internal pre-materialization state. The
@@ -212,7 +205,7 @@ impl AnalysisComponent {
 }
 
 impl IncompleteReason {
-    fn diagnostic(&self, location: Option<SourceLocation>) -> AnalysisDiagnostic {
+    fn diagnostic(&self, location: Option<SourceLocation>) -> Option<AnalysisDiagnostic> {
         // Single match over all status variants: each arm pairs a diagnostic
         // kind with a message template. Keeping them together ensures every
         // variant maps to exactly one (code, message) pair without drift.
@@ -221,7 +214,7 @@ impl IncompleteReason {
                 DiagnosticKind::InvalidParserSpan,
                 "parser produced a source range outside authored UTF-8 boundaries".into(),
             ),
-            Self::ParseFailure { kind } => (kind.diagnostic(), kind.message(None)),
+            Self::ParseFailure { .. } => return None,
             Self::SemanticBudgetExhausted { limit, used } => (
                 DiagnosticKind::SemanticBudgetExhausted,
                 format!("semantic analysis exceeded its step budget; limit={limit}, used={used}"),
@@ -282,7 +275,7 @@ impl IncompleteReason {
                 format!("scope collection encountered {count} structural issue(s)"),
             ),
         };
-        AnalysisDiagnostic::new(code.into(), message, location)
+        Some(AnalysisDiagnostic::new(code.into(), message, location))
     }
 }
 
