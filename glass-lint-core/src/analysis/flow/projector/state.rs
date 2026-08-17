@@ -85,10 +85,11 @@ impl InverseDelta {
             }
             Self::RequirementRemove(key, index, events) => {
                 if let Some(state) = states.get_mut(key) {
-                    if !undo {
+                    if undo {
+                        state.restore_requirement(*index, events);
+                    } else {
                         state.clear_requirement(*index);
                     }
-                    state.restore_requirement(*index, events);
                 }
             }
             Self::SinkInsert(key, index, event) => {

@@ -96,6 +96,47 @@ fn checkpoints_restore_divergent_mutation_paths() {
 }
 
 #[test]
+fn redo_requirement_removal_does_not_restore_removed_events() {
+    let mut table = FlowStateTable::new(100, 100);
+    let flow = FlowId::new(RuleIndex::new(0), 0);
+    table.insert_state(FlowState::new(
+        flow,
+        FactId::from_test(1),
+        FlowObjectId::from_test(10),
+    ));
+
+    assert!(table.record_requirement(
+        FlowObjectId::from_test(10),
+        flow,
+        RequirementIndex::new(0).unwrap(),
+        FactId::from_test(5),
+    ));
+    let configured = table.capture(true);
+
+    assert!(table.clear_requirement(
+        FlowObjectId::from_test(10),
+        flow,
+        RequirementIndex::new(0).unwrap(),
+    ));
+    assert!(table.record_requirement(
+        FlowObjectId::from_test(10),
+        flow,
+        RequirementIndex::new(0).unwrap(),
+        FactId::from_test(7),
+    ));
+    let updated = table.capture(true);
+
+    assert!(table.restore(configured));
+    assert!(table.restore(updated));
+
+    let state = table.state(FlowObjectId::from_test(10), flow).unwrap();
+    assert_eq!(
+        state.requirement_entries().next().map(|(_, events)| events),
+        Some(vec![FactId::from_test(7)])
+    );
+}
+
+#[test]
 fn bind_updates_and_unbind_removes_aliases() {
     let mut table = FlowStateTable::new(100, 100);
     table.bind(ValueId::from_test(1), FlowObjectId::from_test(10));

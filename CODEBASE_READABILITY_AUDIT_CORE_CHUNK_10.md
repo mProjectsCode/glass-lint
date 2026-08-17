@@ -23,7 +23,7 @@ vocabulary/API choices. Findings READ-001..READ-006 below; no fixes applied.
 
 ### Flow projector state and tables
 
-#### [ ] READ-001 — `RequirementRemove` redo re-adds the events a property-write removed
+#### [x] READ-001 — `RequirementRemove` redo re-adds the events a property-write removed
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -59,7 +59,11 @@ assert `requirement_entries()` equals the post-write set after restoring the
 sibling. Guardrails: `RequirementInsert`/`SinkInsert` and the alias/state deltas
 are symmetric and must stay unchanged; keep the fail-closed empty-index no-op.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Redo now clears a removed requirement without restoring its
+pre-removal events; undo remains responsible for restoring them. Added
+`redo_requirement_removal_does_not_restore_removed_events` to cover a
+divergent checkpoint restore across a removal and replacement insertion.
+Verified with `cargo test -p glass-lint-core projector::state`.
 
 #### [ ] READ-002 — Sink-to-parameter binding searches are written three times with different acceptance rules
 
