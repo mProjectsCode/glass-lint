@@ -128,7 +128,7 @@ impl FunctionEffect {
         self.invalid
     }
 
-    pub(in crate::analysis) fn value_root(&self, value: ValueId) -> Option<ValueId> {
+    fn value_root(&self, value: ValueId) -> Option<ValueId> {
         self.value_roots.get(&value).copied()
     }
 
@@ -357,7 +357,7 @@ impl FunctionEffects {
 /// fact tape into occurrence indexes. Keeping construction separate from the
 /// immutable `FunctionEffects` value makes the shared derived pass explicit
 /// without exposing either consumer's storage.
-pub(in crate::analysis) struct FunctionEffectsBuilder<'stream> {
+struct FunctionEffectsBuilder<'stream> {
     stream: &'stream FactStream<Frozen>,
     by_id: FunctionTable<FunctionEffect>,
     budget: Budget,
@@ -366,7 +366,7 @@ pub(in crate::analysis) struct FunctionEffectsBuilder<'stream> {
 }
 
 impl<'stream> FunctionEffectsBuilder<'stream> {
-    pub(in crate::analysis) fn new(
+    fn new(
         stream: &'stream FactStream<Frozen>,
         limit: usize,
         availability: DerivedPhaseAvailability,
@@ -387,7 +387,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
         builder
     }
 
-    pub(in crate::analysis) fn consume(&mut self, fact: &SemanticFact) {
+    fn consume(&mut self, fact: &SemanticFact) {
         if !self.availability.is_enabled() {
             return;
         }
@@ -450,7 +450,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
         effect.mark_unsupported_control(fact.payload());
     }
 
-    pub(in crate::analysis) fn finish(self) -> FunctionEffects {
+    fn finish(self) -> FunctionEffects {
         if !self.availability.is_enabled() {
             return FunctionEffects {
                 by_id: FunctionTable::new(0),

@@ -243,7 +243,7 @@ intentional divergence stays pinned rather than silently converging.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — Construction-state type and a test-only accessor leak `pub(in crate::analysis)` visibility
+#### [x] READ-006 — Construction-state type and a test-only accessor leak `pub(in crate::analysis)` visibility
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -273,7 +273,10 @@ production entry point used by `local.rs:404` and the `#[cfg(test)]`
 (exhaustion → `FlowCompletion::incomplete`), which must not regress to a
 successful empty result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `FunctionEffectsBuilder` and its construction methods
+module-private, and made the test-only `value_root` lookup module-private. The
+analysis-visible collection entry point and its availability/budget behavior
+are unchanged.
 
 ## Systemic Themes
 
