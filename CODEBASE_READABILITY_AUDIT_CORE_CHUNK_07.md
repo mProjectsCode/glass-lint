@@ -127,7 +127,7 @@ updated `UsageProjector` to call the owner method. The three existing matching
 branches and call-argument lookup semantics are unchanged; the evidence module
 no longer owns a `CallContext` dispatcher.
 
-#### [ ] READ-003 — `BoundedFifo`/`FifoAdmission` are reusable bounded data structures living outside the crate chartered to own them
+#### [x] READ-003 — `BoundedFifo`/`FifoAdmission` are reusable bounded data structures living outside the crate chartered to own them
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -165,7 +165,11 @@ latches `exhausted` so downstream
 preserved. Implementation order: before READ-006, which restructures callers in
 the same files.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved `BoundedFifo` and `FifoAdmission` into the public,
+provider-neutral `glass-lint-datastructures` crate and added focused tests for
+deduplication, total-retained bounds, exhaustion, and FIFO order. Core now
+reuses the shared primitive while retaining its flow-specific
+`ContextWorklist` wrapper and source-propagation behavior.
 
 #### [ ] READ-004 — `UsageProjector` and `CallPropagation` are overlapping one-shot coordinators sharing five of six fields
 

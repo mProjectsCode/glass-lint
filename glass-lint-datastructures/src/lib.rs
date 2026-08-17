@@ -16,6 +16,7 @@ pub type FastIndexSet<V> = IndexSet<V, DefaultHashBuilder>;
 
 mod budget;
 mod diagnostic;
+mod fifo;
 mod fingerprint;
 mod history;
 mod name;
@@ -28,6 +29,7 @@ pub use diagnostic::{
     ByteRange, InvalidPosition, InvalidSourceBoundary, Position, ReversedByteRange,
     ReversedSourcePositionRange, SourceRange,
 };
+pub use fifo::{BoundedFifo, FifoAdmission};
 pub use fingerprint::Fingerprint;
 pub use history::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 pub use name::{DEFAULT_MAX_NAMES, NameExhausted, NameId, NameTable};

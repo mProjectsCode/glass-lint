@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use glass_lint_datastructures::Budget;
+use glass_lint_datastructures::{BoundedFifo, Budget, FifoAdmission};
 use hashbrown::HashMap;
 
 use crate::{
@@ -9,10 +9,7 @@ use crate::{
         facts::FactId,
         flow::{
             FlowCompletion, FlowCompletionReason,
-            cross::{
-                MAX_PENDING, QualifiedCallGraph,
-                worklist::{BoundedFifo, FifoAdmission},
-            },
+            cross::{MAX_PENDING, QualifiedCallGraph},
             planning::{FlowMatchView, build_bound_source_index},
         },
         model::{flow::FlowId, scope::FunctionId, value::ValueId},

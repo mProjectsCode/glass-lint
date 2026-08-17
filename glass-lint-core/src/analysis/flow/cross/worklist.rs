@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::BTreeSet;
+
+use glass_lint_datastructures::BoundedFifo;
+pub(super) use glass_lint_datastructures::FifoAdmission;
 
 use crate::{
     analysis::{
@@ -14,66 +17,6 @@ use crate::{
     },
     project::ModuleId,
 };
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(super) enum FifoAdmission {
-    Inserted,
-    Duplicate,
-    Full,
-}
-
-/// Bounded deduplicating FIFO shared by cross-flow traversals.
-pub(super) struct BoundedFifo<T> {
-    queue: VecDeque<T>,
-    seen: BTreeSet<T>,
-    max_retained: usize,
-    exhausted: bool,
-}
-
-impl<T: Ord + Clone> BoundedFifo<T> {
-    pub(super) fn new(max_retained: usize) -> Self {
-        Self {
-            queue: VecDeque::new(),
-            seen: BTreeSet::new(),
-            max_retained,
-            exhausted: false,
-        }
-    }
-
-    pub(super) fn push(&mut self, entry: T) -> FifoAdmission {
-        if self.seen.contains(&entry) {
-            return FifoAdmission::Duplicate;
-        }
-        if self.seen.len() >= self.max_retained {
-            self.exhausted = true;
-            return FifoAdmission::Full;
-        }
-        self.seen.insert(entry.clone());
-        self.queue.push_back(entry);
-        FifoAdmission::Inserted
-    }
-
-    pub(super) fn pop_front(&mut self) -> Option<T> {
-        self.queue.pop_front()
-    }
-
-    pub(super) fn take_pending(&mut self) -> Vec<T> {
-        std::mem::take(&mut self.queue).into_iter().collect()
-    }
-
-    pub(super) fn is_empty(&self) -> bool {
-        self.queue.is_empty()
-    }
-
-    pub(super) fn is_exhausted(&self) -> bool {
-        self.exhausted
-    }
-
-    #[cfg(test)]
-    pub(super) fn retained_len(&self) -> usize {
-        self.seen.len()
-    }
-}
 
 /// Deduplicating FIFO worklist for bounded interprocedural contexts.
 ///
