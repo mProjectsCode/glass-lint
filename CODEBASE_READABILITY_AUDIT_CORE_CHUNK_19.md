@@ -138,7 +138,7 @@ adapter). The `with_arg` addition must be checked against the same
 
 ### Canonical invariant reuse
 
-#### [ ] READ-003 — Lifecycle sources re-implement `CanonicalCollection`'s non-empty/bounded/sorted/dedup invariants by hand
+#### [x] READ-003 — Lifecycle sources re-implement `CanonicalCollection`'s non-empty/bounded/sorted/dedup invariants by hand
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -172,7 +172,10 @@ before converting it, so an invalid 65th source surfaces as
 difference deliberately or keep the empty-check before the size check, as the
 hand-rolled code does today.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolved by commit `fefa07e9` (`fix chunk 18 read 005`),
+which routed lifecycle event, sink, and value collections through the shared
+`CanonicalCollection` owner. No duplicate source-collection implementation is
+introduced here.
 
 ### Public surface and namespacing
 
