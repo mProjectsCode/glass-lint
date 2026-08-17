@@ -43,11 +43,6 @@ impl<T: Ord> CanonicalCollection<T> {
         self.0.iter()
     }
 
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.0.len()
-    }
-
     pub(crate) fn into_vec(self) -> Vec<T> {
         self.0
     }

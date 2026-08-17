@@ -108,7 +108,9 @@ fn all_of_conditions_are_canonical() {
     let a = LifecycleCondition::all_of([first.clone(), second.clone(), first.clone()]).unwrap();
     let b = LifecycleCondition::all_of([second, first]).unwrap();
     assert_eq!(a, b);
-    assert!(matches!(a.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 2));
+    assert!(
+        matches!(a.kind(), LifecycleConditionKind::AllOf(events) if events.iter().count() == 2)
+    );
 }
 
 #[test]
@@ -147,7 +149,9 @@ fn all_sink_completion_is_bounded_and_deterministic() {
     let a = LifecycleCompletion::all_sinks([first.clone(), second.clone(), first.clone()]).unwrap();
     let b = LifecycleCompletion::all_sinks([second, first]).unwrap();
     assert_eq!(a, b);
-    assert!(matches!(a.kind(), LifecycleCompletionKind::AllSinks(sinks) if sinks.len() == 2));
+    assert!(
+        matches!(a.kind(), LifecycleCompletionKind::AllSinks(sinks) if sinks.iter().count() == 2)
+    );
 }
 
 #[test]
@@ -275,7 +279,9 @@ fn lifecycle_condition_any_of_accepts_multiple_events() {
         LifecycleEvent::property_write("b", ValueMatcher::any_value()),
     ])
     .unwrap();
-    assert!(matches!(condition.kind(), LifecycleConditionKind::AnyOf(events) if events.len() == 2));
+    assert!(
+        matches!(condition.kind(), LifecycleConditionKind::AnyOf(events) if events.iter().count() == 2)
+    );
 }
 
 #[test]
@@ -285,7 +291,9 @@ fn lifecycle_condition_all_of_accepts_multiple_events() {
         ValueMatcher::any_value(),
     )])
     .unwrap();
-    assert!(matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 1));
+    assert!(
+        matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.iter().count() == 1)
+    );
 }
 
 #[test]
@@ -295,7 +303,9 @@ fn lifecycle_condition_event_wraps_in_all_of() {
         ValueMatcher::static_string().try_equals("file").unwrap(),
     ))
     .unwrap();
-    assert!(matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 1));
+    assert!(
+        matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.iter().count() == 1)
+    );
 }
 
 #[test]
@@ -312,27 +322,25 @@ fn lifecycle_completion_any_sink_holds_sink_matchers() {
     let sink = LifecycleSink::argument_of_member("target.appendChild", 0).unwrap();
     let completion = LifecycleCompletion::any_sink([sink]).unwrap();
     assert!(
-        matches!(completion.kind(), LifecycleCompletionKind::AnySink(sinks) if sinks.len() == 1)
+        matches!(completion.kind(), LifecycleCompletionKind::AnySink(sinks) if sinks.iter().count() == 1)
     );
 }
 
 #[test]
 fn lifecycle_sink_argument_of_holds_chain_and_index() {
     let sink = LifecycleSink::argument_of_member("parent.appendChild", 0).unwrap();
-    assert_eq!(sink.chain(), "parent.appendChild");
     assert!(matches!(
         sink.kind(),
-        LifecycleSinkKind::ArgumentOf { index, .. } if index.get() == 0
+        LifecycleSinkKind::ArgumentOf { endpoint, index } if endpoint.chain() == "parent.appendChild" && index.get() == 0
     ));
 }
 
 #[test]
 fn lifecycle_sink_any_argument_of_holds_chain() {
     let sink = LifecycleSink::any_argument_of_member("parent.appendChild").unwrap();
-    assert_eq!(sink.chain(), "parent.appendChild");
     assert!(matches!(
         sink.kind(),
-        LifecycleSinkKind::AnyArgumentOf { .. }
+        LifecycleSinkKind::AnyArgumentOf { endpoint } if endpoint.chain() == "parent.appendChild"
     ));
 }
 

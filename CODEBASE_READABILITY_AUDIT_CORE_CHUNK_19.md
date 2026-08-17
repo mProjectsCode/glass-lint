@@ -252,7 +252,7 @@ fixtures/providers only if the `Rule::id()` accessor spelling changes.
 
 ### Test-only accessors and dead weight
 
-#### [ ] READ-006 — `LifecycleSink::chain()` and the test-scoped `len()` wrappers duplicate accessors already provided by the endpoint and the canonical collection
+#### [x] READ-006 — `LifecycleSink::chain()` and the test-scoped `len()` wrappers duplicate accessors already provided by the endpoint and the canonical collection
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -284,7 +284,10 @@ observable so the order-independence tests at lifecycle/tests.rs:123-130 and
 `into_vec`, which production callers (value.rs:73-112, types.rs:149-151,230-232,
 normalize.rs) rely on.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unused `LifecycleSink::chain()` forwarder and
+test-only collection `len()` wrappers. Lifecycle tests now inspect endpoint
+spelling through `sink.kind()` and count canonical collections through their
+existing iterators.
 
 ### Value matcher composition
 

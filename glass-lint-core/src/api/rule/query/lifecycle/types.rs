@@ -149,11 +149,6 @@ impl LifecycleEvents {
     pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleEvent> {
         self.0.iter()
     }
-
-    #[cfg(test)]
-    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
-        self.0.len()
-    }
 }
 
 impl LifecycleCondition {
@@ -229,11 +224,6 @@ impl LifecycleSinks {
 
     pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleSink> {
         self.0.iter()
-    }
-
-    #[cfg(test)]
-    pub(in crate::api::rule::query::lifecycle) fn len(&self) -> usize {
-        self.0.len()
     }
 }
 
@@ -371,13 +361,6 @@ impl LifecycleSink {
             |chain| LifecycleCallTarget::RootedMember(chain.path().clone()),
             None,
         )
-    }
-
-    pub fn chain(&self) -> &str {
-        match &self.kind {
-            LifecycleSinkKind::ArgumentOf { endpoint, .. }
-            | LifecycleSinkKind::AnyArgumentOf { endpoint } => endpoint.chain(),
-        }
     }
 }
 
