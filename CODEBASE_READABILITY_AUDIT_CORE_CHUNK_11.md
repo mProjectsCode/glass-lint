@@ -113,7 +113,7 @@ collection now borrows the original `CallEvent` and computes the canonical
 `(fact.id, callee_span)` occurrence once before passing it to the path and
 special-case helpers. Verified with `make fmt && make ci`.
 
-#### [ ] READ-003 — The cached `ArgumentView` re-implements the `CallArgInfo` argument-projection in a second place
+#### [x] READ-003 — The cached `ArgumentView` re-implements the `CallArgInfo` argument-projection in a second place
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -157,7 +157,11 @@ keep the cache per-argument-per-group (`constraints_match` builds a fresh
 `ArgumentView` per group, `evaluator.rs:254-267`), with no shared mutation
 between calls.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized the mutually exclusive static-object/rooted-member
+classification on `Value::object_and_chain`, and used it in both argument
+consumers. Replaced `ArgumentView`'s one-shot mutating builder chain with a
+single constructor while preserving the evaluator's overlay-first
+static-string precedence. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — The model module defines behavior on two facts-layer types, inverting its boundary
 

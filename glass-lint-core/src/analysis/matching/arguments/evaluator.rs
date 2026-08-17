@@ -226,22 +226,12 @@ impl<'a> MatcherEvaluator<'a> {
         &'b self,
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
-        let mut view = ArgumentView::default();
         let value = self.values.resolve(argument.value);
-        let (object, rooted_chain) = (
-            self.values.static_object(argument.value),
-            self.values.rooted_member(argument.value),
-        );
-        view = view
-            .with_static_object(object)
-            .with_rooted_chain(rooted_chain);
-        if let Some(value) =
+        let (object, rooted_chain) = value.map_or((None, None), Value::object_and_chain);
+        let static_string =
             self.identity
-                .static_string(argument.value, &argument.provenance, value)
-        {
-            view = view.with_static_string(value);
-        }
-        view
+                .static_string(argument.value, &argument.provenance, value);
+        ArgumentView::new(static_string, object, rooted_chain)
     }
 
     fn constraints_match(

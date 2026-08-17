@@ -130,6 +130,18 @@ pub enum Value {
     Binding { key: BindingKey, target: ValueId },
 }
 
+impl Value {
+    pub(in crate::analysis) fn object_and_chain(
+        &self,
+    ) -> (Option<&StaticObject>, Option<&NamePath>) {
+        match self {
+            Self::StaticObject(object) => (Some(object), None),
+            Self::RootedMember { path } => (None, Some(path)),
+            _ => (None, None),
+        }
+    }
+}
+
 pub const MAX_VALUES: usize = 65_536;
 
 #[derive(Debug, Clone)]
@@ -283,17 +295,15 @@ impl ValueTable {
     }
 
     pub fn static_object(&self, id: ValueId) -> Option<&StaticObject> {
-        match self.resolve(id)? {
-            Value::StaticObject(object) => Some(object),
-            _ => None,
-        }
+        self.resolve(id)
+            .map(Value::object_and_chain)
+            .and_then(|(object, _)| object)
     }
 
     pub fn rooted_member(&self, id: ValueId) -> Option<&NamePath> {
-        match self.resolve(id)? {
-            Value::RootedMember { path } => Some(path),
-            _ => None,
-        }
+        self.resolve(id)
+            .map(Value::object_and_chain)
+            .and_then(|(_, chain)| chain)
     }
 
     pub fn exhausted(&self) -> bool {
