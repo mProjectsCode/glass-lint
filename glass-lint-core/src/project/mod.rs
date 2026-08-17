@@ -18,8 +18,8 @@ pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
     BuiltinModuleName, Diagnostic, DiagnosticCode, EvidenceConstructionError, EvidenceRole,
     EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, LocalExecutionError,
-    MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectError, ProjectExecutionError,
-    ProjectInputError, ProjectPhaseError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectError, ProjectInputError,
+    ProjectPhaseError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
     ResolutionRequestKey, ResolutionRequestKind, ResolvedTargetKind, ResolverOutcome, SourceFile,
     SourceLocation, SourceText, is_internal_module_request,
 };

@@ -2,6 +2,7 @@
 //! deterministic phase metrics.
 
 use std::{
+    error::Error,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -9,7 +10,7 @@ use std::{
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
-    project::{LocalExecutionError, ProjectError, ProjectExecutionError, ProjectPhaseError},
+    project::{LocalExecutionError, ProjectError, ProjectPhaseError},
 };
 
 use crate::{
@@ -76,10 +77,26 @@ fn core_error_domains_remain_distinct_at_loader_boundary() {
     ));
     assert!(matches!(phase, ProjectLoadError::InvalidProjectPhase(_)));
 
-    let execution = ProjectLoadError::from(ProjectError::Execution(ProjectExecutionError::Local(
-        LocalExecutionError::WorkerPanic,
-    )));
+    let core_execution = ProjectError::Execution(LocalExecutionError::WorkerPanic);
+    assert_eq!(
+        core_execution.to_string(),
+        "local analysis execution failed: analysis worker panicked"
+    );
+    assert_eq!(
+        core_execution.source().unwrap().to_string(),
+        "analysis worker panicked"
+    );
+
+    let execution = ProjectLoadError::from(core_execution);
     assert!(matches!(execution, ProjectLoadError::Execution(_)));
+    assert_eq!(
+        execution.to_string(),
+        "core project execution failed: local analysis execution failed: analysis worker panicked"
+    );
+    assert_eq!(
+        execution.source().unwrap().to_string(),
+        "analysis worker panicked"
+    );
 }
 
 #[test]

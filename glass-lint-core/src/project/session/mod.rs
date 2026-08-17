@@ -26,9 +26,8 @@ use crate::{
     api::classification::RuleIndex,
     lint::{ProjectAnalysis, report::ProjectReportAssembler},
     project::{
-        ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
-        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile,
-        tables::SourceTable,
+        ProjectError, ProjectInputError, ProjectPhaseError, ProjectRelativePath, ResolutionRequest,
+        ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
     },
 };
 
@@ -346,7 +345,7 @@ impl<'a> ProjectSession<'a> {
                     observer,
                     &mut callbacks,
                 )
-                .map_err(|error| ProjectError::Execution(ProjectExecutionError::Local(error)))?;
+                .map_err(ProjectError::Execution)?;
         }
         requests.sort_by(|left, right| {
             (left.key(), left.specifier()).cmp(&(right.key(), right.specifier()))

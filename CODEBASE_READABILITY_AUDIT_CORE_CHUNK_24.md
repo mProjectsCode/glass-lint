@@ -39,7 +39,7 @@ executors; and a `pub` module whose entire surface is `pub(crate)`.
 
 ### Staged error boundary
 
-#### [ ] READ-001 — One failure mode is smeared across three nested error enums
+#### [x] READ-001 — One failure mode is smeared across three nested error enums
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -83,7 +83,13 @@ stable for CLI users (the loader's "core project execution failed: …" prefix
 and the "local analysis execution failed: analysis worker panicked" chain must
 still render).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted the one-variant `ProjectExecutionError` wrapper and made
+`ProjectError::Execution` hold `LocalExecutionError` directly. The session and
+batch construction sites now map/build that direct variant, and the core and
+loader re-exports, conversion, formatting, source plumbing, and loader test
+were updated together. The loader retains the existing execution prefix and
+the complete `local analysis execution failed: analysis worker panicked` text,
+while the error source now points directly to the local execution failure.
 
 ### Provider-neutral input contract
 

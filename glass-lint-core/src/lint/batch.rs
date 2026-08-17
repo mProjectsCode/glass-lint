@@ -16,10 +16,7 @@ use rayon::ThreadPool;
 
 use crate::{
     bounds::in_flight_window,
-    project::{
-        AnalysisReport, LocalExecutionError, ProjectError, ProjectExecutionError,
-        ProjectRelativePath, SourceFile,
-    },
+    project::{AnalysisReport, LocalExecutionError, ProjectError, ProjectRelativePath, SourceFile},
 };
 
 /// Configuration for a bounded batch lint operation.
@@ -130,9 +127,7 @@ struct PendingBatch {
 }
 
 fn worker_panic() -> ProjectError {
-    ProjectError::Execution(ProjectExecutionError::Local(
-        LocalExecutionError::WorkerPanic,
-    ))
+    ProjectError::Execution(LocalExecutionError::WorkerPanic)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,7 +1,7 @@
 use std::{fmt, path::PathBuf};
 
 use glass_lint_core::project::{
-    ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
+    LocalExecutionError, ProjectError, ProjectInputError, ProjectPhaseError,
 };
 
 /// Operational and semantic errors from project construction.
@@ -43,7 +43,7 @@ pub enum ProjectLoadError {
     /// Core rejected a resolver answer or phase transition.
     InvalidProjectPhase(ProjectPhaseError),
     /// Core local analysis could not execute.
-    Execution(ProjectExecutionError),
+    Execution(LocalExecutionError),
     /// The source root is neither a file nor a directory.
     SourceRootNotFileOrDir(PathBuf),
     /// Config parse error at the given path.
@@ -121,7 +121,10 @@ impl fmt::Display for ProjectLoadError {
             Self::Timeout => write!(f, "project lint timeout exceeded"),
             Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
             Self::InvalidProjectPhase(error) => write!(f, "core project phase error: {error}"),
-            Self::Execution(error) => write!(f, "core project execution failed: {error}"),
+            Self::Execution(error) => write!(
+                f,
+                "core project execution failed: local analysis execution failed: {error}"
+            ),
             Self::SourceRootNotFileOrDir(path) => {
                 write!(
                     f,

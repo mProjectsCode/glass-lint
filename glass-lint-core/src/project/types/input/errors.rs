@@ -40,19 +40,12 @@ pub enum ProjectPhaseError {
     BudgetExceeded(String),
 }
 
-/// Failures raised by the local analysis executor rather than by authored
-/// project data or phase validation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProjectExecutionError {
-    Local(LocalExecutionError),
-}
-
 /// Failure boundary for the staged project API.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProjectError {
     Input(ProjectInputError),
     Phase(ProjectPhaseError),
-    Execution(ProjectExecutionError),
+    Execution(LocalExecutionError),
 }
 
 impl From<ProjectInputError> for ProjectError {
@@ -64,12 +57,6 @@ impl From<ProjectInputError> for ProjectError {
 impl From<ProjectPhaseError> for ProjectError {
     fn from(error: ProjectPhaseError) -> Self {
         Self::Phase(error)
-    }
-}
-
-impl From<ProjectExecutionError> for ProjectError {
-    fn from(error: ProjectExecutionError) -> Self {
-        Self::Execution(error)
     }
 }
 
@@ -121,27 +108,18 @@ impl std::fmt::Display for ProjectPhaseError {
     }
 }
 
-impl std::fmt::Display for ProjectExecutionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Local(error) => write!(f, "local analysis execution failed: {error}"),
-        }
-    }
-}
-
 impl std::fmt::Display for ProjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Input(error) => error.fmt(f),
             Self::Phase(error) => error.fmt(f),
-            Self::Execution(error) => error.fmt(f),
+            Self::Execution(error) => write!(f, "local analysis execution failed: {error}"),
         }
     }
 }
 
 impl std::error::Error for ProjectInputError {}
 impl std::error::Error for ProjectPhaseError {}
-impl std::error::Error for ProjectExecutionError {}
 impl std::error::Error for ProjectError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
