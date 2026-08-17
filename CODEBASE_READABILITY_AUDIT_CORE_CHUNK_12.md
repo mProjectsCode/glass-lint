@@ -119,7 +119,7 @@ behavior. Added valid/invalid request-ID assertions to the module model tests.
 
 ### Value arena and static values
 
-#### [ ] READ-002 — Consumers rebuild `StaticObject`/`RootedMember` extraction that `ValueTable` should own
+#### [x] READ-002 — Consumers rebuild `StaticObject`/`RootedMember` extraction that `ValueTable` should own
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -149,6 +149,11 @@ resolving through binding chains exactly like `static_string` does
 `(None, None)` for unknown/non-static values — a value can be at most one of
 `StaticObject`/`RootedMember`, so the paired result is unchanged — keeping
 matcher behavior and evidence order identical.
+
+**Fix Applied:** Added `ValueTable::static_object` and
+`ValueTable::rooted_member`, both resolving through binding chains, and routed
+the flow matcher and argument overlay through those accessors. Added a value
+table test covering static-object and rooted-member extraction.
 
 #### [ ] READ-005 — Interning surface pushes `intern_value_with_binding(.., None)` onto 8 of 10 production calls
 

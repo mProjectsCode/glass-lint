@@ -285,6 +285,20 @@ impl ValueTable {
         }
     }
 
+    pub fn static_object(&self, id: ValueId) -> Option<&StaticObject> {
+        match self.resolve(id)? {
+            Value::StaticObject(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    pub fn rooted_member(&self, id: ValueId) -> Option<&NamePath> {
+        match self.resolve(id)? {
+            Value::RootedMember { path } => Some(path),
+            _ => None,
+        }
+    }
+
     pub fn exhausted(&self) -> bool {
         self.exhausted
     }

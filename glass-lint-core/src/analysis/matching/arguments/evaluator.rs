@@ -228,11 +228,10 @@ impl<'a> MatcherEvaluator<'a> {
     ) -> ArgumentView<'b> {
         let mut view = ArgumentView::default();
         let value = self.values.resolve(argument.value);
-        let (object, rooted_chain) = match value {
-            Some(Value::StaticObject(object)) => (Some(object), None),
-            Some(Value::RootedMember { path }) => (None, Some(path)),
-            _ => (None, None),
-        };
+        let (object, rooted_chain) = (
+            self.values.static_object(argument.value),
+            self.values.rooted_member(argument.value),
+        );
         view = view
             .with_static_object(object)
             .with_rooted_chain(rooted_chain);

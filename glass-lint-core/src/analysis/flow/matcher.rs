@@ -5,7 +5,7 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        model::value::{StaticObject, Value, ValueTable},
+        model::value::{StaticObject, ValueTable},
     },
     api::rule::{
         ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,
@@ -111,17 +111,11 @@ impl ArgumentData for CallArgInfo {
     }
 
     fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject> {
-        match values.resolve(self.value)? {
-            Value::StaticObject(object) => Some(object),
-            _ => None,
-        }
+        values.static_object(self.value)
     }
 
     fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath> {
-        match values.resolve(self.value)? {
-            Value::RootedMember { path } => Some(path),
-            _ => None,
-        }
+        values.rooted_member(self.value)
     }
 }
 

@@ -162,6 +162,25 @@ fn static_string_follows_binding_chain() {
 }
 
 #[test]
+fn static_object_and_rooted_member_accessors_follow_values() {
+    let mut table = ValueTable::default();
+    let mut names = NameTable::default();
+    let key = names.intern("key").unwrap();
+    let value = table.intern(Value::StaticString("value".into()));
+    let object = table.intern_static_object(vec![("key".into(), value)], &names, None);
+    assert!(
+        table
+            .static_object(object)
+            .is_some_and(|object| { object.iter().any(|(name, id)| name == key && id == value) })
+    );
+
+    let rooted = table.intern(Value::RootedMember {
+        path: NamePath::new(),
+    });
+    assert_eq!(table.rooted_member(rooted), Some(&NamePath::new()));
+}
+
+#[test]
 fn intern_static_object_creates_object_with_canonical_names() {
     let mut table = ValueTable::default();
     let mut names = NameTable::default();
