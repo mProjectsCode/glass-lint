@@ -127,12 +127,7 @@ impl FrozenScopeGraph {
     fn lexical_identifier_key(&self, ident: &Ident) -> Option<BindingKey> {
         let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
         let name = self.name_id(ident.sym.as_ref())?;
-        let binding = self.binding_id_at(scope, name)?;
-        Some(BindingKey::lexical(
-            self.function_scope_at(scope),
-            binding,
-            self.binding_version(scope, name, ident.span),
-        ))
+        self.lexical_binding_key(scope, name, ident.span)
     }
 
     /// Find the nearest lexical declaration and its owning scope.

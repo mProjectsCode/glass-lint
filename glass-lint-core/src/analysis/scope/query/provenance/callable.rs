@@ -183,13 +183,7 @@ impl FrozenScopeGraph {
                 binding: None,
             };
         };
-        let binding = self.binding_id_at(binding_scope, name).map(|binding| {
-            BindingKey::lexical(
-                self.function_scope_at(binding_scope),
-                binding,
-                self.binding_version(binding_scope, name, ident.span),
-            )
-        });
+        let binding = self.lexical_binding_key(binding_scope, name, ident.span);
         ResolvedIdentBinding {
             dynamic_lookup,
             resolution,

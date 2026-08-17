@@ -8,8 +8,8 @@ use crate::{
     Environment,
     analysis::{
         model::scope::{
-            BindingId, BindingKey, BindingProvenance, BindingVersion, FunctionId, LexicalScopes,
-            PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopeKind,
+            BindingKey, BindingProvenance, FunctionId, LexicalScopes, PropertyAliasFact,
+            RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
             binding_index::BindingIndex,
@@ -308,14 +308,6 @@ impl FrozenScopeGraph {
         self.data.bindings.assignment_at(scope, name, span)
     }
 
-    pub(in crate::analysis) fn binding_id_at(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-    ) -> Option<BindingId> {
-        self.data.bindings.binding_id_at(scope, name)
-    }
-
     pub(in crate::analysis) fn reassigned_between(
         &self,
         scope: ScopeId,
@@ -328,15 +320,6 @@ impl FrozenScopeGraph {
             .reassigned_between(scope, name, start, end)
     }
 
-    pub(in crate::analysis) fn binding_version(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-        span: Span,
-    ) -> BindingVersion {
-        self.data.bindings.binding_version(scope, name, span)
-    }
-
     /// Build a stable key for a name, using a global root when unbound.
     pub(in crate::analysis) fn binding_key_for_name(
         &self,
@@ -344,6 +327,15 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> Option<BindingKey> {
         self.read_view().binding_key_for_name(name, span)
+    }
+
+    pub(in crate::analysis) fn lexical_binding_key(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+        span: Span,
+    ) -> Option<BindingKey> {
+        self.read_view().lexical_binding_key(scope, name, span)
     }
 
     pub(in crate::analysis) fn function_span(&self, function: FunctionId) -> Option<Span> {

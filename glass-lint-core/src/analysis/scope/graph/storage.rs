@@ -111,13 +111,22 @@ impl<'a, M> ScopeReadView<'a, M> {
             return Some(BindingKey::global(name));
         };
         if let Some((scope, _)) = self.nearest_binding_at(name_id, span) {
-            return Some(BindingKey::lexical(
-                self.data.enclosing_function_at(scope),
-                self.binding_id_at(scope, name_id)?,
-                self.binding_version(scope, name_id, span),
-            ));
+            return self.lexical_binding_key(scope, name_id, span);
         }
         Some(BindingKey::global(name))
+    }
+
+    pub(super) fn lexical_binding_key(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+        span: Span,
+    ) -> Option<BindingKey> {
+        Some(BindingKey::lexical(
+            self.data.enclosing_function_at(scope),
+            self.binding_id_at(scope, name)?,
+            self.binding_version(scope, name, span),
+        ))
     }
 
     pub(super) fn binding_version(

@@ -145,7 +145,7 @@ passed as a predicate. The provenance chain now delegates its three scans to
 those queries; raw slices remain only for prefix iteration, and all
 scope-shape/fail-closed behavior is preserved.
 
-#### [ ] READ-004 — `BindingKey::lexical(function, binding, version)` is re-assembled in three places
+#### [x] READ-004 — `BindingKey::lexical(function, binding, version)` is re-assembled in three places
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -177,7 +177,10 @@ Guardrails: keep the global-root fallback in `binding_key_for_name` (returns
 keep the `Option` semantics (callable.rs currently maps a missing binding id
 to `None`, matching `?` in the other sites).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ScopeReadView::lexical_binding_key` as the shared
+phase-generic constructor and routed collection naming, frozen binding keys,
+and identifier binding seeds through it. Global fallback and missing-binding
+`Option` behavior are unchanged.
 
 #### [ ] READ-005 — `AssignmentAt::{Known, Ambiguous}` are behaviorally identical
 
