@@ -40,8 +40,8 @@ impl ScopeCollector<'_> {
             function_aliases: self.functions.function_aliases,
             parameter_aliases,
         })
-        .unwrap_or_else(|_| {
-            issues.push(ScopeCollectionIssue::InvalidBindingIndex);
+        .unwrap_or_else(|error| {
+            issues.push(ScopeCollectionIssue::InvalidBindingIndex { scope: error.scope });
             BindingIndex::empty()
         });
         let scope_shape_valid = issues.is_empty();

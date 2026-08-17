@@ -13,7 +13,7 @@ pub(in crate::analysis) enum ScopeCollectionIssue {
     ShapeMismatch,
     ScopeStackUnderflow,
     UnconsumedShape,
-    InvalidBindingIndex,
+    InvalidBindingIndex { scope: ScopeId },
     InvalidCheckpoint,
 }
 

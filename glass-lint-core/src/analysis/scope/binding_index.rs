@@ -22,8 +22,12 @@ pub(super) struct BindingFreezeInput {
     pub(super) parameter_aliases: HashMap<ScopedName, BindingProvenance>,
 }
 
+/// A collector function binding or alias referred to a scope without an
+/// allocated function ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct BindingIndexError;
+pub(super) struct BindingIndexError {
+    pub(super) scope: ScopeId,
+}
 
 #[derive(Debug)]
 pub(super) struct BindingIndex {
@@ -37,6 +41,12 @@ pub(super) struct BindingIndex {
 }
 
 impl BindingIndex {
+    /// Freeze collector facts after function scopes have received stable IDs.
+    ///
+    /// The collector contract is that every scope in `function_bindings` and
+    /// `function_aliases` is a `Program` or `Function` scope covered by
+    /// `allocate_ids`. The checked lookup remains here so a broken phase
+    /// boundary fails closed instead of panicking.
     pub(super) fn from_freeze_input(input: BindingFreezeInput) -> Result<Self, BindingIndexError> {
         let BindingFreezeInput {
             assignments,
@@ -77,7 +87,10 @@ fn function_for_scope(
     function_ids: &HashMap<ScopeId, FunctionId>,
     scope: ScopeId,
 ) -> Result<FunctionId, BindingIndexError> {
-    function_ids.get(&scope).copied().ok_or(BindingIndexError)
+    function_ids
+        .get(&scope)
+        .copied()
+        .ok_or(BindingIndexError { scope })
 }
 
 impl BindingIndex {

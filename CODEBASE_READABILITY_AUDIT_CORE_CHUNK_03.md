@@ -101,7 +101,7 @@ facts from the artifacts owner. The source-order push and exact
 was left untouched because this focused change addresses the assignment-state
 boundary without broadening the refactor.
 
-#### [ ] READ-003 — Binding-index freeze boundary is over-machined around a structurally unreachable unit error
+#### [x] READ-003 — Binding-index freeze boundary is over-machined around a structurally unreachable unit error
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -142,7 +142,12 @@ it must remain `pub(super)` regardless of which option is chosen. Keep
 `BindingFreezeInput` as the named phase-boundary bundle. Implementation order:
 after READ-002 (the same freeze block is touched).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept the checked, fail-closed freeze boundary but replaced the
+payload-less `BindingIndexError` with the missing `ScopeId`. The issue now
+retains that scope as `InvalidBindingIndex { scope }`, and the constructor
+documents the collector invariant that all function-binding targets receive
+IDs during allocation. The named `BindingFreezeInput` phase bundle and empty
+fallback remain unchanged.
 
 #### [ ] READ-004 — Assignment-effect helpers are a caller-side free-function chain over `ScopeCollector` state that duplicates the provenance.rs composition
 
