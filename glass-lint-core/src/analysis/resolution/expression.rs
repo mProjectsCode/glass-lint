@@ -46,24 +46,9 @@ impl ResolutionSeed {
         call: SymbolCallProvenance,
         module_member: Option<SymbolMemberProvenance>,
     ) -> ResolvedValue {
-        let Self { provenance, .. } = self;
-        let ResolutionProvenance {
-            rooted_chain,
-            returned_member,
-            bound_arguments,
-            syntactic_chain,
-            ..
-        } = provenance;
         ResolvedValue::with_provenance(
             final_id,
-            ResolutionProvenance {
-                rooted_chain,
-                call,
-                module_member,
-                returned_member,
-                bound_arguments,
-                syntactic_chain,
-            },
+            self.provenance.with_call_identity(call, module_member),
         )
     }
 }
@@ -158,14 +143,14 @@ impl Resolver<'_> {
             };
             ResolutionSeed {
                 provisional_id: id,
-                provenance: ResolutionProvenance {
+                provenance: ResolutionProvenance::from_parts(
                     rooted_chain,
-                    call: seed.call,
-                    module_member: None,
-                    returned_member: None,
-                    bound_arguments: seed.bound_arguments,
-                    syntactic_chain: None,
-                },
+                    seed.call,
+                    None,
+                    None,
+                    seed.bound_arguments,
+                    None,
+                ),
             }
         })
     }
@@ -236,14 +221,14 @@ impl Resolver<'_> {
             });
             ResolutionSeed {
                 provisional_id: id,
-                provenance: ResolutionProvenance {
+                provenance: ResolutionProvenance::from_parts(
                     rooted_chain,
-                    call: scoped_call,
+                    scoped_call,
                     module_member,
                     returned_member,
-                    bound_arguments: None,
+                    None,
                     syntactic_chain,
-                },
+                ),
             }
         })
     }

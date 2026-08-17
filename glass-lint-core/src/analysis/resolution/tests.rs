@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{NameTable, SymbolPath};
 
 use super::*;
 use crate::analysis::{
@@ -43,6 +43,56 @@ fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
         resolver.call_provenance_for_value(ValueId::UNKNOWN),
         SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted { limit: MAX_VALUES })
     );
+}
+
+#[test]
+fn provenance_identity_replacement_preserves_resolution_details() {
+    let provenance = ResolutionProvenance::from_parts(
+        Some(SymbolPath::from("source.root")),
+        SymbolCallProvenance::Local,
+        None,
+        Some((
+            SymbolPath::from("returned.source"),
+            SymbolPath::from("returned.member"),
+        )),
+        None,
+        Some(SymbolPath::from("source.alias")),
+    );
+    let finalized = provenance.with_call_identity(
+        SymbolCallProvenance::Global {
+            name: "fetch".into(),
+        },
+        Some(SymbolMemberProvenance::ModuleNamespace {
+            module: "pkg".into(),
+            member: "fetch".into(),
+        }),
+    );
+
+    assert_eq!(
+        finalized.rooted_chain,
+        Some(SymbolPath::from("source.root"))
+    );
+    assert_eq!(
+        finalized.returned_member,
+        Some((
+            SymbolPath::from("returned.source"),
+            SymbolPath::from("returned.member"),
+        ))
+    );
+    assert_eq!(
+        finalized.syntactic_chain,
+        Some(SymbolPath::from("source.alias"))
+    );
+    assert!(finalized.bound_arguments.is_none());
+    assert!(matches!(
+        finalized.call,
+        SymbolCallProvenance::Global { ref name } if name == "fetch"
+    ));
+    assert!(matches!(
+        finalized.module_member,
+        Some(SymbolMemberProvenance::ModuleNamespace { ref module, ref member })
+            if module == "pkg" && member == "fetch"
+    ));
 }
 
 #[test]

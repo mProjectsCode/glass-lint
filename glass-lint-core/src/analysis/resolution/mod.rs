@@ -61,6 +61,34 @@ pub(super) struct ResolutionProvenance {
 }
 
 impl ResolutionProvenance {
+    fn from_parts(
+        rooted_chain: Option<SymbolPath>,
+        call: SymbolCallProvenance,
+        module_member: Option<SymbolMemberProvenance>,
+        returned_member: Option<(SymbolPath, SymbolPath)>,
+        bound_arguments: Option<Vec<Option<BoundArgument>>>,
+        syntactic_chain: Option<SymbolPath>,
+    ) -> Self {
+        Self {
+            rooted_chain,
+            call,
+            module_member,
+            returned_member,
+            bound_arguments,
+            syntactic_chain,
+        }
+    }
+
+    fn with_call_identity(
+        mut self,
+        call: SymbolCallProvenance,
+        module_member: Option<SymbolMemberProvenance>,
+    ) -> Self {
+        self.call = call;
+        self.module_member = module_member;
+        self
+    }
+
     fn local() -> Self {
         Self {
             rooted_chain: None,

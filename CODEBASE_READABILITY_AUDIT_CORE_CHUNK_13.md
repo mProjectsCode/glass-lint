@@ -75,7 +75,7 @@ negatives in `syntax/constant/tests.rs` and `resolution/tests.rs`.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `ResolutionProvenance` is hand-built and destructure-rebuilt in five places
+#### [x] READ-002 — `ResolutionProvenance` is hand-built and destructure-rebuilt in five places
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -107,7 +107,11 @@ invariants centralized so a future field cannot accidentally inherit provenance;
 unchanged; add a test that a new field stays `None` through `resolve_ident`,
 `resolve_member`, and the finalize path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized six-field provenance construction in
+`ResolutionProvenance::from_parts` and moved finalized call/member replacement
+to `with_call_identity`, eliminating the destructure/rebuild path in
+`ResolutionSeed::into_resolved`. Added a focused test proving non-identity
+provenance survives finalization.
 
 ### Module requests (`analysis::module_request`) and call/expression resolution
 
