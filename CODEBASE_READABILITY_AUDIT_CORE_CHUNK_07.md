@@ -58,7 +58,7 @@ import. Guardrails: keep fail-closed exhaustion semantics unchanged (a
 two tests to use `Budget` directly with the established `try_push` vocabulary.
 Exhaustion behavior and the production source-propagation budget are unchanged.
 
-#### [ ] READ-002 — `EvidenceKey.kind` is a constant, unread `MatchKind` field, and `emit` allocates the same evidence symbol twice
+#### [x] READ-002 — `EvidenceKey.kind` is a constant, unread `MatchKind` field, and `emit` allocates the same evidence symbol twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -87,7 +87,10 @@ flow roots of one rule must still merge in `ModuleEvidence::record`, and the
 `MatchKind::CallArgument` value recorded on `ClassificationEvidence` itself (a
 distinct field of the evidence type) must stay unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the invariant `kind` field from `EvidenceKey` and
+changed `emit` to create the evidence symbol once before sharing it between
+the deduplication key and classification evidence. The key’s symbol/fact
+identity and the evidence’s `CallArgument` match kind are unchanged.
 
 #### [x] READ-005 — `usage_matches_context` is a free function in the evidence module that only dispatches `CallContext`'s own match predicates
 

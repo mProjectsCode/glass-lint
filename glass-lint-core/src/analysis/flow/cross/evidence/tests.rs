@@ -46,7 +46,7 @@ fn trace_assembly_keeps_prior_sinks_as_sinks() {
 fn incomplete_projection_keeps_cross_evidence_as_possible() {
     let rule = RuleIndex::new(0);
     let flow = CompiledObjectFlow::test_with_evidence_counts(0, 0);
-    let key = EvidenceKey::for_call(&flow, FactId::from_test(1));
+    let key = EvidenceKey::for_call(flow.evidence_symbol().to_string(), FactId::from_test(1));
     let mut evidence = ModuleEvidence::new(RuleEvidenceCapacity::from_catalog_len(1));
     evidence.record(
         rule,

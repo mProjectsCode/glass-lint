@@ -19,16 +19,14 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct EvidenceKey {
-    kind: MatchKind,
     symbol: String,
     fact: FactId,
 }
 
 impl EvidenceKey {
-    fn for_call(flow: &CompiledObjectFlow, event: FactId) -> Self {
+    fn for_call(symbol: String, event: FactId) -> Self {
         Self {
-            kind: MatchKind::CallArgument,
-            symbol: flow.evidence_symbol().as_str().to_owned(),
+            symbol,
             fact: event,
         }
     }
@@ -150,7 +148,7 @@ pub(super) fn mark_nonmatching(
         return;
     };
     let rule_idx = flow_id.rule_index();
-    let key = EvidenceKey::for_call(flow, event);
+    let key = EvidenceKey::for_call(flow.evidence_symbol().as_str().to_owned(), event);
     values.mark_nonmatching(rule_idx, &key);
 }
 
@@ -184,7 +182,8 @@ pub(super) fn emit(
         return;
     };
     let rule_idx = flow_id.rule_index();
-    let key = EvidenceKey::for_call(flow, event);
+    let symbol = flow.evidence_symbol().as_str().to_owned();
+    let key = EvidenceKey::for_call(symbol.clone(), event);
     let span = session
         .project
         .fact(QualifiedEvent::new(module, event))
@@ -211,7 +210,7 @@ pub(super) fn emit(
         &key,
         ClassificationEvidence::from_occurrence(
             MatchKind::CallArgument,
-            flow.evidence_symbol().as_str().to_owned(),
+            symbol,
             occurrence,
             certainty,
         ),
