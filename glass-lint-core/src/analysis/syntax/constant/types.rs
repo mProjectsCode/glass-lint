@@ -10,6 +10,18 @@ pub(in crate::analysis) const MAX_ARRAY_ITEMS: usize = 256;
 /// Maximum number of distinct keys retained in a static object shape.
 pub(in crate::analysis) const MAX_OBJECT_KEYS: usize = 256;
 
+/// Merge one static object shape without exceeding the distinct-key bound.
+pub(super) fn merge_bounded(
+    target: &mut BTreeMap<SmolStr, ConstValue>,
+    added: BTreeMap<SmolStr, ConstValue>,
+) -> bool {
+    if target.len().saturating_add(added.len()) > MAX_OBJECT_KEYS {
+        return false;
+    }
+    target.extend(added);
+    true
+}
+
 enum ScalarPropertyText<'a> {
     String(&'a str),
     NonNegativeInteger(usize),

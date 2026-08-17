@@ -63,7 +63,7 @@ TypeScript assertion variants and is used by the listed consumers. The
 terminal-expression helper intentionally keeps its caller-specific policy, so
 rooted-chain handling does not change.
 
-#### [ ] READ-002 — Duplicated bounded object merge in the constant evaluator
+#### [x] READ-002 — Duplicated bounded object merge in the constant evaluator
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -88,7 +88,10 @@ from both sites. Guardrail: preserve the exact fail-closed behavior and the
 saturating-add math; keep `ConstValue::object`'s constructor check and
 `bounded()` re-admission as the two documented outer layers of the same bound.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the constant-domain `types::merge_bounded` helper and
+used it for both object spreads and `Object.assign`. The saturating key bound
+and fail-closed result are unchanged; `ConstValue::object` and `bounded()` still
+provide their separate outer admission checks.
 
 #### [ ] READ-003 — Shorthand-property arm manually mirrors evaluator budget accounting
 

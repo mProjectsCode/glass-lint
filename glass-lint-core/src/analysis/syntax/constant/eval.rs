@@ -8,7 +8,7 @@ use swc_ecma_ast::{
 
 use crate::analysis::syntax::constant::types::{
     self, ConstValue, MAX_ARRAY_ITEMS, MAX_DEPTH, MAX_LOOKUPS, MAX_NODES, MAX_OBJECT_KEYS,
-    MAX_STRING_BYTES,
+    MAX_STRING_BYTES, merge_bounded,
 };
 
 pub(in crate::analysis) trait Lookup {
@@ -279,10 +279,9 @@ impl EvalState {
                     else {
                         return ConstValue::Unknown;
                     };
-                    if values.len().saturating_add(spread_values.len()) > MAX_OBJECT_KEYS {
+                    if !merge_bounded(&mut values, spread_values) {
                         return ConstValue::Unknown;
                     }
-                    values.extend(spread_values);
                 }
                 PropOrSpread::Prop(property) => {
                     let (key, value) = match &**property {
@@ -337,10 +336,9 @@ impl EvalState {
             else {
                 return ConstValue::Unknown;
             };
-            if values.len().saturating_add(argument_values.len()) > MAX_OBJECT_KEYS {
+            if !merge_bounded(&mut values, argument_values) {
                 return ConstValue::Unknown;
             }
-            values.extend(argument_values);
         }
         ConstValue::object(values)
     }
