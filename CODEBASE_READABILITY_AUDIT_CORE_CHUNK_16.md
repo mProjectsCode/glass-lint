@@ -139,7 +139,7 @@ package pattern match arm using `module.matches(...)` against the module text.
 
 ### Event view accessors and executor surface
 
-#### [ ] READ-004 — `EventIndexView::member()` duplicates the match of `members()` with no extra meaning
+#### [x] READ-004 — `EventIndexView::member()` duplicates the match of `members()` with no extra meaning
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -163,6 +163,9 @@ as today), and leave `resolve_any`'s `_`-fallback (`view.rs:195`) and the
 `_ => None` arms in `resolve_literal`/`resolve_private_network`/
 `resolve_package_specifier` (`view.rs:274,283,295`) untouched — they are the
 deliberate fail-closed answers for unsupported identity/event pairs.
+
+**Fix Applied:** Removed the duplicate `member()` match and changed both
+namespace-resolution callers to use `members()?.0`.
 
 #### [x] READ-005 — `occurrences_for_instance` carries a dead `names` parameter that hides behind a `_` prefix
 

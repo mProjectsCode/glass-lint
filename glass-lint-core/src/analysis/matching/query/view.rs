@@ -104,15 +104,6 @@ impl<'a> EventIndexView<'a> {
         }
     }
 
-    fn member(&self) -> Option<&'a SymbolPath> {
-        match self {
-            EventIndexView::MemberCall { member, .. }
-            | EventIndexView::MemberRead { member, .. } => Some(member),
-            EventIndexView::PropertyWrite { property, .. } => Some(property),
-            _ => None,
-        }
-    }
-
     fn global(&self) -> Option<&'a Occurrences> {
         match self {
             EventIndexView::Call { global, .. } | EventIndexView::Construct { global, .. } => {
@@ -238,7 +229,7 @@ impl<'a> EventIndexView<'a> {
         module: &SmolStr,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<OccurrenceSelection<'a>> {
-        let member = self.member()?.to_string();
+        let member = self.members()?.0.to_string();
         let key = ModuleExportKey::new(module.clone(), member);
         self.resolve_module_key(&key, overlay)
     }
@@ -248,7 +239,7 @@ impl<'a> EventIndexView<'a> {
         module: &'a ModuleSpecifierPattern,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<OccurrenceSelection<'a>> {
-        let member = self.member()?;
+        let member = self.members()?.0;
         let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member));
         self.resolve_package(predicate, overlay)
     }
