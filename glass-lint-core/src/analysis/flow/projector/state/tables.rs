@@ -87,15 +87,6 @@ pub(in crate::analysis::flow::projector) struct FlowStateTable {
     state_limit_rejected: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Result of admitting one object and its flow-state batch.
-pub(in crate::analysis::flow::projector) enum StateAdmission {
-    /// Aliases and all batch states were recorded.
-    Admitted,
-    /// The state limit rejected the batch before any mutation.
-    Rejected,
-}
-
 impl FlowStateTable {
     pub(in crate::analysis::flow::projector) fn new(
         state_limit: usize,
@@ -315,20 +306,6 @@ impl FlowStateTable {
         }
     }
 
-    /// Insert or update one state. Returns `false` when the state limit has
-    /// been reached and the insertion was rejected.
-    #[cfg(test)]
-    pub(in crate::analysis::flow::projector) fn insert_state(&mut self, state: FlowState) -> bool {
-        let key = state.key();
-        if !self.states.contains_key(&key) && self.states.len() >= self.state_limit {
-            self.state_limit_rejected = true;
-            false
-        } else {
-            self.insert_state_unchecked(state);
-            true
-        }
-    }
-
     fn insert_state_unchecked(&mut self, state: FlowState) {
         let key = state.key();
         if let Some(old) = self.states.insert(key, state.clone()) {
@@ -353,7 +330,7 @@ impl FlowStateTable {
         aliases: &[ValueId],
         object: FlowObjectId,
         states: Vec<FlowState>,
-    ) -> StateAdmission {
+    ) {
         let mut new_keys = BTreeSet::new();
         for state in &states {
             let key = state.key();
@@ -363,13 +340,12 @@ impl FlowStateTable {
         }
         if self.states.len().saturating_add(new_keys.len()) > self.state_limit {
             self.state_limit_rejected = true;
-            return StateAdmission::Rejected;
+            return;
         }
         self.bind_aliases(aliases, object);
         for state in states {
             self.insert_state_unchecked(state);
         }
-        StateAdmission::Admitted
     }
 
     #[cfg(test)]

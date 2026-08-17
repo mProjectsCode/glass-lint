@@ -105,7 +105,7 @@ callers through those helpers. The cross-function non-rest restriction and
 the local path-join logic remain at their owning call sites. Verified with
 `cargo test -p glass-lint-core analysis::flow::summary`.
 
-#### [ ] READ-003 — `StateAdmission` is a discarded production result that duplicates the fail-closed flag
+#### [x] READ-003 — `StateAdmission` is a discarded production result that duplicates the fail-closed flag
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -133,7 +133,10 @@ atomic all-or-nothing batch decision before `bind_aliases`/`insert_state_uncheck
 keep the flag read by `from_sources`, and keep `StateAdmission`'s ordering
 (`Admitted`/`Rejected`) out of any future public surface.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the discarded `StateAdmission` result and made
+`admit_object` return unit while preserving its atomic capacity check and
+fail-closed flag. Removed the test-only `insert_state` path and routed state
+seeding tests through `admit_object`. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Invocation-compatibility gate recomputes the projection fallback decisions
 

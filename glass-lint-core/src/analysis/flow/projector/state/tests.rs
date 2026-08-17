@@ -1,4 +1,4 @@
-use super::{tables::StateAdmission, *};
+use super::*;
 use crate::{
     analysis::model::{
         fact::{ControlRegionId, FactId},
@@ -99,11 +99,15 @@ fn checkpoints_restore_divergent_mutation_paths() {
 fn redo_requirement_removal_does_not_restore_removed_events() {
     let mut table = FlowStateTable::new(100, 100);
     let flow = FlowId::new(RuleIndex::new(0), 0);
-    table.insert_state(FlowState::new(
-        flow,
-        FactId::from_test(1),
+    table.admit_object(
+        &[],
         FlowObjectId::from_test(10),
-    ));
+        vec![FlowState::new(
+            flow,
+            FactId::from_test(1),
+            FlowObjectId::from_test(10),
+        )],
+    );
 
     assert!(table.record_requirement(
         FlowObjectId::from_test(10),
@@ -189,11 +193,15 @@ fn unbind_aliases_cleans_state_only_after_the_last_alias() {
     let aliases = [ValueId::from_test(1), ValueId::from_test(2)];
     let object = FlowObjectId::from_test(1);
     table.bind_aliases(&aliases, object);
-    table.insert_state(FlowState::new(
-        FlowId::new(RuleIndex::new(0), 0),
-        FactId::from_test(1),
+    table.admit_object(
+        &[],
         object,
-    ));
+        vec![FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            object,
+        )],
+    );
 
     table.unbind_aliases(&aliases[..1]);
     assert_eq!(table.states_for(object).count(), 1);
@@ -219,10 +227,11 @@ fn state_limit_rejects_insertion_beyond_capacity() {
         FactId::from_test(3),
         FlowObjectId::from_test(3),
     );
-    assert!(table.insert_state(state1));
-    assert!(table.insert_state(state2));
-    assert!(!table.insert_state(state3));
+    table.admit_object(&[], FlowObjectId::from_test(1), vec![state1]);
+    table.admit_object(&[], FlowObjectId::from_test(2), vec![state2]);
+    table.admit_object(&[], FlowObjectId::from_test(3), vec![state3]);
     assert_eq!(table.state_count(), 2);
+    assert!(table.state_limit_rejected());
 }
 
 #[test]
@@ -233,7 +242,7 @@ fn admit_object_counts_updates_without_rejecting_the_batch() {
         FactId::from_test(1),
         FlowObjectId::from_test(1),
     );
-    table.insert_state(existing);
+    table.admit_object(&[], FlowObjectId::from_test(1), vec![existing]);
     let update = FlowState::new(
         FlowId::new(RuleIndex::new(0), 0),
         FactId::from_test(2),
@@ -245,13 +254,10 @@ fn admit_object_counts_updates_without_rejecting_the_batch() {
         FlowObjectId::from_test(2),
     );
 
-    assert_eq!(
-        table.admit_object(
-            &[ValueId::from_test(2)],
-            FlowObjectId::from_test(2),
-            vec![update, new_state]
-        ),
-        StateAdmission::Admitted
+    table.admit_object(
+        &[ValueId::from_test(2)],
+        FlowObjectId::from_test(2),
+        vec![update, new_state],
     );
     assert_eq!(
         table.object_for(ValueId::from_test(2)),
@@ -277,20 +283,17 @@ fn rejected_object_admission_does_not_bind_or_insert() {
         FactId::from_test(1),
         FlowObjectId::from_test(1),
     );
-    table.insert_state(existing);
+    table.admit_object(&[], FlowObjectId::from_test(1), vec![existing]);
     let rejected = FlowState::new(
         FlowId::new(RuleIndex::new(0), 1),
         FactId::from_test(2),
         FlowObjectId::from_test(2),
     );
 
-    assert_eq!(
-        table.admit_object(
-            &[ValueId::from_test(2)],
-            FlowObjectId::from_test(2),
-            vec![rejected]
-        ),
-        StateAdmission::Rejected
+    table.admit_object(
+        &[ValueId::from_test(2)],
+        FlowObjectId::from_test(2),
+        vec![rejected],
     );
     assert_eq!(table.object_for(ValueId::from_test(2)), None);
     assert_eq!(table.state_count(), 1);
@@ -312,8 +315,8 @@ fn remove_states_for_clears_all_object_states() {
         FactId::from_test(2),
         FlowObjectId::from_test(2),
     );
-    table.insert_state(s1);
-    table.insert_state(s2);
+    table.admit_object(&[], FlowObjectId::from_test(1), vec![s1]);
+    table.admit_object(&[], FlowObjectId::from_test(2), vec![s2]);
     table.remove_states_for(FlowObjectId::from_test(1));
     assert_eq!(table.states_for(FlowObjectId::from_test(1)).count(), 0);
     assert_eq!(table.state_count(), 1);
@@ -341,7 +344,7 @@ fn clear_removes_all_aliases_and_states() {
         FactId::from_test(1),
         FlowObjectId::from_test(10),
     );
-    table.insert_state(s);
+    table.admit_object(&[], FlowObjectId::from_test(10), vec![s]);
     table.clear();
     assert_eq!(table.object_for(ValueId::from_test(1)), None);
     assert_eq!(table.object_for(ValueId::from_test(2)), None);
@@ -407,7 +410,7 @@ fn fine_grained_state_edits_restore_across_checkpoints() {
     let mut table = FlowStateTable::new(100, 100);
     let flow = FlowId::new(RuleIndex::new(0), 0);
     let state = FlowState::new(flow, FactId::from_test(1), FlowObjectId::from_test(10));
-    table.insert_state(state);
+    table.admit_object(&[], FlowObjectId::from_test(10), vec![state]);
     let base = table.capture(true);
     assert!(table.record_requirement(
         FlowObjectId::from_test(10),
