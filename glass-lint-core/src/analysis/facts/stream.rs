@@ -79,11 +79,6 @@ impl FrozenStorage {
     pub(in crate::analysis) fn from_tables(names: NameTable, values: ValueTable) -> Self {
         Self { names, values }
     }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn for_test(names: NameTable, values: ValueTable) -> Self {
-        Self { names, values }
-    }
 }
 
 pub(in crate::analysis) trait FactPhase {
@@ -365,18 +360,9 @@ impl FactStream<Frozen> {
 #[cfg(test)]
 impl Default for FactStream<Frozen> {
     fn default() -> Self {
-        Self {
-            facts: Vec::new(),
-            max_facts: MAX_FACTS,
-            paths: PathStore::default(),
-            storage: FrozenStorage {
-                names: NameTable::default(),
-                values: ValueTable::default(),
-            },
-            function_parameters: Vec::new(),
-            valid: true,
-            issues: FactStreamIssueSet::new(),
-            _phase: PhantomData,
-        }
+        FactStream::<Building>::with_limit(MAX_FACTS).freeze(FrozenStorage::from_tables(
+            NameTable::default(),
+            ValueTable::default(),
+        ))
     }
 }

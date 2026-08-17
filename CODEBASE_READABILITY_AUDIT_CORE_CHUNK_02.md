@@ -219,7 +219,7 @@ exports unconditional. Verified with `make fmt && make ci`.
 
 ### Construction paths
 
-#### [ ] READ-006 — cfg(test) mirror constructors duplicate production constructors
+#### [x] READ-006 — cfg(test) mirror constructors duplicate production constructors
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -250,7 +250,9 @@ intentional. Guardrails: the frozen `Default` must keep `valid: true` and the
 empty issue set, and `freeze` (`stream.rs:329-340`) must keep transferring
 `valid`/`issues`/`function_parameters` verbatim.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the test-only `FrozenStorage::for_test` constructor,
+routed callers through `from_tables`, and made frozen `Default` reuse the
+canonical building-to-frozen transition. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

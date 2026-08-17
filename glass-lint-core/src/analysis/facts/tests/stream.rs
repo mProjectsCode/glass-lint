@@ -28,7 +28,7 @@ fn name_exhaustion_is_recorded_and_invalidates_stream() {
 fn freeze_transitions_to_frozen_phase_with_both_tables() {
     let mut values = ValueTable::default();
     let string = values.intern(Value::StaticString("from-arena".into()));
-    let storage = FrozenStorage::for_test(NameTable::default(), values);
+    let storage = FrozenStorage::from_tables(NameTable::default(), values);
     let stream = FactStream::<Building>::new().freeze(storage);
 
     assert!(stream.is_valid());
@@ -40,7 +40,7 @@ fn freeze_transitions_to_frozen_phase_with_both_tables() {
 fn frozen_values_are_borrowed_by_artifact_local_id() {
     let mut values = ValueTable::default();
     let string = values.intern(Value::StaticString("from-arena".into()));
-    let storage = FrozenStorage::for_test(NameTable::default(), values);
+    let storage = FrozenStorage::from_tables(NameTable::default(), values);
     let stream = FactStream::<Building>::new().freeze(storage);
 
     assert_eq!(stream.values().static_string(string), Some("from-arena"));

@@ -223,7 +223,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
 
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream<Frozen> {
-        let storage = FrozenStorage::for_test(
+        let storage = FrozenStorage::from_tables(
             self.resolver.name_snapshot(),
             self.resolver.value_snapshot(),
         );
