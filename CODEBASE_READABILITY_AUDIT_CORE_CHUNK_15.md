@@ -95,7 +95,7 @@ module identity, then the local `Value`) and the
 `MatcherProjectOverlay::new` unchanged so `projection.rs` call sites are
 untouched.
 
-#### [ ] READ-002 — `EvaluationOperations` is charged in production and its result is dropped
+#### [x] READ-002 — `EvaluationOperations` is charged in production and its result is dropped
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -214,7 +214,7 @@ deterministic `(span, fact)` ordering, and keep the constraints-only fallback
 semantics (the scan must still emit no occurrences for facts that fail
 `fact_matches_clause`).
 
-#### [ ] READ-005 — `MatcherArtifact::from_facts` is handed the full project overlay but reads only `identities`
+#### [x] READ-005 — `MatcherArtifact::from_facts` is handed the full project overlay but reads only `identities`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -238,6 +238,10 @@ dependency, keeping `MatcherProjectContext` as the owner that pairs artifact and
 overlay. Guardrail: the `Disabled`/`Enabled` policy, the
 `facts.matcher_index().is_available()` gate, and the returned `(artifact,
 operations)` pair must keep their current shape and accounting.
+
+**Fix Applied:** Narrowed `MatcherArtifact::from_facts` to receive only the
+module identity map it consumes. `MatcherProjectContext` remains the owner that
+pairs the artifact with the complete overlay for later constrained evaluation.
 
 ### Occurrence indexes and evidence (`indexes.rs`, `build.rs`, `evidence.rs`, `identity_map.rs`)
 

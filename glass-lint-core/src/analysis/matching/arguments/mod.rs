@@ -158,14 +158,14 @@ pub(in crate::analysis) struct MatcherArtifact<'a> {
 impl<'a> MatcherArtifact<'a> {
     pub(in crate::analysis) fn from_facts(
         facts: &'a SemanticFacts,
-        project: MatcherProjectOverlay<'_>,
+        identities: Option<&ModuleIdentityMap>,
         overlay_policy: MatcherOverlayPolicy,
     ) -> Self {
         let overlay = match overlay_policy {
             MatcherOverlayPolicy::Disabled => None,
             MatcherOverlayPolicy::Enabled => {
                 if facts.matcher_index().is_available() {
-                    project.identities.map(|identities| {
+                    identities.map(|identities| {
                         LinkedOccurrenceView::build(facts.matcher_index(), identities)
                     })
                 } else {
@@ -241,7 +241,7 @@ impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
         project: MatcherProjectOverlay<'project>,
         overlay_policy: MatcherOverlayPolicy,
     ) -> Self {
-        let artifact = MatcherArtifact::from_facts(facts, project, overlay_policy);
+        let artifact = MatcherArtifact::from_facts(facts, project.identities, overlay_policy);
         Self { artifact, project }
     }
 
