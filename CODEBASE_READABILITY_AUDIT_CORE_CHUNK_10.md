@@ -138,7 +138,7 @@ keep the flag read by `from_sources`, and keep `StateAdmission`'s ordering
 fail-closed flag. Removed the test-only `insert_state` path and routed state
 seeding tests through `admit_object`. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Invocation-compatibility gate recomputes the projection fallback decisions
+#### [x] READ-004 — Invocation-compatibility gate recomputes the projection fallback decisions
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -171,7 +171,12 @@ the fallback when a present argument's path projection fails; the gate's final
 `summary/sink/tests.rs` and `summary/summaries/tests.rs` invocation-compatibility
 cases must keep passing to prove the refactor stays behavior-identical.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied in the current implementation: the gate
+retains the load-bearing rest, missing-argument, and empty-path short-circuits,
+then delegates the final projection check to `project_argument` while
+preserving the separate default-credit rule. No source change is warranted
+without changing the documented permissiveness boundary. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-005 — `FunctionSummary`/`FunctionSignature` live under `sink`, split from their aggregate in `summaries`
 
