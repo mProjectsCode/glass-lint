@@ -27,19 +27,19 @@ impl ScopeShape {
         }
     }
 
-    pub(crate) fn scope_id(self) -> ScopeId {
+    fn scope_id(self) -> ScopeId {
         self.scope_id
     }
 
-    pub(crate) fn kind(self) -> ScopeKind {
+    fn kind(self) -> ScopeKind {
         self.kind
     }
 
-    pub(crate) fn span(self) -> swc_common::Span {
+    fn span(self) -> swc_common::Span {
         self.span
     }
 
-    pub(crate) fn parent(self) -> Option<ScopeId> {
+    fn parent(self) -> Option<ScopeId> {
         self.parent
     }
 }
@@ -59,16 +59,20 @@ pub struct ScopeShapeKey {
 }
 
 impl ScopeShapeTable {
+    fn key_of(parent: Option<ScopeId>, span_lo: BytePos, kind: ScopeKind) -> ScopeShapeKey {
+        ScopeShapeKey {
+            parent,
+            span_lo,
+            kind,
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
     pub(crate) fn record(&mut self, shape: ScopeShape) {
-        let key = ScopeShapeKey {
-            parent: shape.parent(),
-            span_lo: shape.span().lo,
-            kind: shape.kind(),
-        };
+        let key = Self::key_of(shape.parent(), shape.span().lo, shape.kind());
         #[cfg(test)]
         {
             self.recorded = self.recorded.saturating_add(1);
@@ -86,11 +90,7 @@ impl ScopeShapeTable {
         kind: ScopeKind,
     ) -> Option<ScopeId> {
         self.children
-            .get_mut(&ScopeShapeKey {
-                parent,
-                span_lo,
-                kind,
-            })
+            .get_mut(&Self::key_of(parent, span_lo, kind))
             .and_then(VecDeque::pop_front)
     }
 
@@ -107,11 +107,7 @@ impl ScopeShapeTable {
         kind: ScopeKind,
     ) -> usize {
         self.children
-            .get(&ScopeShapeKey {
-                parent,
-                span_lo,
-                kind,
-            })
+            .get(&Self::key_of(parent, span_lo, kind))
             .map_or(0, VecDeque::len)
     }
 

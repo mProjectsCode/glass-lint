@@ -216,7 +216,7 @@ type that owns the state".
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — `ScopeShapeKey` construction is triplicated and `ScopeShape`'s getters exist only to feed it
+#### [x] READ-005 — `ScopeShapeKey` construction is triplicated and `ScopeShape`'s getters exist only to feed it
 
 - **Severity:** Low
 - **Fix Complexity:** Low
