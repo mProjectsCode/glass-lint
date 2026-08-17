@@ -412,8 +412,12 @@ impl InstanceMemberKey {
         }
     }
 
-    pub(in crate::analysis) fn identity(&self) -> &ModuleExportKey {
-        &self.identity
+    pub(in crate::analysis) fn module(&self) -> &SmolStr {
+        self.identity.module()
+    }
+
+    pub(in crate::analysis) fn export(&self) -> &SmolStr {
+        self.identity.export()
     }
 
     pub(in crate::analysis) fn member(&self) -> &SmolStr {

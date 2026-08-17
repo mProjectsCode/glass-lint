@@ -149,13 +149,13 @@ impl OccurrenceIndexes {
                     module: expected_module,
                     export: expected_export,
                 } => {
-                    key.identity().module() == expected_module
-                        && key.identity().export() == expected_export
+                    key.module() == expected_module
+                        && key.export() == expected_export
                         && member.eq_chain(key.member())
                 }
                 IdentityConstraint::PackageModuleExport { module, export } => {
-                    module.matches(key.identity().module())
-                        && key.identity().export() == export
+                    module.matches(key.module())
+                        && key.export() == export
                         && member.eq_chain(key.member())
                 }
                 _ => false,

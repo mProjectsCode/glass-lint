@@ -104,7 +104,7 @@ contract in `display_span` (`evidence.rs:190-191`), which the integration test
 
 ### Occurrence key family (`analysis/matching/occurrence`)
 
-#### [ ] READ-003 — `InstanceMemberKey` hides its module/export components behind a nested `identity`, unlike its sibling keys
+#### [x] READ-003 — `InstanceMemberKey` hides its module/export components behind a nested `identity`, unlike its sibling keys
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -136,6 +136,11 @@ same `Ord`/`Eq`/`Hash` semantics (the keys are `BTreeMap` keys in
 `MemberIndexes::instance_calls`), keep the `member` field a single identifier
 `SmolStr` (distinct from `ReturnedMemberKey`'s path-typed member), and keep the
 package pattern match arm using `module.matches(...)` against the module text.
+
+**Fix Applied:** Added flat `module()` and `export()` accessors to
+`InstanceMemberKey` and updated instance matching to use them. The unused
+nested `identity()` accessor was removed; key storage and ordering semantics
+remain unchanged.
 
 ### Event view accessors and executor surface
 
