@@ -46,7 +46,7 @@ are independent.
 
 ### Artifact and cache layering (`local.rs`, `project/session/`)
 
-#### [ ] READ-001 — `AnalyzedSource` duplicates `LocalArtifact` and the conversion chain is four pure pass-through layers
+#### [x] READ-001 — `AnalyzedSource` duplicates `LocalArtifact` and the conversion chain is four pure pass-through layers
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -94,7 +94,11 @@ preserve `Send`/`Sync`/`Clone` behavior and the borrow-cache-then-own-record
 ordering in `complete()`; `project/session/execution.rs` needs no change (it
 only moves `ArtifactCacheKey`/`AnalyzedSource` in `LocalJobResult`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `LocalArtifact` the direct result of semantic analysis
+and removed `AnalyzedSource` plus its pass-through conversion/accessor chain.
+The cache now reads the reusable semantic state and line index from
+`LocalArtifact`, while session recording consumes `record_local` directly.
+Source-line ownership and cache-before-record ordering remain unchanged.
 
 #### [x] READ-002 — `ArtifactCacheKey` constructor surface and `SessionState` test seams branch the cache-key path
 

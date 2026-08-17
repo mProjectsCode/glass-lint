@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::{
     ParseDiagnostic,
     analysis::{
-        AnalyzedSource, LocalArtifact, QualifiedRequestId, ResolvedLinkInput,
+        LocalArtifact, QualifiedRequestId, ResolvedLinkInput,
         model::module::{ModuleRequestId, ModuleRequestRole},
     },
     project::{
@@ -124,14 +124,6 @@ impl AnalysisArtifacts {
     ) {
         self.outcomes
             .insert(path, LocalAnalysisOutcome::ParseFailed(error));
-    }
-
-    pub(super) fn record_analyzed(
-        &mut self,
-        path: &ProjectRelativePath,
-        analyzed: AnalyzedSource,
-    ) -> Vec<ResolutionRequest> {
-        self.record_local(path, LocalArtifact::from_analyzed(analyzed))
     }
 
     pub(super) fn record_local(

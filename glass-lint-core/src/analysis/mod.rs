@@ -32,7 +32,7 @@ pub(in crate::analysis) use project::model::{ExportResolution, QualifiedFunction
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
 pub(in crate::analysis) use semantic::budget::SemanticBudget;
 pub use semantic::{
-    AnalyzedSource, SemanticAnalyzer,
+    SemanticAnalyzer,
     status::{AnalysisStatus, IncompleteReason, StatusScope},
 };
 

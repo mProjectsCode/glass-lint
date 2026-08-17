@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     AnalysisLimits, Environment,
     analysis::{
-        AnalyzedSource, SemanticAnalyzer, local::LocatedSourceContext, semantic::SpanNormalizer,
+        LocalArtifact, SemanticAnalyzer, local::LocatedSourceContext, semantic::SpanNormalizer,
     },
     project::{SourceFile, SourceText},
 };
@@ -18,10 +18,7 @@ fn imported_module() -> ProjectModule {
         .analyze_program(&parsed.program, &coordinates);
     ProjectModule::new(
         ModuleId::new(0),
-        crate::analysis::LocalArtifact::from_analyzed(AnalyzedSource::new(
-            LocatedSourceContext::new(&source),
-            Arc::new(semantic),
-        )),
+        LocalArtifact::new(LocatedSourceContext::new(&source), Arc::new(semantic)),
     )
 }
 

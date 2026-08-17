@@ -18,7 +18,8 @@ use crate::analysis::resolution::test_environment;
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
-        DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
+        DerivedPhaseCapabilities, LocalArtifact, LocatedSourceContext, SemanticArtifact,
+        SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, MAX_FACTS, SemanticFacts},
         model::module,
         resolution::Resolver,
@@ -105,30 +106,6 @@ impl Default for SpanNormalizer {
     }
 }
 
-#[derive(Clone)]
-pub struct AnalyzedSource {
-    source: LocatedSourceContext,
-    semantic: Arc<SemanticArtifact>,
-}
-
-impl AnalyzedSource {
-    pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
-        Self { source, semantic }
-    }
-
-    pub(crate) fn into_parts(self) -> (LocatedSourceContext, Arc<SemanticArtifact>) {
-        (self.source, self.semantic)
-    }
-
-    pub(crate) fn semantic_handle(&self) -> Arc<SemanticArtifact> {
-        Arc::clone(&self.semantic)
-    }
-
-    pub(crate) fn source_index(&self) -> Arc<SourceLineIndex> {
-        self.source.clone_lines()
-    }
-}
-
 /// Per-file semantic-analysis stage. Owns the environment and limits that the
 /// analysis pipeline needs, without coupling to the full `Linter`.
 pub struct SemanticAnalyzer<'a> {
@@ -190,14 +167,14 @@ impl<'a> SemanticAnalyzer<'a> {
     /// building against the frozen resolver. Matcher indexes and function
     /// effects are then derived together from the frozen fact tape. The
     /// result is ready for project linking and matcher projection.
-    pub fn analyze_source(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
+    pub fn analyze_source(&self, source: &SourceFile) -> Result<LocalArtifact, ParseDiagnostic> {
         let parsed =
             SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?.parse()?;
         let coordinates = SpanNormalizer::with_index(parsed.source_start, Arc::new(parsed.lines));
         let semantic = self.analyze_program(&parsed.program, &coordinates);
 
-        Ok(AnalyzedSource::new(
-            LocatedSourceContext::from_normalizer(source.path().clone(), coordinates),
+        Ok(LocalArtifact::new(
+            LocatedSourceContext::with_index(source.path().clone(), coordinates.into_lines()),
             Arc::new(semantic),
         ))
     }

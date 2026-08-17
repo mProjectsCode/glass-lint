@@ -17,11 +17,8 @@ use syntax::SymbolCallProvenance;
 use crate::{
     AnalysisLimits, Environment, SourceLanguage,
     analysis::{
-        DerivedPhaseCapabilities, facts,
-        flow::effect::FunctionEffects,
-        model::module::ModuleInterface,
-        semantic::{AnalyzedSource, SpanNormalizer, status::LocalAnalysisStatus},
-        syntax,
+        DerivedPhaseCapabilities, facts, flow::effect::FunctionEffects,
+        model::module::ModuleInterface, semantic::status::LocalAnalysisStatus, syntax,
     },
     diagnostic::SourceLineIndex,
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
@@ -110,16 +107,6 @@ impl LocatedSourceContext {
 
     pub(crate) fn with_index(path: ProjectRelativePath, lines: Arc<SourceLineIndex>) -> Self {
         Self { path, lines }
-    }
-
-    pub(in crate::analysis) fn from_normalizer(
-        path: ProjectRelativePath,
-        normalizer: SpanNormalizer,
-    ) -> Self {
-        Self {
-            path,
-            lines: normalizer.into_lines(),
-        }
     }
 
     pub(crate) fn path(&self) -> &ProjectRelativePath {
@@ -229,10 +216,10 @@ pub struct SharedSemanticArtifact {
 }
 
 impl SharedSemanticArtifact {
-    pub(crate) fn from_analyzed(analyzed: &AnalyzedSource) -> Self {
+    pub(crate) fn from_local(local: &LocalArtifact) -> Self {
         Self {
-            semantic: analyzed.semantic_handle(),
-            source_index: analyzed.source_index(),
+            semantic: Arc::clone(&local.semantic),
+            source_index: local.source_context().clone_lines(),
         }
     }
 
@@ -301,8 +288,8 @@ impl ArtifactCacheHandle {
 
     /// Cache an analyzed artifact while retaining only its reusable semantic
     /// state and source-independent line-index data.
-    pub(crate) fn insert_analyzed(&self, key: ArtifactCacheKey, analyzed: &AnalyzedSource) -> bool {
-        self.insert(key, SharedSemanticArtifact::from_analyzed(analyzed))
+    pub(crate) fn insert_local(&self, key: ArtifactCacheKey, local: &LocalArtifact) -> bool {
+        self.insert(key, SharedSemanticArtifact::from_local(local))
     }
 
     #[cfg(test)]
@@ -416,8 +403,7 @@ pub struct LocalArtifact {
 }
 
 impl LocalArtifact {
-    pub(crate) fn from_analyzed(analyzed: AnalyzedSource) -> Self {
-        let (source, semantic) = analyzed.into_parts();
+    pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
         Self { source, semantic }
     }
 

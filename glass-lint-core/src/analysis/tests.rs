@@ -25,10 +25,10 @@ fn local_model_is_unchanged_by_matcher_projection() {
         "fetch('/remote'); document.createElement('div');",
     )
     .unwrap();
-    let project = ProjectSemanticModel::single(LocalArtifact::from_analyzed(AnalyzedSource::new(
+    let project = ProjectSemanticModel::single(LocalArtifact::new(
         LocatedSourceContext::new(&source),
         Arc::new(local),
-    )));
+    ));
     let before = format!(
         "{:?}",
         project
@@ -95,10 +95,10 @@ fn project_matcher_rejects_a_module_from_another_project() {
         environment.add_global("fetch").unwrap();
         let local = SemanticAnalyzer::new(&environment, &AnalysisLimits::default())
             .analyze_program(&parsed.program, &coordinates);
-        ProjectSemanticModel::single(LocalArtifact::from_analyzed(AnalyzedSource::new(
+        ProjectSemanticModel::single(LocalArtifact::new(
             LocatedSourceContext::new(&source),
             Arc::new(local),
-        )))
+        ))
     }
 
     let first = project("fetch('/first');", "first.js");

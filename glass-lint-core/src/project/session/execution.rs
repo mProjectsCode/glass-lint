@@ -14,7 +14,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder, prelude::*};
 
 use crate::{
     ParseDiagnostic,
-    analysis::{AnalyzedSource, ArtifactCacheKey, SemanticAnalyzer},
+    analysis::{ArtifactCacheKey, LocalArtifact, SemanticAnalyzer},
     project::{LocalExecutionError, ProjectRelativePath, SourceFile},
 };
 
@@ -32,7 +32,7 @@ pub(super) struct LocalJobCandidate {
 pub(super) struct LocalJobResult {
     pub(super) path: ProjectRelativePath,
     pub(super) key: ArtifactCacheKey,
-    pub(super) result: Result<AnalyzedSource, ParseDiagnostic>,
+    pub(super) result: Result<LocalArtifact, ParseDiagnostic>,
 }
 
 enum LocalJobOutcome {
@@ -207,7 +207,7 @@ pub(super) fn analyze_with_observer(
     analyzer: &SemanticAnalyzer,
     source: &SourceFile,
     observer: &dyn ExecutionObserver,
-) -> Result<AnalyzedSource, ParseDiagnostic> {
+) -> Result<LocalArtifact, ParseDiagnostic> {
     #[cfg(not(test))]
     let _ = observer;
     #[cfg(test)]

@@ -22,7 +22,7 @@ use execution::{
 
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic, ProjectAdmissionLimits, RuleCatalog,
-    analysis::{AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, SemanticAnalyzer},
+    analysis::{ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, SemanticAnalyzer},
     api::classification::RuleIndex,
     lint::{ProjectAnalysis, report::ProjectReportAssembler},
     project::{
@@ -123,13 +123,13 @@ impl LocalAnalysisTransition<'_, '_> {
                 let evicted = self
                     .state
                     .artifact_cache
-                    .insert_analyzed(result.key, &analyzed);
+                    .insert_local(result.key, &analyzed);
                 #[cfg(not(test))]
                 let _ = evicted;
                 #[cfg(test)]
                 self.observer.record_cache_insert(evicted);
                 self.requests
-                    .extend(self.artifacts.record_analyzed(&result.path, analyzed));
+                    .extend(self.artifacts.record_local(&result.path, analyzed));
             }
             Err(error) => {
                 self.artifacts.record_parse_failure(result.path, error);
@@ -137,7 +137,7 @@ impl LocalAnalysisTransition<'_, '_> {
         }
     }
 
-    fn analyze(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
+    fn analyze(&self, source: &SourceFile) -> Result<LocalArtifact, ParseDiagnostic> {
         analyze_with_observer(&self.state.analyzer, source, self.observer)
     }
 }

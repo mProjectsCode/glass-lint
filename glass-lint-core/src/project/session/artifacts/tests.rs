@@ -5,7 +5,7 @@ use crate::{
     project::{ResolutionRequestKind, ResolvedTargetKind, SourceFile, tests::as_require_key},
 };
 
-fn lower(path: &str, source: &str) -> (ProjectRelativePath, AnalyzedSource) {
+fn lower(path: &str, source: &str) -> (ProjectRelativePath, LocalArtifact) {
     let source = SourceFile::new(path, source).unwrap();
     let analyzed = SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
         .analyze_source(&source)
@@ -27,7 +27,7 @@ fn needs_analysis_tracks_completed_and_failed_sources() {
     let mut artifacts = AnalysisArtifacts::default();
     let (analyzed_path, analyzed) = lower("a.js", "fetch('/x');");
     assert!(artifacts.needs_analysis(&analyzed_path));
-    artifacts.record_analyzed(&analyzed_path, analyzed);
+    artifacts.record_local(&analyzed_path, analyzed);
     assert!(!artifacts.needs_analysis(&analyzed_path));
 
     let failed_path = ProjectRelativePath::new("b.js").unwrap();
@@ -45,7 +45,7 @@ fn successful_retry_replaces_a_parse_failure() {
         .unwrap();
     let mut artifacts = AnalysisArtifacts::default();
     artifacts.record_parse_failure(source.path().clone(), parse_failure("retry.js"));
-    artifacts.record_analyzed(
+    artifacts.record_local(
         source.path(),
         lower(source.path().as_str(), "fetch('/x');").1,
     );
@@ -62,7 +62,7 @@ fn parse_failure_replaces_a_previous_success() {
         .admit_all([source.clone()], usize::MAX, usize::MAX)
         .unwrap();
     let mut artifacts = AnalysisArtifacts::default();
-    artifacts.record_analyzed(
+    artifacts.record_local(
         source.path(),
         lower(source.path().as_str(), "fetch('/x');").1,
     );
@@ -77,7 +77,7 @@ fn qualified_ids_reject_missing_importer_modules() {
     let source = SourceFile::new("missing.js", "import value from './dep.js';").unwrap();
     let mut artifacts = AnalysisArtifacts::default();
     let (path, analyzed) = lower(source.path().as_str(), source.source());
-    artifacts.record_analyzed(&path, analyzed);
+    artifacts.record_local(&path, analyzed);
 
     assert_eq!(
         artifacts.authored_requests.qualified_ids(&BTreeMap::new()),
@@ -96,7 +96,7 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
     let (link_input, parse_diagnostics) = {
         let mut artifacts = AnalysisArtifacts::default();
         let (path, analyzed) = lower(source.path().as_str(), source.source());
-        let requests = artifacts.record_analyzed(&path, analyzed);
+        let requests = artifacts.record_local(&path, analyzed);
         let key = requests[0].key().clone();
         artifacts
             .into_link_input(
@@ -110,7 +110,7 @@ fn into_link_input_accepts_authored_and_rejects_unknown_outcomes() {
 
     let mut artifacts = AnalysisArtifacts::default();
     let (path, analyzed) = lower(source.path().as_str(), source.source());
-    let requests = artifacts.record_analyzed(&path, analyzed);
+    let requests = artifacts.record_local(&path, analyzed);
     let unknown = as_require_key(requests[0].key());
     let error = artifacts.into_link_input(
         &sources,
@@ -132,7 +132,7 @@ fn record_local_maps_module_roles_to_project_request_kinds_in_source_order() {
     let (path, analyzed) = lower(source.path().as_str(), source.source());
     let mut artifacts = AnalysisArtifacts::default();
 
-    let requests = artifacts.record_analyzed(&path, analyzed);
+    let requests = artifacts.record_local(&path, analyzed);
 
     assert_eq!(requests.len(), 5);
     assert_eq!(requests[0].kind(), ResolutionRequestKind::StaticImport);
