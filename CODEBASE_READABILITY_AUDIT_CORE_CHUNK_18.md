@@ -242,7 +242,7 @@ input still surfaces `EmptyIdentityName` rather than `MalformedChain`.
 
 ### Query errors (`api/rule/query/error.rs`)
 
-#### [ ] READ-006 — `QueryBuildError` is the only top-level build error that does not implement `std::error::Error`
+#### [x] READ-006 — `QueryBuildError` is the only top-level build error that does not implement `std::error::Error`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -273,7 +273,9 @@ change any variant shapes, Display text, or the wrapping of `QueryBuildError`
 inside `RuleBuildError::InvalidQuery` (`rule/error.rs:26`, produced at
 `rule/mod.rs:310`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Implemented `std::error::Error` for `QueryBuildError`,
+matching the sibling public build errors without changing variants, display
+messages, or wrapping behavior.
 
 ## Systemic Themes
 

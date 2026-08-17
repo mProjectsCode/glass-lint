@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use super::limits;
 
@@ -91,6 +91,8 @@ impl fmt::Display for QueryBuildError {
         }
     }
 }
+
+impl Error for QueryBuildError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryDiagnostic {
