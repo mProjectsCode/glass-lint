@@ -178,7 +178,7 @@ preserving the separate default-credit rule. No source change is warranted
 without changing the documented permissiveness boundary. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-005 — `FunctionSummary`/`FunctionSignature` live under `sink`, split from their aggregate in `summaries`
+#### [x] READ-005 — `FunctionSummary`/`FunctionSignature` live under `sink`, split from their aggregate in `summaries`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -206,7 +206,11 @@ field visibility unchanged (no caller-written filters outside the modules), keep
 `SinkSet::sort_and_dedup` as the only ordering contract, and do not merge the
 fixed-point worklist types.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved `FunctionSummary` and `FunctionSignature`, including
+their invocation and direct-sink behavior, into `summary/summaries.rs` beside
+`FunctionSummaries`. Moved their tests into `summaries/tests.rs`; sink retains
+the sink-specific records and lookup helpers. Verified with
+`make fmt && make ci`.
 
 #### [x] READ-006 — `object_range` encodes a range scan through fabricated `FlowId` sentinels
 
