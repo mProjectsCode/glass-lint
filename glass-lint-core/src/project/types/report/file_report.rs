@@ -43,9 +43,7 @@ impl FileReport {
 
     #[must_use]
     pub fn has_parse_diagnostics(&self) -> bool {
-        self.diagnostics
-            .iter()
-            .any(|d| matches!(d, Diagnostic::Parse { .. }))
+        self.diagnostics.iter().any(Diagnostic::is_parse)
     }
 
     pub(crate) fn ordering_key(&self) -> &ProjectRelativePath {
@@ -54,9 +52,6 @@ impl FileReport {
 
     #[must_use]
     pub fn parse_diagnostic_count(&self) -> usize {
-        self.diagnostics
-            .iter()
-            .filter(|d| matches!(d, Diagnostic::Parse { .. }))
-            .count()
+        self.diagnostics.iter().filter(|d| d.is_parse()).count()
     }
 }

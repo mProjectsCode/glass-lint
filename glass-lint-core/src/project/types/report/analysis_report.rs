@@ -210,12 +210,12 @@ impl FinalizedReportAggregate {
             summary.parse_diagnostics += file
                 .diagnostics()
                 .iter()
-                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+                .filter(|diagnostic| diagnostic.is_parse())
                 .count();
             summary.file_diagnostics += file
                 .diagnostics()
                 .iter()
-                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .filter(|diagnostic| diagnostic.is_project())
                 .count();
             for finding in file.findings() {
                 evidence_steps += finding
@@ -229,7 +229,7 @@ impl FinalizedReportAggregate {
         }
         summary.report_diagnostics = diagnostics
             .iter()
-            .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+            .filter(|diagnostic| diagnostic.is_project())
             .count();
         (Self { summary }, evidence_steps, rendered_traces)
     }

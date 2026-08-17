@@ -147,7 +147,7 @@ assembly now forwards already-located diagnostics without mutating them.
 
 ### Summary classification
 
-#### [ ] READ-004 — Parse/Project diagnostic classification is re-inlined in `FileReport` and the summary scan
+#### [x] READ-004 — Parse/Project diagnostic classification is re-inlined in `FileReport` and the summary scan
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -175,7 +175,9 @@ project counts, report-level project counts) and the existing summary field
 semantics, and keep the counts deterministic and cheap (one scan, no nested
 re-traversals).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `Diagnostic::is_parse()` and `Diagnostic::is_project()`
+and reused them from `FileReport` and report summary aggregation, keeping the
+existing per-file and report-level counter split unchanged.
 
 ## Systemic Themes
 

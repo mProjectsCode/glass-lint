@@ -44,6 +44,16 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
+    #[must_use]
+    pub fn is_parse(&self) -> bool {
+        matches!(self, Self::Parse { .. })
+    }
+
+    #[must_use]
+    pub fn is_project(&self) -> bool {
+        matches!(self, Self::Project(_))
+    }
+
     pub(crate) fn parse(path: ProjectRelativePath, diagnostic: crate::ParseDiagnostic) -> Self {
         Self::Parse { path, diagnostic }
     }
