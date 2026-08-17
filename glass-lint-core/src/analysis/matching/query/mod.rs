@@ -85,9 +85,7 @@ impl OccurrenceIndexes {
                     evidence: ev,
                     ..
                 } => {
-                    if let Some(occurrences) =
-                        self.occurrences_for_instance(constructor, member, names)
-                    {
+                    if let Some(occurrences) = self.occurrences_for_instance(constructor, member) {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
                 }
@@ -143,7 +141,6 @@ impl OccurrenceIndexes {
         &'a self,
         constructor: &IdentityConstraint,
         member: &SymbolPath,
-        _names: &NameTable,
     ) -> Option<OccurrenceSelection<'a>> {
         self.members
             .instance_calls()

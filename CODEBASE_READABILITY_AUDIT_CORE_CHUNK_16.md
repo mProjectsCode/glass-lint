@@ -164,7 +164,7 @@ as today), and leave `resolve_any`'s `_`-fallback (`view.rs:195`) and the
 `resolve_package_specifier` (`view.rs:274,283,295`) untouched — they are the
 deliberate fail-closed answers for unsupported identity/event pairs.
 
-#### [ ] READ-005 — `occurrences_for_instance` carries a dead `names` parameter that hides behind a `_` prefix
+#### [x] READ-005 — `occurrences_for_instance` carries a dead `names` parameter that hides behind a `_` prefix
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -188,6 +188,10 @@ Guardrails: the predicate closure and its fail-closed `None` for non-module
 `constructor` identities (`_ => false` at `query/mod.rs:164`) are unchanged, and
 if a future instance identity needs `NameTable`-based resolution, add the
 parameter back explicitly rather than re-introducing an unused one.
+
+**Fix Applied:** Removed the unused `NameTable` parameter from
+`occurrences_for_instance` and stopped threading it through the instance-match
+caller. Returned-object lookup retains its name-table parameter.
 
 #### [ ] READ-006 — `PackageKeyPredicate`'s doc references the deleted `PackageOccurrenceIter` name
 
