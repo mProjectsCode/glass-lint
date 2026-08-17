@@ -308,19 +308,6 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
             |_| {},
         );
     }
-
-    assert_miss_for(
-        &base_cache,
-        &base_linter,
-        source_file("normalization.js", "fetch('/api');"),
-        |session| session.set_fingerprint_normalization("test-normalization-v2"),
-    );
-    assert_miss_for(
-        &base_cache,
-        &base_linter,
-        source_file("engine.js", "fetch('/api');"),
-        |session| session.set_fingerprint_engine_version("test-engine-v2"),
-    );
 }
 
 #[test]

@@ -156,26 +156,20 @@ pub struct ArtifactCacheKey {
 
 impl ArtifactCacheKey {
     pub fn new(source: &SourceFile, environment: &Environment, limits: &AnalysisLimits) -> Self {
-        Self::with_engine_version(source, environment, limits, env!("CARGO_PKG_VERSION"))
-    }
-
-    fn with_engine_version(
-        source: &SourceFile,
-        environment: &Environment,
-        limits: &AnalysisLimits,
-        engine_version: &'static str,
-    ) -> Self {
-        let normalization_mode = match source.language() {
-            SourceLanguage::JavaScript => "swc-js-normalization-v1",
-            SourceLanguage::TypeScript => "swc-ts-strip-normalization-v1",
-        };
         Self::from_inputs(
             source,
             environment,
             limits,
-            normalization_mode,
-            engine_version,
+            Self::normalization_mode(source.language()),
+            env!("CARGO_PKG_VERSION"),
         )
+    }
+
+    fn normalization_mode(language: SourceLanguage) -> &'static str {
+        match language {
+            SourceLanguage::JavaScript => "swc-js-normalization-v1",
+            SourceLanguage::TypeScript => "swc-ts-strip-normalization-v1",
+        }
     }
 
     fn from_inputs(
@@ -208,16 +202,6 @@ impl ArtifactCacheKey {
     /// Return the pre-computed deterministic fingerprint for this key.
     pub(crate) fn fingerprint(&self) -> ArtifactFingerprint {
         self.fingerprint
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_engine_version(
-        source: &SourceFile,
-        environment: &Environment,
-        limits: &AnalysisLimits,
-        engine_version: &'static str,
-    ) -> Self {
-        Self::with_engine_version(source, environment, limits, engine_version)
     }
 
     #[cfg(test)]

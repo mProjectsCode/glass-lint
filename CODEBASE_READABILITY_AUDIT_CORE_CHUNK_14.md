@@ -96,7 +96,7 @@ only moves `ArtifactCacheKey`/`AnalyzedSource` in `LocalJobResult`).
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `ArtifactCacheKey` constructor surface and `SessionState` test seams branch the cache-key path
+#### [x] READ-002 — `ArtifactCacheKey` constructor surface and `SessionState` test seams branch the cache-key path
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -141,7 +141,12 @@ stay frozen; the `cache_and_session.rs` contract tests
 sessions must keep the same behavior through the builder; production identity
 remains exactly `ArtifactCacheKey::new` with `env!("CARGO_PKG_VERSION")`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed `ArtifactCacheKey` to the production `new` path plus
+the single test-only `for_test_inputs` structural builder, centralizing the
+language normalization mapping and deleting the redundant middle constructor.
+Removed the test-only fingerprint mutation fields and setters from
+`SessionState`; alternate engine and normalization identities are now asserted
+directly at the cache-key boundary.
 
 ### Semantic analysis boundary (`semantic/mod.rs`, `semantic/budget.rs`)
 

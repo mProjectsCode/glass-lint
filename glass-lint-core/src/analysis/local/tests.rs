@@ -8,7 +8,7 @@ fn test_key(text: &str, version: &'static str) -> ArtifactCacheKey {
     let source = crate::project::SourceFile::new("test.js", text).unwrap();
     let env = crate::Environment::default();
     let limits = crate::AnalysisLimits::default();
-    ArtifactCacheKey::for_engine_version(&source, &env, &limits, version)
+    ArtifactCacheKey::for_test_inputs(&source, &env, &limits, "swc-js-normalization-v1", version)
 }
 
 fn empty_shared_artifact() -> SharedSemanticArtifact {
@@ -109,4 +109,21 @@ fn artifact_cache_miss_on_different_key() {
     let artifact = empty_shared_artifact();
     cache.insert(key_a, artifact);
     assert!(cache.get(&key_b).is_none(), "different key should not hit");
+}
+
+#[test]
+fn artifact_cache_miss_on_different_normalization_mode() {
+    let source = crate::project::SourceFile::new("test.js", "x = 1;").unwrap();
+    let env = crate::Environment::default();
+    let limits = crate::AnalysisLimits::default();
+    let key_a = ArtifactCacheKey::for_test_inputs(
+        &source,
+        &env,
+        &limits,
+        "swc-js-normalization-v1",
+        "1.0.0",
+    );
+    let key_b =
+        ArtifactCacheKey::for_test_inputs(&source, &env, &limits, "test-normalization-v2", "1.0.0");
+    assert_ne!(key_a, key_b);
 }

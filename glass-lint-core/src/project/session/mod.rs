@@ -40,10 +40,6 @@ pub struct SessionState<'a> {
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
     project_limits: ProjectAdmissionLimits,
-    #[cfg(test)]
-    fingerprint_engine_version: &'static str,
-    #[cfg(test)]
-    fingerprint_normalization: Option<&'static str>,
 }
 
 impl<'a> SessionState<'a> {
@@ -63,34 +59,10 @@ impl<'a> SessionState<'a> {
             enabled,
             evidence_limit,
             project_limits,
-            #[cfg(test)]
-            fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
-            #[cfg(test)]
-            fingerprint_normalization: None,
         }
     }
 
     fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
-        #[cfg(test)]
-        {
-            if let Some(normalization) = self.fingerprint_normalization {
-                return ArtifactCacheKey::for_test_inputs(
-                    source,
-                    self.analyzer.environment(),
-                    self.analyzer.limits(),
-                    normalization,
-                    self.fingerprint_engine_version,
-                );
-            }
-            if self.fingerprint_engine_version != env!("CARGO_PKG_VERSION") {
-                return ArtifactCacheKey::for_engine_version(
-                    source,
-                    self.analyzer.environment(),
-                    self.analyzer.limits(),
-                    self.fingerprint_engine_version,
-                );
-            }
-        }
         ArtifactCacheKey::new(source, self.analyzer.environment(), self.analyzer.limits())
     }
 }
@@ -391,16 +363,6 @@ impl<'a> ProjectSession<'a> {
             worker_count,
             observer,
         )
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_fingerprint_engine_version(&mut self, version: &'static str) {
-        self.state.fingerprint_engine_version = version;
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_fingerprint_normalization(&mut self, normalization: &'static str) {
-        self.state.fingerprint_normalization = Some(normalization);
     }
 
     /// Consume the collection, validate its authored resolution outcomes, and
