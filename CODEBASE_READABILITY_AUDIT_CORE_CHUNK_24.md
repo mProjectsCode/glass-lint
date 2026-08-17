@@ -213,7 +213,7 @@ override at `batch.rs:46-49`).
 
 ### Module ownership advertisement
 
-#### [ ] READ-005 — `pub mod input` advertises a module whose entire surface is `pub(crate)`
+#### [x] READ-005 — `pub mod input` advertises a module whose entire surface is `pub(crate)`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -243,7 +243,8 @@ keep both helpers `pub(crate)` unchanged — `types/input.rs:165` and
 so there are no downstream users of `project::input` to update. No other crate
 is affected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the normalization module private; its helpers remain
+reachable only through the validated project path constructors.
 
 ## Systemic Themes
 

@@ -5,7 +5,7 @@
 //! module/file ownership when linking and reporting findings. No filesystem
 //! access happens in this crate; the project crate adds discovery and loading.
 
-pub mod input;
+mod input;
 mod report;
 mod session;
 mod tables;
