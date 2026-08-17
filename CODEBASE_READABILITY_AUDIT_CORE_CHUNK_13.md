@@ -157,7 +157,7 @@ negatives so the acceptance is deliberate rather than accidental.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — `.bind` call shape detection is repeated across four modules
+#### [x] READ-004 — `.bind` call shape detection is repeated across four modules
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -190,7 +190,10 @@ into it; the `provenance.rs:65-67` branch must keep its `Export` chaining semant
 the provenance.rs:92-94 branch its `.then(...).flatten()` structure when the predicate is
 shared.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the shared syntax-level `is_bind_property` predicate
+and routed all seven member/property shape checks through it, leaving bound
+argument validation and receiver filtering at their existing owners. Verified
+with `make fmt && make ci`.
 
 #### [x] READ-005 — `resolve_call_expression` runs the full module-request recognizer for one variant
 

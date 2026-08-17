@@ -13,7 +13,7 @@ use crate::analysis::{
         Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
         ValueId,
     },
-    syntax::UnknownReason,
+    syntax::{UnknownReason, is_bind_property, literal_member_property_name},
 };
 
 impl Resolver<'_> {
@@ -71,8 +71,9 @@ impl Resolver<'_> {
         let Expr::Member(member) = &**callee else {
             return self.fresh_object_value_at(call.span);
         };
-        if crate::analysis::syntax::literal_member_property_name(&member.prop).as_deref()
-            != Some("bind")
+        if !literal_member_property_name(&member.prop)
+            .as_deref()
+            .is_some_and(is_bind_property)
         {
             return self.fresh_object_value_at(call.span);
         }

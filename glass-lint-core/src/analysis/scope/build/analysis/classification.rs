@@ -5,7 +5,7 @@ use swc_ecma_ast::{Callee, Expr, Pat};
 use crate::analysis::{
     module_request::ModuleRequestPolicy,
     scope::{BindingProvenance, build::ScopeCollector},
-    syntax::literal_member_property_name,
+    syntax::{is_bind_property, literal_member_property_name},
 };
 
 #[derive(Debug)]
@@ -237,6 +237,8 @@ fn callee_is_bind_call(call: &swc_ecma_ast::CallExpr) -> bool {
     matches!(&call.callee, Callee::Expr(callee) if matches!(
         &**callee,
         Expr::Member(member)
-            if literal_member_property_name(&member.prop).as_deref() == Some("bind")
+            if literal_member_property_name(&member.prop)
+                .as_deref()
+                .is_some_and(is_bind_property)
     ))
 }

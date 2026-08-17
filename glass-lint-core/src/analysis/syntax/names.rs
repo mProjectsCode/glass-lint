@@ -227,6 +227,10 @@ pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
         && is_function_like_expr(&member.obj)
 }
 
+pub fn is_bind_property(name: &str) -> bool {
+    name == "bind"
+}
+
 /// Recognize one-argument `getPrototypeOf` calls on unqualified builtins.
 pub fn function_prototype_builtin(expr: &Expr) -> Option<&'static str> {
     let Expr::Call(call) = expr else {

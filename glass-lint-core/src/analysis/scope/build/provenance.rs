@@ -18,7 +18,7 @@ use crate::analysis::{
         const_value_to_provenance, normalize_scope_expression,
         query::rooted::RootedExprContext,
     },
-    syntax::{constant, literal_member_property_name, literal_property_name},
+    syntax::{constant, is_bind_property, literal_member_property_name, literal_property_name},
 };
 
 impl ScopeCollector<'_> {
@@ -62,7 +62,9 @@ impl ScopeCollector<'_> {
                             export: property,
                         })
                     }
-                    BindingProvenance::ModuleExport { module, export } if property == "bind" => {
+                    BindingProvenance::ModuleExport { module, export }
+                        if is_bind_property(property.as_ref()) =>
+                    {
                         Some(BindingProvenance::ModuleExport { module, export })
                     }
                     BindingProvenance::ModuleExport { module, export } => {
@@ -89,7 +91,9 @@ impl ScopeCollector<'_> {
                     else {
                         return None;
                     };
-                    (literal_property.as_deref() == Some("bind"))
+                    literal_property
+                        .as_deref()
+                        .is_some_and(is_bind_property)
                         .then(|| self.module_alias_provenance(object))
                         .flatten()
                 }),
@@ -147,7 +151,10 @@ impl ScopeCollector<'_> {
         let Expr::Member(member) = &**callee else {
             return None;
         };
-        if literal_member_property_name(&member.prop).as_deref() != Some("bind") {
+        if !literal_member_property_name(&member.prop)
+            .as_deref()
+            .is_some_and(is_bind_property)
+        {
             return None;
         }
         let module_provenance = self.module_alias_provenance(&member.obj);
@@ -232,7 +239,9 @@ impl ScopeCollector<'_> {
 
     fn returned_object_from_callee(&mut self, callee: &Expr) -> Option<BindingProvenance> {
         if let Expr::Member(member) = callee
-            && literal_member_property_name(&member.prop).as_deref() == Some("bind")
+            && literal_member_property_name(&member.prop)
+                .as_deref()
+                .is_some_and(is_bind_property)
         {
             return None;
         }

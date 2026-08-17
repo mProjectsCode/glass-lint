@@ -8,7 +8,10 @@ use crate::analysis::{
         SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
     },
     model::{fact::ClassIdentity, scope::FunctionId},
-    syntax::{effective_callee_expr, literal_member_property_name, unwrap_transparent_expr},
+    syntax::{
+        effective_callee_expr, is_bind_property, literal_member_property_name,
+        unwrap_transparent_expr,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -255,11 +258,13 @@ impl FactBuilder<'_, '_> {
                 let Expr::Member(bind) = &**callee else {
                     return None;
                 };
-                (literal_member_property_name(&bind.prop).as_deref() == Some("bind"))
-                    .then(|| call.args.first())
-                    .flatten()
-                    .filter(|argument| matches!(&*argument.expr, Expr::This(_)))
-                    .and_then(|_| self.instance_callable_for_expr(&bind.obj))
+                (literal_member_property_name(&bind.prop)
+                    .as_deref()
+                    .is_some_and(is_bind_property))
+                .then(|| call.args.first())
+                .flatten()
+                .filter(|argument| matches!(&*argument.expr, Expr::This(_)))
+                .and_then(|_| self.instance_callable_for_expr(&bind.obj))
             }
             _ => None,
         }
