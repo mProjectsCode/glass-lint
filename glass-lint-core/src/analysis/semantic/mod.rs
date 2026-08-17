@@ -16,7 +16,7 @@ use swc_ecma_ast::Program;
 #[cfg(test)]
 use crate::analysis::resolution::test_environment;
 use crate::{
-    AnalysisLimits, Environment, ParseDiagnostic, SourceLineIndex,
+    AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
         DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, MAX_FACTS, SemanticFacts},
@@ -26,6 +26,7 @@ use crate::{
         semantic::status::{IncompleteReason, LocalAnalysisStatus},
         syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
+    diagnostic::SourceLineIndex,
     parse::SourceParser,
     project::{SourceFile, SourceText},
 };

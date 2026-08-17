@@ -39,7 +39,7 @@ mod rule_id;
 
 pub use api::rule::{Rule, RuleBuildError};
 pub use config::CoreConfig;
-pub use diagnostic::{RuleMetadata, Severity, SourceLineIndex};
+pub use diagnostic::{RuleMetadata, Severity};
 pub use ecma_version::{
     EcmaFeature, EcmaVersion, EcmaVersionReport, analyze_ecma_version,
     analyze_ecma_version_with_limits,

@@ -157,7 +157,7 @@ failure, and keep the existing `parser_range` test coverage (parse/tests.rs:53-7
 
 ### Diagnostics (`diagnostic.rs`, `lib.rs`)
 
-#### [ ] READ-004 — `SourceLineIndex` is re-exported publicly with no consumer outside `glass-lint-core`
+#### [x] READ-004 — `SourceLineIndex` is re-exported publicly with no consumer outside `glass-lint-core`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -192,7 +192,11 @@ Do not promote `SourceLineIndex` into a documented integration contract:
 nothing outside the crate consumes it, and `tests/integration/public_surface.rs`
 (which guards the crate's real public API) does not reference it.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `SourceLineIndex` from the core crate’s public
+re-export and converted its public-path doctest into an internal diagnostic
+unit test. Core-internal callers and the constructor-equivalence coverage are
+unchanged, while the parser line-index implementation is no longer part of
+the external API facade.
 
 ## Systemic Themes
 

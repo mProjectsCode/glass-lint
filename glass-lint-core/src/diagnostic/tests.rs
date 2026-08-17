@@ -1,6 +1,14 @@
 use super::*;
 
 #[test]
+fn try_range_converts_checked_unicode_boundaries() {
+    let index = SourceLineIndex::new("éx");
+    let range = index.try_range(ByteRange::new(0, 2).unwrap()).unwrap();
+    assert_eq!(range.start().line(), 1);
+    assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
+}
+
+#[test]
 fn line_index_converts_unicode_crlf_and_eof_positions() {
     let source = "é\r\nfetch();\n";
     let index = SourceLineIndex::new(source);

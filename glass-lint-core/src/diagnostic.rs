@@ -112,6 +112,7 @@ impl SourceLineIndex {
     }
 
     /// Build an index once for a source before converting multiple ranges.
+    #[cfg(test)]
     #[must_use]
     pub fn new(source: &str) -> Self {
         Self::from_source(source.into())
@@ -217,17 +218,6 @@ impl SourceLineIndex {
     }
 
     /// Convert a checked byte range without clamping invalid parser output.
-    ///
-    /// ```
-    /// use glass_lint_core::SourceLineIndex;
-    /// use glass_lint_datastructures::ByteRange;
-    ///
-    /// let source = "éx";
-    /// let index = SourceLineIndex::new(source);
-    /// let range = index.try_range(ByteRange::new(0, 2).unwrap()).unwrap();
-    /// assert_eq!(range.start().line(), 1);
-    /// assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
-    /// ```
     pub fn try_range(&self, range: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
         self.range(self.validate_range(range)?)
             .ok_or(InvalidSourceBoundary::OutOfBounds)

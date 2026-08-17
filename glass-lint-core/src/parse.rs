@@ -15,7 +15,8 @@ mod depth;
 use depth::DepthScanner;
 
 use crate::{
-    MAX_SOURCE_BYTES, SourceLineIndex,
+    MAX_SOURCE_BYTES,
+    diagnostic::SourceLineIndex,
     project::{DiagnosticCode, SourceFile, types::DiagnosticKind},
 };
 

@@ -15,7 +15,7 @@ use smol_str::SmolStr;
 use syntax::SymbolCallProvenance;
 
 use crate::{
-    AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
+    AnalysisLimits, Environment, SourceLanguage,
     analysis::{
         DerivedPhaseCapabilities, facts,
         flow::effect::FunctionEffects,
@@ -23,6 +23,7 @@ use crate::{
         semantic::{AnalyzedSource, SpanNormalizer, status::LocalAnalysisStatus},
         syntax,
     },
+    diagnostic::SourceLineIndex,
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };
 
