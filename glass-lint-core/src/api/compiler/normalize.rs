@@ -1,18 +1,22 @@
-use super::normalized::{NormalizedEmission, NormalizedQuery};
 use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
         normalize_all::normalize_all_root,
         normalized::{
-            CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedLifecycle,
-            NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-            NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
+            CanonicalArgumentConstraints, EventSlot, NormalizedEmission, NormalizedEvent,
+            NormalizedLifecycle, NormalizedLifecycleCompletion, NormalizedLifecycleCondition,
+            NormalizedLifecycleEvent, NormalizedLifecycleSink, NormalizedQuery, NormalizedRoot,
+            NormalizedSubject,
         },
         validate::{QueryCompileError, classify_lifecycle_source},
     },
     rule::query::{
         AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
         QueryExpr, QueryExprKind, VarType,
+        lifecycle::{
+            LifecycleCompletionKind, LifecycleConditionKind, LifecycleEvent, LifecycleEventKind,
+            LifecycleSink, LifecycleSinkKind,
+        },
     },
 };
 
@@ -268,47 +272,37 @@ fn normalize_lifecycle_root(lc: &LifecycleQuery) -> Result<NormalizedRoot, Query
         .condition()
         .as_ref()
         .map(|condition| match condition.kind() {
-            crate::api::rule::query::lifecycle::LifecycleConditionKind::AnyOf(events) => {
-                NormalizedLifecycleCondition::AnyOf(
-                    events
-                        .iter()
-                        .map(normalize_lifecycle_event)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                )
-            }
-            crate::api::rule::query::lifecycle::LifecycleConditionKind::AllOf(events) => {
-                NormalizedLifecycleCondition::AllOf(
-                    events
-                        .iter()
-                        .map(normalize_lifecycle_event)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                )
-            }
+            LifecycleConditionKind::AnyOf(events) => NormalizedLifecycleCondition::AnyOf(
+                events
+                    .iter()
+                    .map(normalize_lifecycle_event)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            LifecycleConditionKind::AllOf(events) => NormalizedLifecycleCondition::AllOf(
+                events
+                    .iter()
+                    .map(normalize_lifecycle_event)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
         });
     let completion = match lc.completion().kind() {
-        crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
-            NormalizedLifecycleCompletion::Configuration
-        }
-        crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks) => {
-            NormalizedLifecycleCompletion::AnySink(
-                sinks
-                    .iter()
-                    .map(normalize_lifecycle_sink)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            )
-        }
-        crate::api::rule::query::lifecycle::LifecycleCompletionKind::AllSinks(sinks) => {
-            NormalizedLifecycleCompletion::AllSinks(
-                sinks
-                    .iter()
-                    .map(normalize_lifecycle_sink)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            )
-        }
+        LifecycleCompletionKind::Configuration => NormalizedLifecycleCompletion::Configuration,
+        LifecycleCompletionKind::AnySink(sinks) => NormalizedLifecycleCompletion::AnySink(
+            sinks
+                .iter()
+                .map(normalize_lifecycle_sink)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
+        LifecycleCompletionKind::AllSinks(sinks) => NormalizedLifecycleCompletion::AllSinks(
+            sinks
+                .iter()
+                .map(normalize_lifecycle_sink)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
     };
 
     Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle::new(
@@ -316,42 +310,32 @@ fn normalize_lifecycle_root(lc: &LifecycleQuery) -> Result<NormalizedRoot, Query
     )))
 }
 
-fn normalize_lifecycle_event(
-    event: &crate::api::rule::query::lifecycle::LifecycleEvent,
-) -> NormalizedLifecycleEvent {
+fn normalize_lifecycle_event(event: &LifecycleEvent) -> NormalizedLifecycleEvent {
     match event.kind() {
-        crate::api::rule::query::lifecycle::LifecycleEventKind::PropertyWrite {
-            property,
-            value,
-        } => NormalizedLifecycleEvent::PropertyWrite {
-            property: property.clone(),
-            value: value.clone(),
-        },
-        crate::api::rule::query::lifecycle::LifecycleEventKind::MemberCall {
-            member,
-            arguments,
-        } => NormalizedLifecycleEvent::MemberCall {
-            member: member.as_str().into(),
-            arguments: CanonicalArgumentConstraints::from_constraints(arguments.as_slice()),
-        },
+        LifecycleEventKind::PropertyWrite { property, value } => {
+            NormalizedLifecycleEvent::PropertyWrite {
+                property: property.clone(),
+                value: value.clone(),
+            }
+        }
+        LifecycleEventKind::MemberCall { member, arguments } => {
+            NormalizedLifecycleEvent::MemberCall {
+                member: member.as_str().into(),
+                arguments: CanonicalArgumentConstraints::from_constraints(arguments.as_slice()),
+            }
+        }
     }
 }
 
-fn normalize_lifecycle_sink(
-    sink: &crate::api::rule::query::lifecycle::LifecycleSink,
-) -> NormalizedLifecycleSink {
+fn normalize_lifecycle_sink(sink: &LifecycleSink) -> NormalizedLifecycleSink {
     match sink.kind() {
-        crate::api::rule::query::lifecycle::LifecycleSinkKind::ArgumentOf { endpoint, index } => {
-            NormalizedLifecycleSink::ArgumentOf {
-                target: endpoint.target().clone(),
-                index: index.get(),
-            }
-        }
-        crate::api::rule::query::lifecycle::LifecycleSinkKind::AnyArgumentOf { endpoint } => {
-            NormalizedLifecycleSink::AnyArgumentOf {
-                target: endpoint.target().clone(),
-            }
-        }
+        LifecycleSinkKind::ArgumentOf { endpoint, index } => NormalizedLifecycleSink::ArgumentOf {
+            target: endpoint.target().clone(),
+            index: index.get(),
+        },
+        LifecycleSinkKind::AnyArgumentOf { endpoint } => NormalizedLifecycleSink::AnyArgumentOf {
+            target: endpoint.target().clone(),
+        },
     }
 }
 

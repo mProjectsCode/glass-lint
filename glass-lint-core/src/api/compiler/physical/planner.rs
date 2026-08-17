@@ -1,10 +1,17 @@
-use super::{PhysicalPlanValidationError, PhysicalRoot, RootBudget};
 #[cfg(test)]
 use crate::api::compiler::CompiledMatcherPlan;
-use crate::api::compiler::{
-    normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot},
-    object_flow::CompiledObjectFlow,
-    rule::{EvidenceDescriptor, IdentityConstraint},
+use crate::api::{
+    compiler::{
+        error::PhysicalPlanValidationError,
+        normalized::{
+            NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot,
+            NormalizedSubject,
+        },
+        object_flow::CompiledObjectFlow,
+        physical::{PhysicalRoot, RootBudget},
+        rule::{EvidenceDescriptor, IdentityConstraint},
+    },
+    rule::query::EventSpec,
 };
 
 /// Plan a normalized query into a [`CompiledMatcherPlan`].
@@ -56,7 +63,7 @@ fn plan_event(
     evidence: &EvidenceDescriptor,
 ) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
     match (event.subject(), event.event()) {
-        (crate::api::compiler::normalized::NormalizedSubject::Direct { identity }, _) => {
+        (NormalizedSubject::Direct { identity }, _) => {
             if event.arguments().is_empty() {
                 Ok(PhysicalRoot::indexed_scan(
                     IdentityConstraint::from(identity),
@@ -73,12 +80,11 @@ fn plan_event(
             }
         }
         (
-            crate::api::compiler::normalized::NormalizedSubject::Returned {
+            NormalizedSubject::Returned {
                 producer,
                 object_slot,
             },
-            crate::api::rule::query::EventSpec::MemberCall { member }
-            | crate::api::rule::query::EventSpec::MemberRead { member },
+            EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
         ) => PhysicalRoot::returned_subject(
             IdentityConstraint::from(producer),
             *object_slot,
@@ -87,11 +93,11 @@ fn plan_event(
             evidence.clone(),
         ),
         (
-            crate::api::compiler::normalized::NormalizedSubject::Instance {
+            NormalizedSubject::Instance {
                 constructor,
                 object_slot,
             },
-            crate::api::rule::query::EventSpec::MemberCall { member },
+            EventSpec::MemberCall { member },
         ) => PhysicalRoot::instance_subject(
             IdentityConstraint::from(constructor),
             *object_slot,

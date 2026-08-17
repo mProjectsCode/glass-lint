@@ -1,4 +1,4 @@
-use super::{ProjectRelativePath, ResolutionRequestKey};
+use crate::project::types::{ProjectRelativePath, ResolutionRequestKey};
 
 /// Errors from local job execution. Parse failures are returned as ordinary
 /// per-job results, not through this type.

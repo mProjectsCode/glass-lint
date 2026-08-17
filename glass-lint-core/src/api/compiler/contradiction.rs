@@ -1,6 +1,8 @@
-use super::validate::{ContradictionKind, QueryCompileError, is_valid_identity_event_pair};
 use crate::api::{
-    compiler::normalized::{CanonicalArgumentConstraints, NormalizedSubject},
+    compiler::{
+        normalized::{CanonicalArgumentConstraints, NormalizedSubject},
+        validate::{ContradictionKind, QueryCompileError, is_valid_identity_event_pair},
+    },
     rule::query::{EventSpec, IdentitySpec, VarId},
 };
 

@@ -1,4 +1,4 @@
-use super::QueryBuildError;
+use crate::api::rule::query::QueryBuildError;
 
 /// Non-empty, bounded, canonical collection: items collected from a fallible
 /// iterator, sorted and deduplicated into one deterministic sequence.

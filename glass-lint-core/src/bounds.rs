@@ -6,7 +6,7 @@ pub const fn in_flight_window(worker_count: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::in_flight_window;
+    use crate::bounds::in_flight_window;
 
     #[test]
     fn in_flight_window_is_twice_the_worker_count() {

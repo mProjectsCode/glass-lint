@@ -1,9 +1,12 @@
-use super::error::{
-    QueryCompileError, classify_lifecycle_source, is_identity_empty, is_valid_identity_event_pair,
-};
-use crate::api::rule::query::{
-    EventQuery, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate,
-    limits,
+use crate::api::{
+    compiler::validate::error::{
+        QueryCompileError, classify_lifecycle_source, is_identity_empty,
+        is_valid_identity_event_pair,
+    },
+    rule::query::{
+        EventQuery, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind,
+        QueryPredicate, limits,
+    },
 };
 
 /// Validate an event query for well-formedness.

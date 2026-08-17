@@ -1,6 +1,6 @@
 use smol_str::SmolStr;
 
-use super::{
+use crate::project::types::{
     BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ProjectPhaseError,
     ProjectRelativePath,
 };

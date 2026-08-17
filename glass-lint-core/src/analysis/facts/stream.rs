@@ -105,7 +105,6 @@ impl FactPhase for Frozen {
     type Storage = FrozenStorage;
 }
 
-#[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
 /// indexed or projected as if their suffix were trustworthy.
@@ -114,6 +113,7 @@ impl FactPhase for Frozen {
 /// ([`Building`]) from the frozen phase ([`Frozen`]). Resolver-owned names and
 /// values exist only in the frozen phase, where
 /// [`freeze`](FactStream<Building>::freeze) installs them.
+#[derive(Debug)]
 pub(in crate::analysis) struct FactStream<Phase: FactPhase = Building> {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,

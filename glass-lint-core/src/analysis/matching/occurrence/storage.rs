@@ -2,11 +2,14 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::ByteRange;
 
-use super::{
-    BorrowedPackageOccurrenceIter, ModuleExportKey, OccurrenceSelection, PackageKeyPredicate,
-    PackageOverlay,
+use crate::analysis::{
+    facts::FactId,
+    matching::occurrence::{
+        BorrowedPackageOccurrenceIter, ModuleExportKey, OccurrenceSelection, PackageKeyPredicate,
+        PackageOverlay,
+    },
+    model::fact::CallEvent,
 };
-use crate::analysis::{facts::FactId, model::fact::CallEvent};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different

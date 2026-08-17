@@ -3,11 +3,13 @@ use std::{
     ops::RangeInclusive,
 };
 
-use super::{
-    FactId, FlowId, FlowObjectId, FlowReadiness, LifecycleEvidence, LifecycleRollback,
-    RequirementIndex, SinkIndex,
+use crate::{
+    analysis::model::flow::{
+        FactId, FlowId, FlowObjectId, FlowReadiness, LifecycleEvidence, LifecycleRollback,
+        RequirementIndex, SinkIndex,
+    },
+    api::classification::RuleIndex,
 };
-use crate::api::classification::RuleIndex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) struct FlowState {

@@ -1,4 +1,4 @@
-use super::private_network_match;
+use crate::analysis::matching::private_network_match;
 
 #[test]
 fn regex_ipv6_syntax_is_not_an_address() {

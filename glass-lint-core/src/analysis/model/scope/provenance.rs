@@ -2,9 +2,11 @@ use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
 use swc_common::Span;
 
-use super::{BindingKey, BindingVersion, ScopeId};
 use crate::analysis::{
-    model::StaticProperties,
+    model::{
+        StaticProperties,
+        scope::{BindingKey, BindingVersion, ScopeId},
+    },
     syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
 };
 

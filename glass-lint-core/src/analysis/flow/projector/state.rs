@@ -105,11 +105,11 @@ impl InverseDelta {
     }
 }
 
-#[derive(Debug)]
 /// Per-rule evidence with a bounded deduplication key set.
 ///
 /// Writes evidence directly into an externally-owned per-rule vec so
 /// callers never allocate a second parallel evidence matrix.
+#[derive(Debug)]
 pub(super) struct FlowEvidence<'a> {
     /// Evidence grouped by selected rule index, owned by the caller.
     items: &'a mut RuleEvidenceTable,
@@ -212,8 +212,8 @@ impl<'a> FlowEvidence<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
 /// Saved control construct state used to restore and join environments.
+#[derive(Debug, Clone)]
 pub(super) enum ControlFrame {
     Branch {
         region: ControlRegionId,
@@ -445,8 +445,8 @@ impl ControlFrame {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Abrupt completion that must be routed through enclosing control frames.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum AbruptExit {
     /// Exit the nearest loop or switch.
     Break,

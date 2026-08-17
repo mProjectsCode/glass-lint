@@ -1,8 +1,8 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::error::QueryCompileError;
-use crate::api::rule::query::{
-    AnyExpr, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId, VarType,
+use crate::api::{
+    compiler::validate::error::QueryCompileError,
+    rule::query::{AnyExpr, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId, VarType},
 };
 
 /// Return true if `actual` is compatible with `expected`.

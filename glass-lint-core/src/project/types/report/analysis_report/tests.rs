@@ -1,4 +1,4 @@
-use super::ReportCompletion;
+use super::*;
 
 #[test]
 fn joining_completion_states_is_monotone() {

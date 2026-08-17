@@ -2,15 +2,15 @@
 use std::{path::Path, time::Instant};
 
 #[allow(unused_imports)]
-use super::{
+use crate::tests::TempProject;
+#[allow(unused_imports)]
+use crate::tsconfig::{
     selection::{
         CompiledTsconfigSelection, MergedSelection, ParentSelection, TsconfigPatternSet,
         merge_selection,
     },
     *,
 };
-#[allow(unused_imports)]
-use crate::tests::TempProject;
 
 fn merge_same(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
     let dir = Path::new(".");

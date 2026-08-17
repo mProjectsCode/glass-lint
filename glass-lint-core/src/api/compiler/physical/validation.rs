@@ -1,8 +1,10 @@
-use super::{PhysicalPlanValidationError, PhysicalRoot};
 #[cfg(test)]
 use crate::api::compiler::CompiledMatcherPlan;
 use crate::api::{
-    compiler::{normalized::CanonicalArgumentConstraints, requirements::PlanRequirements},
+    compiler::{
+        error::PhysicalPlanValidationError, normalized::CanonicalArgumentConstraints,
+        physical::PhysicalRoot, requirements::PlanRequirements,
+    },
     rule::{
         ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
         ValueMatcherKind, query::limits,

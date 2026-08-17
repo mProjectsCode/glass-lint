@@ -69,7 +69,7 @@ impl<T: Ord + Clone> BoundedFifo<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{BoundedFifo, FifoAdmission};
+    use super::*;
 
     #[test]
     fn deduplicates_and_counts_popped_items_toward_bound() {

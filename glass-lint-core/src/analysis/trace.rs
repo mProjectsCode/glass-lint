@@ -10,8 +10,8 @@ use crate::{
 
 static NEXT_TRACE_ARENA_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// Opaque handle to a node owned by one specific trace arena.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TraceNodeId {
     arena: u64,
     node: u32,

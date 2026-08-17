@@ -266,8 +266,8 @@ fn project_facts(
     Ok((projected_evidence, outcome))
 }
 
-#[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
+#[derive(Debug)]
 pub(in crate::analysis) struct ProjectMatcherModel<'project, 'matchers> {
     identity: ProjectMatcherIdentity,
     matchers: CompiledRuleSelection<'matchers>,

@@ -112,13 +112,13 @@ impl ResolutionProvenance {
     }
 }
 
-#[derive(Debug, Clone)]
 /// The complete result of resolving one expression.
 ///
 /// A resolved value carries the interned abstract value ID, all available
 /// provenances (callable, member, returned-member, bound-arguments), and
 /// both the syntactic and rooted chain spellings. Fields default to absent
 /// or local so a new resolution path cannot accidentally inherit provenance.
+#[derive(Debug, Clone)]
 pub(super) struct ResolvedValue {
     /// The interned abstract value. `UNKNOWN` is reserved for expressions the
     /// resolver cannot describe precisely enough to match.
@@ -156,8 +156,8 @@ enum ResolutionKey {
     Member { range: ParserSpanKey },
 }
 
-#[derive(Debug, Default)]
 /// Resolution cache and recursion guards.
+#[derive(Debug, Default)]
 struct ResolverCache {
     /// Fresh object values cached by checked source range to avoid
     /// allocating duplicate identities for the same syntactic object.
@@ -179,13 +179,13 @@ impl ResolverCache {
     }
 }
 
-#[derive(Debug)]
 /// Position-sensitive expression resolution.
 ///
 /// The resolver is the single adapter from low-level scope and binding facts
 /// to the versioned values consumed by matchers. Resolution is cached by
 /// source position; recursive lookups are guarded. Unknown values, cycles,
 /// and exhausted arena entries become local/unknown provenance.
+#[derive(Debug)]
 pub(super) struct Resolver<'a> {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: FrozenScopeGraph,

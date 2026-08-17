@@ -1,10 +1,11 @@
 use smol_str::SmolStr;
 
-use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 use crate::api::rule::query::{
     EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
-    checked_name, limits,
+    checked_name,
+    lifecycle::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget},
+    limits,
     value::{ArgumentConstraints, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 

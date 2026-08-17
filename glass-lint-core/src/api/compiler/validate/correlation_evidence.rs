@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
-use super::error::QueryCompileError;
-use crate::api::rule::query::{QueryDecl, QueryExpr, QueryExprKind, QueryShapeFacts, VarId};
+use crate::api::{
+    compiler::validate::QueryCompileError,
+    rule::query::{QueryDecl, QueryExpr, QueryExprKind, QueryShapeFacts, VarId},
+};
 
 /// Consolidated correlation and evidence projection pass.
 ///

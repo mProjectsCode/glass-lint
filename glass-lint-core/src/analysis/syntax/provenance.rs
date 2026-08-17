@@ -6,8 +6,8 @@
 
 use smol_str::SmolStr;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// Why a semantic identity could not be proven.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::analysis) enum UnknownReason {
     /// The expression did not resolve to a supported identity.
     Unresolved,
@@ -21,12 +21,12 @@ pub(in crate::analysis) enum UnknownReason {
     Cycle,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Provenance of a callable symbol at a use position.
 ///
 /// Each variant is produced by the resolver during value interning and
 /// consumed by matchers during fact projection. The provenance determines
 /// which matching rules apply to the call site.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) enum SymbolCallProvenance {
     /// A configured, unshadowed global callable. Produced when the
     /// identifier matches a named global in the environment and no
@@ -60,8 +60,8 @@ impl SymbolCallProvenance {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Provenance of a member access rooted in a module namespace.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) enum SymbolMemberProvenance {
     /// A statically named member of an imported namespace.
     ModuleNamespace { module: SmolStr, member: SmolStr },

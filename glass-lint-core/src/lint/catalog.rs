@@ -11,8 +11,8 @@ use crate::{
     },
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Catalog construction failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProviderCatalogError {
     /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
@@ -20,8 +20,8 @@ pub enum ProviderCatalogError {
     InvalidRule(RuleId, RuleCompilationError),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Categorized compiler failure for one provider rule.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuleCompilationError {
     /// The rule used an invalid matcher declaration.
     InvalidMatcher(String),
@@ -87,8 +87,8 @@ impl fmt::Display for ProviderCatalogError {
 
 impl Error for ProviderCatalogError {}
 
-#[derive(Clone, Debug)]
 /// Provider rules, namespaced IDs, and compiled plans.
+#[derive(Clone, Debug)]
 pub struct RuleCatalog {
     /// Compiled rule records (no source declaration trees retained).
     records: Vec<CompiledRuleRecord>,

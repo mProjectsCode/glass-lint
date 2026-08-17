@@ -1,9 +1,9 @@
 // ── All normalization ─────────────────────────────────────────────────────
 
-use super::normalize::normalize_root;
 use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
+        normalize::normalize_root,
         normalized::{
             CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedRoot,
             NormalizedSubject, ObjectSlot,

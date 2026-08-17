@@ -1,14 +1,17 @@
 use std::collections::BTreeSet;
 
-use super::{
-    AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot, FlowStateTable,
-    LocalFlowProjectionOutcome, ObjectFlowProjector, ProjectionInputs, ProjectionPathMachine,
-    ProjectionRunState, PropertyWriteUpdate, loops::LoopFixedPoint, state::LoopSeed,
-};
 use crate::{
     analysis::{
         facts::{FactId, FactPayload, FunctionBoundary},
-        flow::FlowCompletion,
+        flow::{
+            FlowCompletion,
+            projector::{
+                AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot,
+                FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector, ProjectionInputs,
+                ProjectionPathMachine, ProjectionRunState, PropertyWriteUpdate,
+                loops::LoopFixedPoint, state::LoopSeed,
+            },
+        },
         model::{
             flow::{FlowLimits, FlowState, SinkReadiness},
             value::{FlowObjectId, ValueId},

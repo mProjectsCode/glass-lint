@@ -2,11 +2,16 @@
 
 use std::{error::Error, fmt};
 
-use super::query::{QueryDiagnostic, limits};
-use crate::{RuleId, api::compiler::limits as compiler_limits};
+use crate::{
+    RuleId,
+    api::{
+        compiler::limits as compiler_limits,
+        rule::query::{QueryDiagnostic, limits},
+    },
+};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Construction-time rule metadata or matcher validation failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuleBuildError {
     /// Rule ID was not supplied.
     MissingId,
@@ -23,7 +28,7 @@ pub enum RuleBuildError {
     /// A required metadata field was supplied more than once.
     DuplicateField(&'static str),
     /// A query declaration could not be constructed.
-    InvalidQuery(super::query::QueryBuildError),
+    InvalidQuery(crate::api::rule::query::QueryBuildError),
     /// The rule contains more query roots than the bounded authoring limit.
     TooManyQueries(usize),
 }
@@ -137,8 +142,8 @@ pub enum MatcherBuildError {
     QueryCompileError(QueryDiagnostic),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Catalog-level rule identity failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompiledCatalogError {
     /// A rule declaration could not be lowered into a semantic query.
     InvalidMatcher { rule_id: RuleId, message: String },

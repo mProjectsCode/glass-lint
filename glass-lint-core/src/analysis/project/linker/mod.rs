@@ -13,11 +13,13 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::BudgetTracker;
 
-use super::resolver::{self, ExportResolver};
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        project::state::{ExportLookupCache, ExportTable, NormalizedModuleGraph, SccPartition},
+        project::{
+            resolver::{self, ExportResolver},
+            state::{ExportLookupCache, ExportTable, NormalizedModuleGraph, SccPartition},
+        },
         semantic::status::AnalysisStatus,
     },
     project::SourceLocation,

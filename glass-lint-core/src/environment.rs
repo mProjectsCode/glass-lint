@@ -28,8 +28,8 @@ struct EnvironmentInner {
     global_objects: BTreeMap<SmolStr, GlobalObjectMembers>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Membership policy for a global object's promoted identities.
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum GlobalObjectMembers {
     /// This object promotes all currently configured globals as callable
     /// identities. Used for the current-realm global object and fully trusted
@@ -90,8 +90,8 @@ impl PartialEq for Environment {
 
 impl Eq for Environment {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Error returned for a malformed host binding identifier.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnvironmentError {
     name: String,
 }

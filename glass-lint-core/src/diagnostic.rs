@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{RuleId, project::SourceText};
 
+/// Severity exposed by the provider-neutral report schema.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
-/// Severity exposed by the provider-neutral report schema.
 pub enum Severity {
     /// Informational diagnostic.
     Info,
@@ -230,9 +230,9 @@ impl SourceLineIndex {
     }
 }
 
+/// Provider rule metadata exposed to front ends and integrations.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
-/// Provider rule metadata exposed to front ends and integrations.
 pub struct RuleMetadata {
     /// Stable namespaced rule identifier.
     id: RuleId,

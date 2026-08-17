@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
 use glass_lint_harness::{ProfileCatalogProvider, RuleSelectionProfile};
 
-#[derive(Parser)]
-#[command(version, about = "Run conformance cases and profiling workloads")]
 /// Top-level CLI arguments shared by verification, reporting,
 /// comparison, and profiling.
+#[derive(Parser)]
+#[command(version, about = "Run conformance cases and profiling workloads")]
 pub struct Args {
     #[command(subcommand)]
     /// Operation to execute.
@@ -18,9 +18,9 @@ pub struct Args {
     pub adapters: Vec<(String, PathBuf)>,
 }
 
-#[derive(Subcommand)]
 /// Commands for conformance cases, reports, comparison, and
 /// profiling.
+#[derive(Subcommand)]
 pub enum Command {
     /// Run cases and return a failing exit status when expectations differ.
     Verify {
@@ -45,13 +45,13 @@ pub enum Command {
     Profile(ProfileArgs),
 }
 
-#[derive(ClapArgs)]
-#[allow(clippy::struct_excessive_bools)]
 /// Input-selection and execution controls for profiling.
 ///
 /// `--project` selects loader-project work; `--admitted-project` selects the
 /// explicit admitted project path; without either flag, inputs are profiled as
 /// source files.
+#[derive(ClapArgs)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ProfileArgs {
     #[arg(long = "path", required = true)]
     pub paths: Vec<PathBuf>,
@@ -95,15 +95,15 @@ pub struct ProfileArgs {
     pub root_label: Option<String>,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
 /// Render format for the report command.
+#[derive(Clone, Copy, ValueEnum)]
 pub enum Format {
     Markdown,
     Json,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
 /// Provider set whose rules are profiled.
+#[derive(Clone, Copy, ValueEnum)]
 pub enum ProfileCatalogProviderArg {
     Js,
     Obsidian,
@@ -120,8 +120,8 @@ impl From<ProfileCatalogProviderArg> for ProfileCatalogProvider {
     }
 }
 
-#[derive(Clone, Copy, ValueEnum)]
 /// Precision mode used by profiling.
+#[derive(Clone, Copy, ValueEnum)]
 pub enum RuleSelectionProfileArg {
     Recommended,
     Heuristic,

@@ -56,8 +56,8 @@ pub(in crate::analysis) trait Lookup {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
 /// Lookup implementation that intentionally resolves no identifiers.
+#[derive(Debug, Default, Clone, Copy)]
 pub(in crate::analysis) struct NoLookup;
 
 impl Lookup for NoLookup {
@@ -101,8 +101,8 @@ pub(in crate::analysis) fn contextual_member_property_name_with_state(
     state.contextual_member_property_name(prop, lookup)
 }
 
-#[derive(Default)]
 /// Mutable recursion/node/lookup budget for one constant evaluation.
+#[derive(Default)]
 pub(in crate::analysis) struct EvalState {
     /// Current recursive expression depth.
     depth: usize,

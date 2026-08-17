@@ -13,8 +13,8 @@ use glass_lint_datastructures::ByteRange;
 pub use crate::api::rule::MatchKind;
 use crate::{analysis::trace::TraceNodeId, api::rule::Severity, project::MatchCertainty};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleIndex(usize);
 
 impl RuleIndex {
@@ -59,8 +59,8 @@ pub enum RuleEvidenceError {
     CapacityMismatch { expected: usize, actual: usize },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// One classified capability emitted by a compiled matcher.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchedCapability {
     /// Internal catalog position used to correlate rule selections.
     rule_index: RuleIndex,
@@ -72,8 +72,8 @@ pub struct MatchedCapability {
     evidence: Vec<ClassificationEvidence>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Evidence for one matched API occurrence and its related events.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassificationEvidence {
     /// Semantic occurrence kind.
     kind: MatchKind,
@@ -90,9 +90,9 @@ pub struct ClassificationEvidence {
     occurrences: Vec<ClassificationEvidenceOccurrence>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// A source span, the fact that established it, and an optional trace head
 /// into the interned trace arena.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassificationEvidenceOccurrence {
     span: ByteRange,
     fact: Option<u32>,

@@ -61,8 +61,8 @@ pub(in crate::analysis) fn non_negative_integer(value: f64) -> Option<usize> {
     Some(n)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Finite constant shapes accepted by semantic matching.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) enum ConstValue {
     /// Evaluation was unsupported, dynamic, or over budget.
     Unknown,

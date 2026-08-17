@@ -5,13 +5,13 @@ use glass_lint_core::{
     project::{MatchCertainty, ProjectInputError, ProjectRelativePath},
 };
 
-use super::protocol::{AdapterFile, AdapterProject, AdapterResolution};
-
 mod bundle;
 pub use bundle::{
     BundleKey, BundleProfile, BundleProfileError, BundleTarget, BundleTransformer,
     normalize_bundle_profiles,
 };
+
+use crate::{AdapterFile, AdapterProject, AdapterResolution};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CaseError {
@@ -85,8 +85,8 @@ impl std::error::Error for FindingExpectationError {
     }
 }
 
-#[derive(Clone, Debug)]
 /// One source fixture and its per-adapter expectations.
+#[derive(Clone, Debug)]
 pub struct Case {
     pub(crate) id: String,
     pub(crate) description: String,

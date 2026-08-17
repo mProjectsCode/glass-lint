@@ -30,24 +30,24 @@ use storage::{ScopeData, ScopeReadView};
 // ScopeGraph — mutable collection-phase struct
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
 /// Mutable scope graph used during the collection phase.
 ///
 /// After calling [`finish_collected_properties`] and [`freeze`], callers
 /// receive a read-only [`FrozenScopeGraph`] for all query operations.
+#[derive(Debug)]
 pub(in crate::analysis) struct ScopeGraph {
     data: ScopeData<MutationIndexBuilder>,
     /// False when source-order collection did not consume the planned shape.
     scope_shape_valid: bool,
 }
 
-#[derive(Debug)]
 /// Read-only scope graph produced by freezing a [`ScopeGraph`].
 ///
 /// All query methods (provenance, bindings, constants, functions, rooted)
 /// are defined on this type.  The collection/building phase produces a
 /// `ScopeGraph`, then calls `freeze()` to obtain a `FrozenScopeGraph` for
 /// the resolver.
+#[derive(Debug)]
 pub(in crate::analysis) struct FrozenScopeGraph {
     data: ScopeData<MutationIndex>,
     /// False when collection and planned scope shapes diverged.

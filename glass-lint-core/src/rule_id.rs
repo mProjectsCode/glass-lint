@@ -5,10 +5,10 @@ use std::{error::Error, fmt};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Canonical `provider:name` rule identifier.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-/// Canonical `provider:name` rule identifier.
 pub struct RuleId(String);
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]

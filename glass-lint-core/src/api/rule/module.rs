@@ -4,8 +4,8 @@ use std::fmt;
 
 use crate::{api::rule::error::MatcherBuildError, project::PackageSpecifier};
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// A package root with boundary-aware subpath matching.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ModuleSpecifierPattern {
     value: PatternValue,
 }

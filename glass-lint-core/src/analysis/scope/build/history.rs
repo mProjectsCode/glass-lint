@@ -57,8 +57,8 @@ struct HistoryCheckpoint {
     position: HistoryCursor,
 }
 
-#[derive(Debug)]
 /// A mutation log with checkpoints valid only for this history instance.
+#[derive(Debug)]
 struct OwnedHistory<D> {
     history: ParentLinkedHistory<D>,
     owner: HistoryOwner,
@@ -117,7 +117,6 @@ struct AssignmentDelta {
     new: ProvenanceAlternatives,
 }
 
-#[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.
 ///
 /// A parent-linked mutation log allows checkpoint-and-restore without cloning
@@ -125,6 +124,7 @@ struct AssignmentDelta {
 /// ancestor (LCA) of the current and target positions, applies inverse deltas
 /// upward from the current position to the LCA, then forward deltas downward
 /// from the LCA to the target.
+#[derive(Debug)]
 pub(super) struct AssignmentEnvironment {
     assignments: HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
     history: OwnedHistory<AssignmentDelta>,

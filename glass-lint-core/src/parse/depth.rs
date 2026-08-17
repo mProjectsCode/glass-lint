@@ -5,7 +5,7 @@ use swc_ecma_parser::{
     unstable::{Token, TokenAndSpan},
 };
 
-use super::SyntaxDepthOutcome;
+use crate::parse::SyntaxDepthOutcome;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Delimiter {

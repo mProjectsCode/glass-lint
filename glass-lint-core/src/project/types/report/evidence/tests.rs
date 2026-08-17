@@ -1,4 +1,4 @@
-use super::{EvidenceConstructionError, EvidenceTrace, EvidenceTraces};
+use crate::project::{EvidenceConstructionError, EvidenceTrace, EvidenceTraces};
 
 #[test]
 fn rejects_empty_trace() {

@@ -10,8 +10,8 @@ use crate::analysis::{
     matching::{ModuleExportKey, ModuleIdentityMap},
 };
 
-#[derive(Debug, Default)]
 /// Deterministic internal-module graph.
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct ModuleGraph {
     /// Outgoing internal edges by importer.
     forward: BTreeMap<ModuleId, Vec<ModuleId>>,
@@ -174,12 +174,12 @@ impl SccPartition {
     }
 }
 
-#[derive(Debug, Default)]
 /// Resolved export identities for one module.
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct ModuleExports(BTreeMap<SmolStr, ExportResolution>);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Outcome of updating one qualified export entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) enum ExportUpdate {
     /// The requested value already matched the retained value.
     Unchanged,
@@ -236,8 +236,8 @@ impl QualifiedExportId {
     }
 }
 
-#[derive(Debug, Default)]
 /// Qualified export identities indexed by module and export name.
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct ExportTable {
     exports: BTreeMap<ModuleId, ModuleExports>,
     total_entries: usize,

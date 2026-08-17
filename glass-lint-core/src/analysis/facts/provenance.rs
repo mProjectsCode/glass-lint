@@ -1,9 +1,8 @@
 use glass_lint_datastructures::ByteRange;
 
-use super::{OriginCheckpoint, OriginMap, OriginSnapshot};
 use crate::analysis::{
     SemanticBudget,
-    facts::instance::InstanceCallable,
+    facts::{OriginCheckpoint, OriginMap, OriginSnapshot, instance::InstanceCallable},
     model::{fact::ClassIdentity, value::ValueId},
 };
 

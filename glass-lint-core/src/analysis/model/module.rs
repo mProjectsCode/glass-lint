@@ -106,9 +106,9 @@ pub struct ModuleInterface {
     unknown_exports: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// Index into the request `Vec`; direct vector-index ids use `usize` because
 /// the collection has no bounded-arena contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ModuleRequestId(usize);
 
 impl ModuleRequestId {

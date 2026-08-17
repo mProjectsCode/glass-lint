@@ -1,10 +1,12 @@
 use glass_lint_core::rules::{
     EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
-    LifecycleSink,
+    LifecycleSink, QueryDecl, ValueMatcher,
 };
 
-use super::{QueryDecl, ValueMatcher, classify, rule, script_insertion_flow};
-use crate::support::Classification;
+use crate::{
+    matching::declarative::script_insertion_flow,
+    support::{Classification, classify, rule},
+};
 
 fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
     assert!(result.has_capability(id));

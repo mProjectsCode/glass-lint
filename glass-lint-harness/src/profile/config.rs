@@ -76,8 +76,8 @@ pub struct ProfileProjectLoadIdentity {
     pub follow_symlinks: bool,
 }
 
-#[derive(Clone, Debug)]
 /// Validated-by-`run_profile` controls for one profile run.
+#[derive(Clone, Debug)]
 pub struct ProfileConfig {
     pub(crate) paths: Vec<PathBuf>,
     pub(crate) include: Vec<String>,

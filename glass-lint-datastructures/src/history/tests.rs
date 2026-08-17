@@ -1,4 +1,4 @@
-use super::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
+use crate::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 
 #[test]
 fn transitions_between_branches_in_expected_order() {

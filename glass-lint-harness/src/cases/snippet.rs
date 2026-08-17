@@ -3,9 +3,12 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use glass_lint_core::Severity;
 
-use super::{default_filename, language_for_path};
-use crate::types::{
-    Case, CaseError, ExpectedCount, FindingExpectation, ToolExpectation, normalize_bundle_profiles,
+use crate::{
+    cases::{default_filename, language_for_path},
+    types::{
+        Case, CaseError, ExpectedCount, FindingExpectation, ToolExpectation,
+        normalize_bundle_profiles,
+    },
 };
 
 pub(super) fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {

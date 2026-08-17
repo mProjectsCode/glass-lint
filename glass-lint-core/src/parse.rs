@@ -28,9 +28,9 @@ use crate::{
 #[cfg(test)]
 const MAX_SYNTAX_DEPTH: usize = crate::limits::DEFAULT_SYNTAX_DEPTH;
 
+/// Structured parser failure with an optional source range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-/// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
     /// Stable diagnostic code.
     code: DiagnosticCode,

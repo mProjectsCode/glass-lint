@@ -1,4 +1,4 @@
-use super::{OriginMap, OriginSnapshot};
+use crate::analysis::facts::origin_map::{OriginMap, OriginSnapshot};
 
 #[test]
 fn restoring_snapshot_rebases_owned_checkpoint() {

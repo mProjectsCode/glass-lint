@@ -1,4 +1,4 @@
-use super::Confidence;
+use crate::api::rule::Confidence;
 
 #[test]
 fn confidence_thresholds_follow_semantic_strength() {

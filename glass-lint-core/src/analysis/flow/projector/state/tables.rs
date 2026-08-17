@@ -1,7 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::InverseDelta;
-
 mod aliases;
 
 pub(super) use aliases::AliasTable;
@@ -11,15 +9,18 @@ mod updates;
 
 use crate::analysis::{
     facts::FactId,
-    flow::projector::history::{Checkpoint, MutationLog},
+    flow::projector::{
+        history::{Checkpoint, MutationLog},
+        state::InverseDelta,
+    },
     model::{
         flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{FlowObjectId, ValueId},
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// O(1) snapshot of the live tables and reachability at a control boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis::flow::projector) struct FlowEnvironment {
     pub(super) checkpoint: Checkpoint,
     /// Whether execution can reach the snapshot.
@@ -67,8 +68,8 @@ pub(in crate::analysis::flow::projector) struct FlowSemanticSnapshot {
     states: Vec<CanonicalFlowState>,
 }
 
-#[derive(Debug)]
 /// Mutable live alias and object-state tables for one projector pass.
+#[derive(Debug)]
 pub(in crate::analysis::flow::projector) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
     aliases: AliasTable,

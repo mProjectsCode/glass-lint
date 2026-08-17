@@ -14,8 +14,8 @@ use crate::{
     project::ModuleId,
 };
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Monotone flow state carried through one qualified call context.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub(super) struct CrossFlowState {
     flow: FlowId,
     /// The source witness carried by this context. `None` represents a
@@ -153,8 +153,8 @@ enum CallContextOrigin {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Worklist context identifying the function/value path currently projected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub(super) struct CallContext {
     module: ModuleId,
     function: FunctionId,

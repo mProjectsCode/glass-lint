@@ -2,7 +2,9 @@
 
 use std::fmt;
 
-use super::{EventQuery, LifecycleQuery, QueryBuildError, QueryPredicate, VarId, limits};
+use crate::api::rule::query::{
+    EventQuery, LifecycleQuery, QueryBuildError, QueryPredicate, VarId, limits,
+};
 
 /// A typed logical query expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

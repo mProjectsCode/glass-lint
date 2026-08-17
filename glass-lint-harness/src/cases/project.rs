@@ -7,10 +7,12 @@ use std::{
 use anyhow::{Context, Result, bail};
 use glass_lint_datastructures::{Position, SourceRange};
 
-use super::{language_for_path, snippet::parse_project_file_case};
-use crate::types::{
-    AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
-    ProjectCase, ToolExpectation,
+use crate::{
+    cases::{language_for_path, snippet::parse_project_file_case},
+    types::{
+        AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
+        ProjectCase, ToolExpectation,
+    },
 };
 
 #[derive(Debug, serde::Deserialize)]

@@ -1,7 +1,7 @@
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use super::QueryBuildError;
+use crate::api::rule::query::QueryBuildError;
 
 fn is_chain_malformed(chain: &str) -> bool {
     chain.trim().is_empty()

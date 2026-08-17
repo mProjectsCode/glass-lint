@@ -1,7 +1,6 @@
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
-use super::super::private_network_match;
 use crate::{
     Environment,
     analysis::matching::{
@@ -10,6 +9,7 @@ use crate::{
             ModuleExportKey, ModuleOccurrences, NameOccurrences, OccurrenceIndex,
             OccurrenceSelection, Occurrences, PackageKeyPredicate, PackageMatchKind,
         },
+        private_network_match,
     },
     api::{compiler::rule::IdentityConstraint, rule::ModuleSpecifierPattern},
 };

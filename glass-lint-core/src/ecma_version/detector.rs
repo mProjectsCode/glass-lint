@@ -6,7 +6,7 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::{EcmaFeature, EcmaVersion, EcmaVersionReport};
+use crate::ecma_version::{EcmaFeature, EcmaVersion, EcmaVersionReport};
 
 #[derive(Default)]
 pub(super) struct FeatureDetector {

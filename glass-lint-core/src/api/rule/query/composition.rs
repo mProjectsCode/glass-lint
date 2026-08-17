@@ -1,6 +1,6 @@
 //! Logical query composition constructors.
 
-use super::{
+use crate::api::rule::query::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
     MatchKind, MemberChain, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId,
     checked_module_export, explain_expression, lifecycle::IntoLifecycleQuery, limits,

@@ -50,10 +50,10 @@ impl From<swc_common::Span> for ParserSpanKey {
     }
 }
 
-#[derive(Clone, Debug)]
 /// Converts SWC `BytePos` spans to zero-based `ByteRange` values relative to
 /// the authored source text. Validation ensures the result is within bounds
 /// and on UTF-8 character boundaries.
+#[derive(Clone, Debug)]
 pub(in crate::analysis) struct SpanNormalizer {
     /// SWC `BytePos` value assigned to authored byte offset zero.
     start: u32,

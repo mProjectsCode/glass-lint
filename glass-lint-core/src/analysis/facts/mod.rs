@@ -54,7 +54,6 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use self::instance::InstanceCallable;
 #[cfg(test)]
 use crate::analysis::facts::stream::FrozenStorage;
 pub(in crate::analysis) use crate::analysis::model::fact::{
@@ -64,6 +63,7 @@ pub(in crate::analysis) use crate::analysis::model::fact::{
 #[cfg(test)]
 use crate::analysis::semantic::with_test_collection;
 use crate::analysis::{
+    facts::instance::InstanceCallable,
     model::scope::FunctionId,
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
@@ -360,11 +360,11 @@ pub(in crate::analysis) struct BuiltFacts {
 
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
-#[derive(Debug)]
 /// Immutable per-file semantic state shared by all selected matchers.
 ///
 /// A malformed or budget-exhausted stream remains available for diagnostics,
 /// but indexing and projection fail closed rather than consuming partial facts.
+#[derive(Debug)]
 pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream<Frozen>,
     index: OccurrenceIndexes,

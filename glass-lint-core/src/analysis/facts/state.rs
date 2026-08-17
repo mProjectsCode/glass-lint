@@ -9,8 +9,8 @@ use crate::analysis::{
     model::{fact::ClassIdentity, scope::FunctionId},
 };
 
-#[derive(Debug)]
 /// Ephemeral nesting state that affects how the current syntax is interpreted.
+#[derive(Debug)]
 pub(super) struct TraversalState {
     /// Monotonic identity source for branch and loop regions.
     next_control_region: ControlRegionId,

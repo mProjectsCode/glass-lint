@@ -1,7 +1,7 @@
-use super::MatchedCapability;
+use crate::api::classification::MatchedCapability;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
 /// Top-level classification result containing capabilities in catalog order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClassificationResult {
     /// Classified capabilities selected for this run.
     capabilities: Vec<MatchedCapability>,

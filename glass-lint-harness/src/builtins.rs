@@ -3,8 +3,8 @@
 use anyhow::{Result, bail};
 use glass_lint_core::{Linter, RuleBaseline, RuleId, RuleOverride, RuleSelection, RuleState};
 
-#[derive(Clone, Copy)]
 /// Built-in rule provider available to the harness.
+#[derive(Clone, Copy)]
 pub enum BuiltinProvider {
     Js,
     Node,
@@ -12,8 +12,8 @@ pub enum BuiltinProvider {
     Obsidian,
 }
 
-#[derive(Clone, Copy)]
 /// Precision profile used to construct a provider linter.
+#[derive(Clone, Copy)]
 pub enum BuiltinProfile {
     Recommended,
     Heuristic,

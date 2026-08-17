@@ -147,7 +147,7 @@ where
 
 #[cfg(feature = "serde")]
 mod rule_state_as_bool {
-    use super::RuleState;
+    use crate::lint::selection::RuleState;
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub(super) fn serialize<S>(state: &RuleState, serializer: S) -> Result<S::Ok, S::Error>
@@ -378,8 +378,8 @@ impl RuleSelection {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Configuration failure when selecting rules for a linter.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LintConfigError {
     /// A requested fully-qualified rule ID is absent from the catalog.
     UnknownRule(RuleId),

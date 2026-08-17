@@ -2,12 +2,12 @@ use std::collections::BTreeSet;
 
 use smol_str::SmolStr;
 
-use super::CrossProjectionSession;
 use crate::{
     analysis::{
         facts::{FactId, FactStream, Frozen},
         flow::{
             cross::{
+                CrossProjectionSession,
                 evidence::{emit, mark_nonmatching},
                 state::{CallContext, CrossFlowState, EvidenceTransition},
             },

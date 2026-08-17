@@ -1,10 +1,8 @@
-use super::*;
-
 #[cfg(test)]
 mod test_indexing {
     use std::ops::{Index, IndexMut};
 
-    use super::{ClassificationEvidence, RuleEvidenceTable, RuleIndex};
+    use crate::api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex};
 
     static EMPTY: Vec<ClassificationEvidence> = Vec::new();
 
@@ -28,7 +26,7 @@ mod test_indexing {
 mod test_evidence_capacity {
     use glass_lint_datastructures::ByteRange;
 
-    use super::{
+    use crate::api::classification::{
         ClassificationEvidence, ClassificationEvidenceOccurrence, MatchCertainty, MatchKind,
         RuleEvidenceError, RuleEvidenceTable, RuleIndex,
     };

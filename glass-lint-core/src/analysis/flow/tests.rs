@@ -1,4 +1,4 @@
-use super::{FlowCompletion, FlowCompletionReason};
+use crate::analysis::flow::{FlowCompletion, FlowCompletionReason};
 
 #[test]
 fn completion_merges_multiple_reasons() {

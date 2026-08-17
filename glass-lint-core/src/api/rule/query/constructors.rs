@@ -1,6 +1,6 @@
 //! Public event-query constructors and argument adapters.
 
-use super::{
+use crate::api::rule::query::{
     ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec, IdentitySpec, MemberChain,
     ModuleSpecifierPattern, QueryBuildError, QueryDecl, ValueMatcher, checked_module_export,
     checked_module_name, checked_name,

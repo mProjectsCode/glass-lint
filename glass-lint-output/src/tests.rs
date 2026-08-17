@@ -1,4 +1,4 @@
-use super::visible_text;
+use crate::visible_text;
 
 #[test]
 fn visible_text_escapes_terminal_controls() {

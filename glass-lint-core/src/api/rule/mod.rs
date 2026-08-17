@@ -86,11 +86,11 @@ pub use taxonomy::Confidence;
 pub use crate::Severity;
 use crate::rule_id::RuleName;
 
-#[derive(Debug, Clone)]
 /// Validated provider rule with canonical query declarations.
 ///
 /// Query declarations are compiled into physical plans at catalog construction,
 /// after which the source declarations are not retained.
+#[derive(Debug, Clone)]
 pub struct Rule {
     /// Provider-local stable rule name.
     id: RuleName,
@@ -159,8 +159,8 @@ impl Rule {
     }
 }
 
-#[derive(Debug, Clone)]
 /// Fluent rule builder whose `build` method validates rule metadata.
+#[derive(Debug, Clone)]
 pub struct RuleBuilder {
     id: String,
     description: Option<String>,
@@ -284,8 +284,8 @@ impl RuleBuilder {
     }
 }
 
-#[derive(Debug, Clone)]
 /// Deferred-error builder reserved for declarative provider catalogs.
+#[derive(Debug, Clone)]
 pub struct CatalogRuleBuilder {
     inner: DeferredBuilder<RuleBuilder, QueryBuildError>,
 }

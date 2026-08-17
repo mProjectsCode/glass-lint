@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-use super::limits;
+use crate::api::rule::query::limits;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryBuildError {

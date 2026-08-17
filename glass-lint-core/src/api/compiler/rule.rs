@@ -1,5 +1,7 @@
 #[allow(unused_imports)]
-pub(crate) use super::{CompiledMatcherPlan, EvidenceDescriptor, IdentityConstraint};
+pub(crate) use crate::api::compiler::{
+    CompiledMatcherPlan, EvidenceDescriptor, IdentityConstraint,
+};
 pub(crate) use crate::api::rule::query::EventSpec;
 use crate::{
     RuleId, Severity,

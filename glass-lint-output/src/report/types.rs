@@ -6,8 +6,8 @@ use std::{
 use console::measure_text_width;
 use glass_lint_core::project::FileReport;
 
-#[derive(Clone, Copy, Debug)]
 /// Formatting options for terminal report rendering.
+#[derive(Clone, Copy, Debug)]
 pub struct PrettyOptions {
     /// Maximum rendered line width before evidence is abbreviated.
     pub max_width: usize,
@@ -37,8 +37,8 @@ pub struct PrettyReport<'a> {
     pub(crate) line_cache: Arc<LineCache>,
 }
 
-#[derive(Clone)]
 /// A source-backed file report ready for grouped rendering.
+#[derive(Clone)]
 pub struct PrettyFile<'a> {
     pub(crate) report: &'a FileReport,
     pub(crate) filename: &'a str,

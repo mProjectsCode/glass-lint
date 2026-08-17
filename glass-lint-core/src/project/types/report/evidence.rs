@@ -1,7 +1,7 @@
 use crate::project::types::SourceLocation;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Error returned when an evidence collection violates its non-empty shape.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EvidenceConstructionError {
     /// An evidence trace has no steps.
     EmptyTrace,

@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::{MemberChain, QueryBuildError, canonical::CanonicalCollection, limits};
+use crate::api::rule::query::{
+    MemberChain, QueryBuildError, canonical::CanonicalCollection, limits,
+};
 
 /// A validated authored argument position in a call query.
 ///

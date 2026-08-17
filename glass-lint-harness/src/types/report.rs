@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use glass_lint_core::project::Finding;
 
-use super::case::BundleKey;
+use crate::BundleKey;
 
 #[derive(Clone, Debug)]
 pub struct AdapterRun {

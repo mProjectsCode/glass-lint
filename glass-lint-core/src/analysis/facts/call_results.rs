@@ -5,9 +5,9 @@ use swc_common::Span;
 
 use crate::analysis::{model::value::ValueId, semantic::ParserSpanKey};
 
-#[derive(Debug, Default)]
 /// Deterministic per-pass table connecting call resolution with its emitted
 /// call fact and later assignments that consume the returned value.
+#[derive(Debug, Default)]
 pub(super) struct CallResultTable(HashMap<ParserSpanKey, ValueId>);
 
 impl CallResultTable {
