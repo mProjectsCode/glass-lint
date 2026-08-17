@@ -122,7 +122,7 @@ non-empty. Verified with the focused compiler test and clippy; `make fmt` and
 
 ### [api::compiler::validate]
 
-#### [ ] READ-003 — Stale pass numbering hides the consolidated three-pass pipeline and the orchestrator lives in the wrong module
+#### [x] READ-003 — Stale pass numbering hides the consolidated three-pass pipeline and the orchestrator lives in the wrong module
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -158,6 +158,12 @@ and the `#[cfg(test)]` re-exports (`pass_scope_types`, `pass_structure`,
 `pass_correlation_evidence` at `mod.rs:9-13`) identical, so `tests/validate/*`
 (`correlation.rs`, `identity.rs`, `well_formedness.rs`) needs no behavioral
 change.
+
+**Fix Applied:** Renamed the validation modules to `structure.rs`,
+`scope_types.rs`, and `correlation_evidence.rs`, moved the three-pass
+orchestration into `validate/mod.rs`, and preserved the existing test helper
+re-exports and pass order. Verified with validation-focused tests, clippy,
+`make fmt`, and `make ci`.
 
 ### [api::compiler::requirements]
 

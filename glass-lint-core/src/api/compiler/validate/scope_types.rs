@@ -1,38 +1,9 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::error::{QueryCompileError, is_identity_empty, is_valid_identity_event_pair};
+use super::error::QueryCompileError;
 use crate::api::rule::query::{
-    AnyExpr, EventQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId, VarType,
+    AnyExpr, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId, VarType,
 };
-
-/// Validate an event query for well-formedness.
-pub(crate) fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
-    if !is_valid_identity_event_pair(eq.identity(), eq.event()) {
-        return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity().diagnostic_name().to_owned(),
-            event: eq.event().diagnostic_name().to_owned(),
-            subject: "direct".to_string(),
-            detail: "identity/event combination cannot select a semantic fact",
-        });
-    }
-    if is_identity_empty(eq.identity()) {
-        return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity().diagnostic_name().to_owned(),
-            event: eq.event().diagnostic_name().to_owned(),
-            subject: "direct".to_string(),
-            detail: "identity name or pattern is empty",
-        });
-    }
-    if !eq.constraints().is_empty() && !eq.event().supports_arguments() {
-        return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity().diagnostic_name().to_owned(),
-            event: eq.event().diagnostic_name().to_owned(),
-            subject: "direct".to_string(),
-            detail: "argument constraints require a call-bearing event",
-        });
-    }
-    Ok(())
-}
 
 /// Return true if `actual` is compatible with `expected`.
 /// Event is compatible with CallEvent and MemberEvent (Event is a supertype).
