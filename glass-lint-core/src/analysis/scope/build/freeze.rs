@@ -2,7 +2,7 @@ use crate::analysis::scope::{
     ScopeGraph,
     binding_index::{BindingFreezeInput, BindingIndex},
     build::{
-        FrozenScopeCollectionArtifacts, ScopeCollector,
+        ScopeCollectionArtifacts, ScopeCollector,
         program::{ScopeCollectionIssue, ScopedProgram},
     },
     mutation_index::MutationIndexBuilder,
@@ -14,14 +14,14 @@ impl ScopeCollector<'_> {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::UnconsumedShape);
         }
-        let FrozenScopeCollectionArtifacts {
+        let parameter_aliases = self.parameter_aliases();
+        let ScopeCollectionArtifacts {
             scope_issues: mut issues,
             mutable_static_objects,
             property_assignments,
             rooted_property_mutations,
             dynamic_evals,
-        } = std::mem::take(&mut self.artifacts).seal();
-        let parameter_aliases = self.parameter_aliases();
+        } = self.artifacts;
         let function_bindings = self
             .functions
             .function_scopes

@@ -21,7 +21,7 @@ classification candidate.
 
 ### Scope collection frontend
 
-#### [ ] READ-002 — `FrozenScopeCollectionArtifacts` and `ScopeCollectionArtifacts::seal` are an immediately-consumed duplicate type
+#### [x] READ-002 — `FrozenScopeCollectionArtifacts` and `ScopeCollectionArtifacts::seal` are an immediately-consumed duplicate type
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -52,7 +52,10 @@ READ-001, which adds the `assignments` field to the same struct — purely
 stylistic, since `assignments` does not participate in the seal/destructure
 bundle.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the immediately-consumed frozen wrapper and `seal`
+method. `ScopeCollector::freeze` now destructures its owned
+`ScopeCollectionArtifacts` directly; field capture order and downstream scope
+graph construction remain unchanged.
 
 #### [ ] READ-001 — `AssignmentCollectionState.assignments` stores a collected output inside the reversible traversal-state owner
 

@@ -87,25 +87,6 @@ impl ScopeCollectionArtifacts {
     pub(super) fn has_issues(&self) -> bool {
         !self.scope_issues.is_empty()
     }
-
-    /// Consume collection records into the one bundle accepted by freezing.
-    pub(super) fn seal(self) -> FrozenScopeCollectionArtifacts {
-        FrozenScopeCollectionArtifacts {
-            property_assignments: self.property_assignments,
-            rooted_property_mutations: self.rooted_property_mutations,
-            dynamic_evals: self.dynamic_evals,
-            mutable_static_objects: self.mutable_static_objects,
-            scope_issues: self.scope_issues,
-        }
-    }
-}
-
-pub(super) struct FrozenScopeCollectionArtifacts {
-    property_assignments: Vec<PropertyAliasAssignment>,
-    rooted_property_mutations: Vec<RootedPropertyMutation>,
-    dynamic_evals: Vec<ScopedDynamicEval>,
-    mutable_static_objects: HashSet<ScopedName>,
-    scope_issues: Vec<ScopeCollectionIssue>,
 }
 
 /// A dynamic evaluation retained with the scope in which it was observed.
