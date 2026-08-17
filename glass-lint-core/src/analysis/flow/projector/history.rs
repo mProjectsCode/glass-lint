@@ -36,10 +36,6 @@ pub(super) struct MutationLog {
     history: ParentLinkedHistory<InverseDelta>,
     budget_exhausted: bool,
     limit: usize,
-    /// Total charge count including mutation records and comparison charges.
-    /// Used to bound CPU work from join comparisons against the same budget
-    /// that bounds mutation-log output.
-    charges: usize,
 }
 
 impl MutationLog {
@@ -48,7 +44,6 @@ impl MutationLog {
             history: ParentLinkedHistory::new(),
             budget_exhausted: false,
             limit,
-            charges: 0,
         }
     }
 
@@ -62,11 +57,10 @@ impl MutationLog {
     }
 
     pub(super) fn record(&mut self, delta: InverseDelta) {
-        if self.charges >= self.limit {
+        if self.history.len() >= self.limit {
             self.budget_exhausted = true;
             return;
         }
-        self.charges += 1;
         self.history.record(delta);
     }
 

@@ -200,7 +200,7 @@ without `finally` must still fall back to empty vectors.
 
 ### Mutation history (`history.rs`)
 
-#### [ ] READ-006 — `MutationLog::charges` duplicates the log length and documents nonexistent comparison charging
+#### [x] READ-006 — `MutationLog::charges` duplicates the log length and documents nonexistent comparison charging
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -227,7 +227,11 @@ comment to describe the actual mutation-output bound. Guardrail: the
 path (mod.rs:72-75, tables.rs:443-445) must keep producing the same
 completion bit at the same threshold (`limit` inclusive).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the redundant `MutationLog::charges` counter and
+made `record` enforce the mutation budget directly from the canonical history
+length. Updated the stale comparison-charge implication with the simplified
+implementation while preserving the inclusive exhaustion threshold and its
+completion-reason path.
 
 ### Evidence emission (`evidence.rs`)
 
