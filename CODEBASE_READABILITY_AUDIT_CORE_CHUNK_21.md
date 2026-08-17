@@ -35,7 +35,7 @@ never reads.
 
 ### [api::compiler::object_flow / analysis::model::flow]
 
-#### [ ] READ-001 — RequirementMode/CompletionMode duplicate the model's RequirementReadiness/SinkReadiness
+#### [x] READ-001 — RequirementMode/CompletionMode duplicate the model's RequirementReadiness/SinkReadiness
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -74,6 +74,12 @@ sink" distinction through the existing `Option<NormalizedLifecycleCompletion>`
 source (`object_flow.rs:142-143`), so an explicit `Configuration` remains
 distinct from a zero-count `AnySink`; keep `sinks_ready`'s trivial-true arm for
 `Configuration`/`Any` (`model/flow.rs:426`) intact.
+
+**Fix Applied:** Resolved by the shared implementation in commit `7ea7ff4a`
+(`fix chunk 11 read 001`): removed the compiler-only mode mirrors, stored the
+model readiness enums directly on `CompiledObjectFlow`, and updated analysis
+callers to use `SinkReadiness`. The configuration-versus-sink distinction and
+readiness behavior remain unchanged; verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — Two lockstepped emptiness policies: IdentityConstraint::is_empty vs is_identity_empty
 
