@@ -221,7 +221,7 @@ handling at the freeze boundary is unchanged.
 
 ### Status model (`semantic/status.rs`)
 
-#### [ ] READ-005 — `LocalAnalysisStatus` and `StatusScope::Local` double-encode pathless staging and force a defensive demotion bucket
+#### [x] READ-005 — `LocalAnalysisStatus` and `StatusScope::Local` double-encode pathless staging and force a defensive demotion bucket
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -256,7 +256,12 @@ vectors and completion semantics hold unchanged; the test at
 `status/tests.rs:55-68` keeps its assertions and records its direct `Local`
 entry (`status/tests.rs:59`) through the new `LocalAnalysisStatus` API.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `LocalAnalysisStatus` own a deduplicated set of raw
+`IncompleteReason` values and removed `StatusScope::Local`. Materialization
+now creates file-scoped entries directly; `AnalysisStatus` handles only file
+and project scopes, so its diagnostic path no longer needs a local demotion
+bucket. Existing local/file materialization and diagnostic ordering remain
+covered by the status tests.
 
 #### [x] READ-006 — `IncompleteReason::ParseFailure` diagnostic arm is unreachable; the skip is duplicated at the consumer
 

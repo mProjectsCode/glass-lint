@@ -86,8 +86,6 @@ pub enum IncompleteReason {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum StatusScope {
-    /// A failure produced while analyzing one reusable local artifact.
-    Local,
     File(ProjectRelativePath),
     Project,
 }
@@ -106,23 +104,33 @@ pub struct AnalysisStatus {
 /// Completion state owned by one reusable local semantic artifact. Project
 /// and report phases receive an explicit materialized `AnalysisStatus` copy.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct LocalAnalysisStatus(AnalysisStatus);
+pub struct LocalAnalysisStatus(BTreeSet<IncompleteReason>);
 
 impl LocalAnalysisStatus {
     pub(in crate::analysis) fn record(&mut self, reason: IncompleteReason) {
-        self.0.record(StatusScope::Local, reason);
+        self.0.insert(reason);
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn is_complete(&self) -> bool {
-        self.0.is_complete()
+        self.0.is_empty()
     }
 
     pub(in crate::analysis) fn materialize_file(
         &self,
         path: &ProjectRelativePath,
     ) -> AnalysisStatus {
-        self.0.materialize_file(path)
+        AnalysisStatus {
+            entries: self
+                .0
+                .iter()
+                .cloned()
+                .map(|reason| StatusEntry {
+                    scope: StatusScope::File(path.clone()),
+                    reason,
+                })
+                .collect(),
+        }
     }
 }
 
@@ -139,24 +147,6 @@ impl AnalysisStatus {
         self.entries.is_empty()
     }
 
-    /// Attach local-artifact failures to the path that requested the artifact.
-    pub(in crate::analysis) fn materialize_file(&self, path: &ProjectRelativePath) -> Self {
-        Self {
-            entries: self
-                .entries
-                .iter()
-                .map(|entry| StatusEntry {
-                    scope: match &entry.scope {
-                        StatusScope::Local => StatusScope::File(path.clone()),
-                        StatusScope::File(existing) => StatusScope::File(existing.clone()),
-                        StatusScope::Project => StatusScope::Project,
-                    },
-                    reason: entry.reason.clone(),
-                })
-                .collect(),
-        }
-    }
-
     pub(crate) fn diagnostics(
         &self,
     ) -> (
@@ -168,17 +158,13 @@ impl AnalysisStatus {
         for entry in &self.entries {
             let Some(diagnostic) = (match &entry.scope {
                 StatusScope::File(path) => entry.reason.diagnostic(Some(file_location(path))),
-                StatusScope::Local | StatusScope::Project => entry.reason.diagnostic(None),
+                StatusScope::Project => entry.reason.diagnostic(None),
             }) else {
                 continue;
             };
             match &entry.scope {
-                // Local status is an internal pre-materialization state. The
-                // linker attaches its path before production diagnostics are
-                // assembled; retaining it in the project bucket keeps this
-                // diagnostic view total for analysis tests and callers.
                 StatusScope::File(path) => files.push((path.clone(), diagnostic)),
-                StatusScope::Local | StatusScope::Project => project.push(diagnostic),
+                StatusScope::Project => project.push(diagnostic),
             }
         }
         (files, project)

@@ -54,12 +54,15 @@ fn evidence_capacity_mismatch_has_a_project_diagnostic() {
 
 #[test]
 fn local_file_materialization_preserves_other_scopes() {
-    let mut status = AnalysisStatus::default();
+    let mut local = LocalAnalysisStatus::default();
     let reason = IncompleteReason::PathCapacityExhausted;
-    status.record(StatusScope::Local, reason.clone());
+    local.record(reason.clone());
+
+    let mut status = AnalysisStatus::default();
     status.record(StatusScope::File(file()), reason);
 
-    let converted = status.materialize_file(&ProjectRelativePath::new("other.js").unwrap());
+    let mut converted = local.materialize_file(&ProjectRelativePath::new("other.js").unwrap());
+    converted.extend(&status);
     let (files, project) = converted.diagnostics();
 
     assert_eq!(project.len(), 0);
