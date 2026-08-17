@@ -64,6 +64,7 @@ impl<V> StaticProperties<V> {
     }
 
     /// Iterate `(NameId, &V)` pairs in source order.
+    #[cfg(test)]
     pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = (NameId, &V)> + '_ {
         self.entries.iter().map(|(key, value)| (*key, value))
     }

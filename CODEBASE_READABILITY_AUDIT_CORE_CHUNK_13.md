@@ -254,7 +254,7 @@ change the provenance record's sharing.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-007 — `Resolver::static_string_value` re-clones through `const_value` instead of the arena fast path
+#### [x] READ-007 — `Resolver::static_string_value` re-clones through `const_value` instead of the arena fast path
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -281,7 +281,11 @@ follows the terminal cache exactly like `const_value`); the residual `String` cl
 required because the method returns an owned value; add a `debug_assert` comparing the
 two paths if a divergence is ever suspected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed `Resolver::static_string_value` to delegate to the
+value arena's terminal-cache-backed `static_string` lookup, retaining only the
+required owned-string clone. The full-tree `const_value` conversion and its
+iterators remain available for resolution unit tests without adding dead
+production methods. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

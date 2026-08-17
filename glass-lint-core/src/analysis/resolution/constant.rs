@@ -4,14 +4,15 @@
 //! traversal so that static arrays, objects, and strings are never cloned into
 //! intermediate state merely to inspect their variant or descendants.
 
+#[cfg(test)]
 use std::collections::BTreeMap;
 
+#[cfg(test)]
 use smol_str::SmolStr;
 
-use crate::analysis::{
-    resolution::{BindingKey, ConstValue, Resolver, Value, ValueId},
-    syntax::constant::MAX_DEPTH,
-};
+use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
+#[cfg(test)]
+use crate::analysis::syntax::constant::MAX_DEPTH;
 
 impl Resolver<'_> {
     /// Read a bounded constant value from the abstract value arena.
@@ -20,10 +21,12 @@ impl Resolver<'_> {
     /// traversal because every nested call only performs immutable reads.
     /// Large static arrays and objects are visited by borrowed slice rather
     /// than cloned before inspection.
+    #[cfg(test)]
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
         self.const_value_depth(id, 0)
     }
 
+    #[cfg(test)]
     fn const_value_depth(&self, id: ValueId, depth: usize) -> ConstValue {
         if depth >= MAX_DEPTH {
             return ConstValue::Unknown;

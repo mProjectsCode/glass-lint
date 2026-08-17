@@ -353,7 +353,7 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn static_string_value(&self, id: ValueId) -> Option<String> {
-        self.const_value(id).string().map(str::to_owned)
+        self.values.static_string(id).map(str::to_owned)
     }
 
     pub(in crate::analysis) fn static_string_terminal_id(&self, id: ValueId) -> Option<ValueId> {

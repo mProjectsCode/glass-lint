@@ -102,6 +102,7 @@ impl StaticObject {
     }
 
     /// Iterate `(NameId, ValueId)` pairs in deterministic source order.
+    #[cfg(test)]
     pub fn iter(&self) -> impl Iterator<Item = (NameId, ValueId)> + '_ {
         self.entries.iter().map(|(name, value)| (name, *value))
     }
