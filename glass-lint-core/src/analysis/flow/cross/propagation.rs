@@ -71,15 +71,7 @@ impl UsageProjector<'_, '_> {
             if !self.context.matches_use(self.effect, usage) {
                 continue;
             }
-            CallPropagation::new(
-                self.session,
-                self.effect,
-                self.context,
-                self.propagated,
-                Some(event),
-                self.state,
-            )
-            .propagate();
+            self.propagate_calls(Some(event));
             match usage {
                 EffectUse::PropertyWrite {
                     property,
@@ -91,6 +83,35 @@ impl UsageProjector<'_, '_> {
                 }
                 EffectUse::CallArgument { argument_index, .. } => {
                     self.apply_argument(event, *argument_index);
+                }
+            }
+        }
+    }
+
+    pub(super) fn propagate_calls(&mut self, through: Option<FactId>) {
+        for call in self.effect.calls() {
+            if through.is_some_and(|event| call.event() > event)
+                || !self.propagated.insert(call.event())
+            {
+                continue;
+            }
+            let Some(target) = self
+                .session
+                .call_graph
+                .get(QualifiedEvent::new(self.context.module(), call.event()))
+            else {
+                continue;
+            };
+            for argument in call.arguments() {
+                if self.context.matches_argument(self.effect, argument) {
+                    self.session.worklist.enqueue_parameters(
+                        self.session.project,
+                        target.module(),
+                        target.function(),
+                        argument.index(),
+                        self.state,
+                        self.context.is_crossed() || target.module() != self.context.module(),
+                    );
                 }
             }
         }
@@ -214,64 +235,6 @@ impl UsageProjector<'_, '_> {
                 event,
                 self.flow,
             );
-        }
-    }
-}
-
-pub(super) struct CallPropagation<'a, 'session> {
-    session: &'a mut CrossProjectionSession<'session>,
-    effect: &'a FunctionEffect,
-    context: &'a CallContext,
-    propagated: &'a mut BTreeSet<FactId>,
-    through: Option<FactId>,
-    state: &'a CrossFlowState,
-}
-
-impl CallPropagation<'_, '_> {
-    pub(super) fn new<'a, 'session>(
-        session: &'a mut CrossProjectionSession<'session>,
-        effect: &'a FunctionEffect,
-        context: &'a CallContext,
-        propagated: &'a mut BTreeSet<FactId>,
-        through: Option<FactId>,
-        state: &'a CrossFlowState,
-    ) -> CallPropagation<'a, 'session> {
-        CallPropagation {
-            session,
-            effect,
-            context,
-            propagated,
-            through,
-            state,
-        }
-    }
-
-    pub(super) fn propagate(&mut self) {
-        for call in self.effect.calls() {
-            if self.through.is_some_and(|event| call.event() > event)
-                || !self.propagated.insert(call.event())
-            {
-                continue;
-            }
-            let Some(target) = self
-                .session
-                .call_graph
-                .get(QualifiedEvent::new(self.context.module(), call.event()))
-            else {
-                continue;
-            };
-            for argument in call.arguments() {
-                if self.context.matches_argument(self.effect, argument) {
-                    self.session.worklist.enqueue_parameters(
-                        self.session.project,
-                        target.module(),
-                        target.function(),
-                        argument.index(),
-                        self.state,
-                        self.context.is_crossed() || target.module() != self.context.module(),
-                    );
-                }
-            }
         }
     }
 }

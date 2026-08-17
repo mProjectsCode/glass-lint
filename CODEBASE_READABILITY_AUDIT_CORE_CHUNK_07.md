@@ -171,7 +171,7 @@ deduplication, total-retained bounds, exhaustion, and FIFO order. Core now
 reuses the shared primitive while retaining its flow-specific
 `ContextWorklist` wrapper and source-propagation behavior.
 
-#### [ ] READ-004 — `UsageProjector` and `CallPropagation` are overlapping one-shot coordinators sharing five of six fields
+#### [x] READ-004 — `UsageProjector` and `CallPropagation` are overlapping one-shot coordinators sharing five of six fields
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -207,7 +207,11 @@ pre-usage state via `through = Some(event)`, then the final `None` pass), the
 `target.module() != context.module()` crossed-flag computation so cross-file
 `Possible`/`Definite` grading is unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved call propagation onto `UsageProjector` and removed the
+single-use `CallPropagation` wrapper. Per-usage propagation still runs before
+the corresponding projection step, and `project_context` still performs the
+final unbounded pass through the same owner, preserving the propagated-event
+ordering and crossed-flag calculation.
 
 #### [ ] READ-006 — The module→effect→call traversal skeleton is repeated in four places with a divergent invalid-effect gate
 

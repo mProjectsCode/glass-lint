@@ -123,7 +123,7 @@ impl CrossWorklist<'_, '_> {
         };
         let mut state = context.state().clone();
         let mut propagated = BTreeSet::new();
-        propagation::UsageProjector::new(
+        let mut projector = propagation::UsageProjector::new(
             &mut session,
             context,
             effect,
@@ -132,17 +132,9 @@ impl CrossWorklist<'_, '_> {
             &mut state,
             &mut propagated,
             stream,
-        )
-        .project();
-        propagation::CallPropagation::new(
-            &mut session,
-            effect,
-            context,
-            &mut propagated,
-            None,
-            &state,
-        )
-        .propagate();
+        );
+        projector.project();
+        projector.propagate_calls(None);
     }
 
     fn finish(
