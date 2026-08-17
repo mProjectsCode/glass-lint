@@ -147,6 +147,28 @@ impl PropertyRequirementMatch {
     }
 }
 
+fn build_bound_target_index<'rules, T, F>(
+    flows: impl IntoIterator<Item = (FlowId, &'rules CompiledObjectFlow)>,
+    names: &NameTable,
+    mut entries: F,
+) -> BoundTargetIndex<T>
+where
+    T: Ord,
+    F: FnMut(FlowId, &'rules CompiledObjectFlow) -> Vec<(LifecycleCallTarget, T)>,
+{
+    let mut index = BoundTargetIndex::default();
+    for (flow_id, flow) in flows {
+        for (lifecycle_target, value) in entries(flow_id, flow) {
+            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(&lifecycle_target, names)
+            {
+                index.insert(target, value);
+            }
+        }
+    }
+    index.normalize();
+    index
+}
+
 /// Build a deterministic `BoundSource` index from compiled lifecycle
 /// declarations. Target binding, `BoundSource` construction, and
 /// normalization stay owned by this planning boundary.
@@ -154,19 +176,16 @@ pub(super) fn build_bound_source_index<'rules>(
     flows: impl IntoIterator<Item = (FlowId, &'rules CompiledObjectFlow)>,
     names: &NameTable,
 ) -> BoundTargetIndex<BoundSource> {
-    let mut index = BoundTargetIndex::default();
-    for (flow_id, flow) in flows {
-        for source in flow.sources() {
-            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(source.target(), names) {
-                index.insert(
-                    target,
+    build_bound_target_index(flows, names, |flow_id, flow| {
+        flow.sources()
+            .map(|source| {
+                (
+                    source.target().clone(),
                     BoundSource::new(flow_id, source.argument_constraints().clone()),
-                );
-            }
-        }
-    }
-    index.normalize();
-    index
+                )
+            })
+            .collect()
+    })
 }
 
 /// One lifecycle root with the identity assigned by the physical-plan
@@ -269,23 +288,12 @@ impl<'rules> BoundFlowPlan<'rules> {
     /// Build a plan from compiled flow matchers.
     pub(super) fn new(roots: &[BoundLifecycleRoot<'rules>], names: &NameTable) -> Self {
         let mut flows = BTreeMap::new();
-        let mut sinks = BoundTargetIndex::default();
         let mut req_members = BTreeMap::new();
 
         for root in roots {
             let id = root.flow_id();
             let flow = root.flow();
             flows.insert(id, flow);
-
-            for (sink_index, sink) in flow.sinks().enumerate() {
-                if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(sink.target(), names)
-                {
-                    let index = SinkIndex::new(sink_index)
-                        .expect("validated sink index is within 64 entries");
-                    sinks.insert(target, BoundSink::new(id, index, sink));
-                }
-            }
-
             req_members.insert(id, Self::build_requirement_members(flow, names));
         }
 
@@ -293,7 +301,20 @@ impl<'rules> BoundFlowPlan<'rules> {
             roots.iter().map(|root| (root.flow_id(), root.flow())),
             names,
         );
-        sinks.normalize();
+        let sinks = build_bound_target_index(
+            roots.iter().map(|root| (root.flow_id(), root.flow())),
+            names,
+            |flow_id, flow| {
+                flow.sinks()
+                    .enumerate()
+                    .map(|(sink_index, sink)| {
+                        let index = SinkIndex::new(sink_index)
+                            .expect("validated sink index is within 64 entries");
+                        (sink.target().clone(), BoundSink::new(flow_id, index, sink))
+                    })
+                    .collect()
+            },
+        );
 
         Self {
             flows,

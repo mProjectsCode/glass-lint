@@ -27,7 +27,7 @@ and construction/test-only accessors that leak
 
 ### Planning and binding (`flow/planning.rs`)
 
-#### [ ] READ-001 — Source and sink bound-target index construction are two copies of the same loop; only sources got a shared helper
+#### [x] READ-001 — Source and sink bound-target index construction are two copies of the same loop; only sources got a shared helper
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
