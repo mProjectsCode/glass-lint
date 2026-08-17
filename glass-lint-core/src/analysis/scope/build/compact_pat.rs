@@ -15,6 +15,29 @@ pub enum CompactPat {
     Other,
 }
 
+impl CompactPat {
+    pub(super) fn binding_names(&self) -> Vec<SmolStr> {
+        let mut names = Vec::new();
+        self.collect_binding_names(&mut names);
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn collect_binding_names(&self, names: &mut Vec<SmolStr>) {
+        match self {
+            Self::Ident(name) => names.push(name.clone()),
+            Self::Assign(inner) | Self::Rest(inner) => inner.collect_binding_names(names),
+            Self::Object(props) => {
+                for pattern in props.values() {
+                    pattern.collect_binding_names(names);
+                }
+            }
+            Self::Array | Self::Other => {}
+        }
+    }
+}
+
 pub fn compact_pat(pattern: &Pat) -> CompactPat {
     match pattern {
         Pat::Ident(ident) => CompactPat::Ident(ident.id.sym.to_smolstr()),

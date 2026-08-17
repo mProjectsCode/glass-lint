@@ -175,7 +175,7 @@ that `restore_checkpoint` must not touch `reachable` on `Ok` is exactly what
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — CompactPat binding-name collection re-implements, at one level removed, the raw-`Pat` name walk
+#### [x] READ-004 — CompactPat binding-name collection re-implements, at one level removed, the raw-`Pat` name walk
 
 - **Severity:** Low
 - **Fix Complexity:** Low

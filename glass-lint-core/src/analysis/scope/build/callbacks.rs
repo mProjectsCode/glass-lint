@@ -70,11 +70,7 @@ impl ScopeCollector<'_> {
     /// Destructuring can bind the same name through several syntactic paths;
     /// sorting and deduplicating keeps the call projection deterministic.
     fn parameter_binding_names(pattern: &CompactPat) -> Vec<SmolStr> {
-        let mut names = Vec::new();
-        collect_compact_binding_names(pattern, &mut names);
-        names.sort();
-        names.dedup();
-        names
+        pattern.binding_names()
     }
 
     /// Project a proven object argument through a destructured parameter.
@@ -262,20 +258,5 @@ impl ScopeCollector<'_> {
         if method == "then" && self.is_unbound("Promise") {
             self.record_then_callback(member, call);
         }
-    }
-}
-
-fn collect_compact_binding_names(pattern: &CompactPat, names: &mut Vec<SmolStr>) {
-    match pattern {
-        CompactPat::Ident(name) => names.push(name.clone()),
-        CompactPat::Assign(inner) | CompactPat::Rest(inner) => {
-            collect_compact_binding_names(inner, names);
-        }
-        CompactPat::Object(props) => {
-            for sub in props.values() {
-                collect_compact_binding_names(sub, names);
-            }
-        }
-        CompactPat::Array | CompactPat::Other => {}
     }
 }
