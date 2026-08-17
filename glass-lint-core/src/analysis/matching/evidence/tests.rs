@@ -2,6 +2,8 @@ use glass_lint_datastructures::ByteRange;
 
 use super::*;
 
+const EVIDENCE_LIMIT: usize = 16;
+
 fn evidence(symbol: &str, spans: &[u32]) -> ClassificationEvidence {
     ClassificationEvidence::from_occurrences(
         MatchKind::Call,
@@ -28,7 +30,7 @@ fn symbol_groups_preserve_order_and_merge_only_equal_symbols() {
         evidence("request", &[6]),
         evidence("other", &[8]),
     ];
-    normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
+    normalize_evidence(&mut evidence, EVIDENCE_LIMIT);
     assert_eq!(evidence.len(), 2);
     assert_eq!(evidence[0].symbol(), "request");
     assert_eq!(evidence[0].count(), 3);
@@ -40,12 +42,12 @@ fn symbol_groups_preserve_order_and_merge_only_equal_symbols() {
 fn truncation_preserves_exact_count_and_marker() {
     let mut evidence = vec![evidence(
         "request",
-        &(0..(Rule::EVIDENCE_LIMIT + 4))
+        &(0..(EVIDENCE_LIMIT + 4))
             .map(|value| u32::try_from(value).unwrap() + 2)
             .collect::<Vec<_>>(),
     )];
-    normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
-    assert_eq!(evidence[0].count() as usize, Rule::EVIDENCE_LIMIT + 4);
-    assert_eq!(evidence[0].occurrences().len(), Rule::EVIDENCE_LIMIT);
+    normalize_evidence(&mut evidence, EVIDENCE_LIMIT);
+    assert_eq!(evidence[0].count() as usize, EVIDENCE_LIMIT + 4);
+    assert_eq!(evidence[0].occurrences().len(), EVIDENCE_LIMIT);
     assert!(evidence[0].is_truncated());
 }

@@ -104,11 +104,6 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// Retain enough matcher evidence for provider rules with several
-    /// configured members without dropping valid capabilities during report
-    /// construction. The limit remains finite to keep reports bounded.
-    pub const EVIDENCE_LIMIT: usize = 16;
-
     /// Start a builder for one provider-local stable rule name.
     pub fn builder(id: impl Into<String>) -> RuleBuilder {
         RuleBuilder {

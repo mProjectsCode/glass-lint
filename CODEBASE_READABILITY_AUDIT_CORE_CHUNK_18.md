@@ -48,7 +48,7 @@ inconsistency (`QueryBuildError` lacks `std::error::Error`).
 
 ### Rule authoring (`api/rule/mod.rs`)
 
-#### [ ] READ-001 — `Rule::EVIDENCE_LIMIT` is a test-support constant on the public authoring type
+#### [x] READ-001 — `Rule::EVIDENCE_LIMIT` is a test-support constant on the public authoring type
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -78,7 +78,9 @@ Guardrail: the value 16 must not become a second, competing default; the
 normalizer's behavior is driven solely by the caller-supplied `evidence_limit`
 (`analysis/matching/evidence.rs:221-230`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the test-only `Rule::EVIDENCE_LIMIT` public constant
+and kept the evidence-normalization fixture bound local to its tests. Runtime
+evidence remains governed solely by the session-supplied limit.
 
 ### Query declarations (`api/rule/query/mod.rs`, `composition.rs`)
 

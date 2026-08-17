@@ -4,8 +4,6 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::ByteRange;
 
-#[cfg(test)]
-use crate::api::rule::Rule;
 use crate::{
     analysis::matching::occurrence::Occurrence,
     api::{
