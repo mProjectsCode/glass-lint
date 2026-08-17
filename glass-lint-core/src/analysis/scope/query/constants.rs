@@ -1,10 +1,7 @@
 //! Bounded constant queries backed by lexical provenance.
 
-use smol_str::SmolStr;
-
-use crate::analysis::scope::{
-    provenance_to_const_value,
-    query::{ConstValue, EvalState, Expr, FrozenScopeGraph, Ident, Lookup, Span},
+use crate::analysis::scope::query::{
+    ConstValue, EvalState, Expr, FrozenScopeGraph, Ident, Lookup, Span,
 };
 
 impl FrozenScopeGraph {
@@ -24,14 +21,7 @@ impl FrozenScopeGraph {
 impl Lookup for FrozenScopeGraph {
     /// Convert only known static binding provenances into constant values.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        if self.has_dynamic_lookup_at(ident.span) {
-            return ConstValue::Unknown;
-        }
-        let resolve = |key| self.resolve_name_id(key).map(SmolStr::new);
-        self.definite_binding_at(ident.sym.as_ref(), ident.span)
-            .map_or(ConstValue::Unknown, |provenance| {
-                provenance_to_const_value(provenance, &resolve)
-            })
+        self.ident_value_seed(ident).constant
     }
 
     /// Reject spreads whose source object may have been mutated.

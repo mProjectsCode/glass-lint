@@ -16,7 +16,7 @@ use crate::analysis::{
 
 impl Resolver<'_> {
     pub(in crate::analysis) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
-        match syntax_constant::evaluate(expr, self) {
+        match syntax_constant::evaluate(expr, self.scope_graph()) {
             ConstValue::Array(values) => values
                 .into_iter()
                 .map(|value| value.string().map(str::to_owned))

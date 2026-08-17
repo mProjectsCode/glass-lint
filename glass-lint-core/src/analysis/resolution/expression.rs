@@ -74,7 +74,7 @@ impl Resolver<'_> {
         &mut self,
         node: impl Into<syntax_constant::EvalNode<'a>>,
     ) -> ResolvedValue {
-        let id = self.intern_const_value(syntax_constant::evaluate(node, self), None);
+        let id = self.intern_const_value(syntax_constant::evaluate(node, &self.scopes), None);
         ResolvedValue::local(id)
     }
 

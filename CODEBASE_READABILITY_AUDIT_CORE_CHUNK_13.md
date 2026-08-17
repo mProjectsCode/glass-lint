@@ -26,7 +26,7 @@ request paths can share anything.
 
 ### Resolution (`analysis::resolution`) — value provenance and constant adaptation
 
-#### [ ] READ-001 — `Lookup for Resolver` re-implements the frozen scope graph's constant adapter
+#### [x] READ-001 — `Lookup for Resolver` re-implements the frozen scope graph's constant adapter
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -73,7 +73,12 @@ and after (see Resolved Open Question 2), and pin the member-into-joined-object 
 (the one observable change) with a negative test; run shadowing and `eval` adversarial
 negatives in `syntax/constant/tests.rs` and `resolution/tests.rs`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `FrozenScopeGraph` the sole constant-evaluation lookup,
+removed `Lookup for Resolver`, and routed resolver/facts constant evaluation
+through the frozen graph. Its identifier lookup now uses the shared joined
+`ident_value_seed`, while strict provenance queries retain their complete-only
+checks. Added joined-binding and joined-object-member regression tests for the
+preferred-witness and fail-closed behavior.
 
 #### [x] READ-002 — `ResolutionProvenance` is hand-built and destructure-rebuilt in five places
 

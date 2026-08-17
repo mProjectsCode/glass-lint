@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NameTable, SymbolPath};
+use swc_ecma_ast::Stmt;
+use swc_ecma_visit::{Visit, VisitWith};
 
 use super::*;
 use crate::analysis::{
@@ -10,6 +12,32 @@ use crate::analysis::{
     semantic::SpanNormalizer,
     syntax::{UnknownReason, constant::MAX_ARRAY_ITEMS},
 };
+
+#[derive(Default)]
+struct NamedIdentifiers {
+    name: &'static str,
+    matches: Vec<Ident>,
+}
+
+impl Visit for NamedIdentifiers {
+    fn visit_ident(&mut self, ident: &Ident) {
+        if ident.sym == self.name {
+            self.matches.push(ident.clone());
+        }
+    }
+}
+
+fn last_named_identifier(program: &Program, name: &'static str) -> Ident {
+    let mut identifiers = NamedIdentifiers {
+        name,
+        matches: Vec::new(),
+    };
+    program.visit_with(&mut identifiers);
+    identifiers
+        .matches
+        .pop()
+        .expect("test source should contain the named identifier")
+}
 
 #[test]
 fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
@@ -93,6 +121,40 @@ fn provenance_identity_replacement_preserves_resolution_details() {
         Some(SymbolMemberProvenance::ModuleNamespace { ref module, ref member })
             if module == "pkg" && member == "fetch"
     ));
+}
+
+#[test]
+fn joined_binding_constant_uses_the_retained_witness() {
+    let source = "let value = 'first'; if (flag) value = 'second'; value;";
+    let parsed = crate::parse_test_source(source, "joined-constant.js").unwrap();
+    let ident = last_named_identifier(&parsed.program, "value");
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::collect(&parsed.program, source, &budget);
+
+    let constant = resolver.scope_graph().ident_value_seed(&ident).constant;
+    assert_eq!(constant, ConstValue::String("first".into()));
+}
+
+#[test]
+fn joined_object_member_does_not_cross_into_another_witness() {
+    let source = "let value = { first: 'one' }; if (flag) value = { second: 'two' }; value.second;";
+    let parsed = crate::parse_test_source(source, "joined-member.js").unwrap();
+    let Program::Script(script) = &parsed.program else {
+        panic!("test source should parse as a script");
+    };
+    let Stmt::Expr(statement) = script.body.last().unwrap() else {
+        panic!("test source should end in an expression");
+    };
+    let Expr::Member(_member) = &*statement.expr else {
+        panic!("test source should end in a member expression");
+    };
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::collect(&parsed.program, source, &budget);
+
+    assert_eq!(
+        crate::analysis::syntax::constant::evaluate(&*statement.expr, resolver.scope_graph()),
+        ConstValue::Unknown
+    );
 }
 
 #[test]

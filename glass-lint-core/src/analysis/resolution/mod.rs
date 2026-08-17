@@ -39,7 +39,7 @@ use crate::analysis::{
     semantic::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
-        constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
+        constant::{self as syntax_constant, ConstValue},
     },
 };
 
@@ -203,27 +203,6 @@ pub(super) struct Resolver<'a> {
     budget: &'a SemanticBudget,
 }
 
-impl Lookup for Resolver<'_> {
-    fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        self.scopes.ident_value_seed(ident).constant
-    }
-
-    fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue {
-        if self.scopes.mutable_static_object_at(expr) {
-            return ConstValue::Unknown;
-        }
-        state.evaluate(expr, self)
-    }
-
-    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
-        self.scopes.member(member, state)
-    }
-
-    fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool {
-        self.scopes.unshadowed_global_at(name, span)
-    }
-}
-
 #[cfg(test)]
 pub(in crate::analysis) fn test_environment() -> Environment {
     let mut environment = Environment::default();
@@ -320,6 +299,10 @@ impl Resolver<'_> {
             cache: ResolverCache::with_resolution_capacity(resolution_capacity),
             budget,
         }
+    }
+
+    pub(in crate::analysis) fn scope_graph(&self) -> &FrozenScopeGraph {
+        &self.scopes
     }
 
     pub(super) fn intern_name(&mut self, name: &str) -> Option<NameId> {

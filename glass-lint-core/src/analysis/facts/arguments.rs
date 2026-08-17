@@ -78,7 +78,7 @@ impl FactBuilder<'_, '_> {
         resolver: &mut crate::analysis::resolution::Resolver,
     ) -> ValueId {
         if value == ValueId::UNKNOWN {
-            let const_value = syntax_constant::evaluate(expr, resolver);
+            let const_value = syntax_constant::evaluate(expr, resolver.scope_graph());
             if let Some(s) = const_value.string() {
                 return resolver.intern_static_string(s.to_owned()).id;
             }

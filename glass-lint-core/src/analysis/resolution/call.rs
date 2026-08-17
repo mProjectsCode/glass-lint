@@ -175,6 +175,6 @@ impl ModuleRequestContext for Resolver<'_> {
     }
 
     fn static_string(&mut self, expr: &swc_ecma_ast::Expr) -> Option<String> {
-        crate::analysis::syntax::constant::static_string(expr, self)
+        crate::analysis::syntax::constant::static_string(expr, self.scope_graph())
     }
 }
