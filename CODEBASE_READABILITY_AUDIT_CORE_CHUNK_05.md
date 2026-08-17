@@ -23,7 +23,7 @@ places; `AssignmentAt::{Known, Ambiguous}` behaving identically).
 
 ### Scope storage and queries
 
-#### [ ] READ-001 — `FrozenScopeGraph` delegates through a second relay layer (`ScopeReadView`) that mostly forwards verbatim to the owning indexes
+#### [x] READ-001 — `FrozenScopeGraph` delegates through a second relay layer (`ScopeReadView`) that mostly forwards verbatim to the owning indexes
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -58,7 +58,10 @@ computes `scope_shape_valid` gating; keep the documented "shared by the
 collection and frozen query phases" invariant on `binding_key_for_name`
 (storage.rs:106-109).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reduced `ScopeReadView` to its shape-gated and composite
+lookups, moved frozen-phase leaf reads directly to `ScopeData` and its owning
+indexes, and made `function_scope_at` the single frozen function-scope API.
+The shape-validity gating and shared binding-key construction remain unchanged.
 
 #### [ ] READ-002 — Collection- and frozen-phase `preferred_binding_witness_at` are the same query implemented twice
 
@@ -281,4 +284,3 @@ frozen_assignments/tests.rs).
 
 Only `CODEBASE_READABILITY_AUDIT_CORE_CHUNK_05.md` was written; no source,
 test, or configuration file was modified.
-

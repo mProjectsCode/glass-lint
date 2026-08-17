@@ -251,11 +251,11 @@ impl FrozenScopeGraph {
     // -- Lexical-scope-index delegation --
 
     pub(in crate::analysis) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
-        self.read_view().scope_kind(scope)
+        self.data.scopes.scope_kind(scope)
     }
 
     pub(in crate::analysis) fn scope_span(&self, scope: ScopeId) -> Option<Span> {
-        self.read_view().scope_span(scope)
+        self.data.scopes.scope_span(scope)
     }
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
@@ -270,8 +270,8 @@ impl FrozenScopeGraph {
         self.data.ancestors(scope)
     }
 
-    pub(in crate::analysis) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
-        self.read_view().enclosing_function_at(scope)
+    pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
+        self.data.enclosing_function_at(scope)
     }
 
     pub(in crate::analysis) fn nearest_binding_at(
@@ -296,8 +296,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<&BindingProvenance> {
-        let view = self.read_view();
-        view.parameter_alias_for_scope(scope, name)
+        self.data.parameter_alias_for_scope(scope, name)
     }
 
     // -- Binding-index delegation --
@@ -308,7 +307,7 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> AssignmentAt<'_> {
-        self.read_view().assignment_at(scope, name, span)
+        self.data.bindings.assignment_at(scope, name, span)
     }
 
     pub(in crate::analysis) fn binding_id_at(
@@ -316,7 +315,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<BindingId> {
-        self.read_view().binding_id_at(scope, name)
+        self.data.bindings.binding_id_at(scope, name)
     }
 
     pub(in crate::analysis) fn reassigned_between(
@@ -326,7 +325,9 @@ impl FrozenScopeGraph {
         start: BytePos,
         end: BytePos,
     ) -> bool {
-        self.read_view().reassigned_between(scope, name, start, end)
+        self.data
+            .bindings
+            .reassigned_between(scope, name, start, end)
     }
 
     pub(in crate::analysis) fn binding_version(
@@ -335,7 +336,7 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> BindingVersion {
-        self.read_view().binding_version(scope, name, span)
+        self.data.bindings.binding_version(scope, name, span)
     }
 
     /// Build a stable key for a name, using a global root when unbound.
@@ -348,11 +349,11 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn function_span(&self, function: FunctionId) -> Option<Span> {
-        self.read_view().function_span(function)
+        self.data.bindings.function_span(function)
     }
 
     pub(in crate::analysis) fn function_containing(&self, span: Span) -> Option<FunctionId> {
-        self.read_view().function_containing(span)
+        self.data.bindings.function_containing(span)
     }
 
     pub(in crate::analysis) fn function_binding(
@@ -360,7 +361,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<FunctionId> {
-        self.read_view().function_binding(scope, name)
+        self.data.bindings.function_binding(scope, name)
     }
 
     pub(in crate::analysis) fn function_alias(
@@ -368,7 +369,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<FunctionId> {
-        self.read_view().function_alias(scope, name)
+        self.data.bindings.function_alias(scope, name)
     }
 
     // -- Mutation-index delegation --

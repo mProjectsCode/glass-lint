@@ -1,15 +1,8 @@
 //! Function identity queries across lexical scopes and aliases.
 
-use crate::analysis::scope::query::{
-    BindingProvenance, Expr, FrozenScopeGraph, FunctionId, ScopeId, Span,
-};
+use crate::analysis::scope::query::{BindingProvenance, Expr, FrozenScopeGraph, FunctionId, Span};
 
 impl FrozenScopeGraph {
-    /// Find the nearest enclosing function identity for a lexical scope.
-    pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
-        self.enclosing_function_at(scope)
-    }
-
     /// Resolve a function identifier/alias if it was not reassigned before use.
     pub(in crate::analysis) fn function_id_for_expr(&self, expr: &Expr) -> Option<FunctionId> {
         let Expr::Ident(ident) = expr else {
