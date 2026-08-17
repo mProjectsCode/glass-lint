@@ -270,6 +270,8 @@ fn call_apply_unwrapping_populates_indexes() {
         function fetch(url) { return url; }
         fetch.call(null, '/api');
         fetch.apply(null, ['/api']);
+        (fetch?.call)(null, '/api');
+        (fetch?.other)(null, '/api');
     ";
     let parsed = crate::parse_test_source(src, "unwrap.js").expect("source should parse");
     let budget = crate::analysis::SemanticBudget::default();
@@ -288,5 +290,9 @@ fn call_apply_unwrapping_populates_indexes() {
     assert!(
         index.has_member_call(stream.names(), "fetch"),
         "should have 'fetch' as member call from unwrapping"
+    );
+    assert!(
+        index.has_member_call(stream.names(), "fetch.other"),
+        "the unrelated optional member remains a member call rather than a wrapper"
     );
 }

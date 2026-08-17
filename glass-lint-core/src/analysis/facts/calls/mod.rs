@@ -4,13 +4,13 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
     model::{fact::CallEvent, value::ValueId},
-    syntax::{effective_callee_expr, literal_member_property_name},
 };
 
 mod callee;
 mod wrapper;
 
 pub(in crate::analysis) use callee::ResolvedCallee;
+pub(in crate::analysis::facts) use wrapper::call_apply_wrapper;
 
 impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn record_call_expr(&mut self, call: &CallExpr) {
@@ -41,15 +41,7 @@ impl FactBuilder<'_, '_> {
             return;
         };
 
-        let wrapper = if let Expr::Member(member) = effective_callee_expr(callee_expr)
-            && matches!(
-                literal_member_property_name(&member.prop).as_deref(),
-                Some("call" | "apply")
-            ) {
-            Some(member)
-        } else {
-            None
-        };
+        let wrapper = call_apply_wrapper(callee_expr);
         if let Some(module) = module_call {
             self.emit(call.span, FactPayload::Import { module });
         }

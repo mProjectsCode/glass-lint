@@ -62,7 +62,7 @@ does not merge maps or change control-flow join behavior.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `.call`/`.apply` wrapper-member detection duplicated across two files
+#### [x] READ-002 — `.call`/`.apply` wrapper-member detection duplicated across two files
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -97,7 +97,12 @@ classify a plain call with a bare OptChain member-named `call`/`apply` callee
 (e.g. `(a?.call)(x)`) that today lowers via `resolve_call_callee`'s member
 resolution (callee.rs:79-91).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the shared `call_apply_wrapper` recognizer in the call
+lowering module and routed ordinary and optional-chain visitors through it.
+The recognizer preserves the ordinary-member behavior while covering optional
+members, and the fact-stream test now checks both an optional wrapper and an
+unrelated optional member call. Verified with
+`cargo test -p glass-lint-core analysis::facts::stream_tests::call_apply_unwrapping_populates_indexes`.
 
 #### [ ] READ-003 — TypeScript-assertion + sequence + paren unwrap arms repeated by hand in four resolvers
 

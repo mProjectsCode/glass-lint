@@ -12,11 +12,11 @@ use swc_common::Spanned;
 use swc_ecma_ast::ExportDefaultExpr;
 
 use crate::analysis::facts::{
-    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, DoWhileStmt, ExportDecl, Expr, FactBuilder,
+    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, DoWhileStmt, ExportDecl, FactBuilder,
     FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl,
     MemberExpr, NewExpr, OptChainBase, OptChainExpr, Str, SwitchStmt, SymbolCallProvenance, Tpl,
     TryStmt, UnaryExpr, UnaryOp, UpdateExpr, VarDeclarator, Visit, VisitWith, WhileStmt,
-    effective_callee_expr, literal_member_property_name,
+    call_apply_wrapper,
 };
 
 impl Visit for FactBuilder<'_, '_> {
@@ -106,20 +106,7 @@ impl Visit for FactBuilder<'_, '_> {
                 let callee_expr = &call.callee;
                 // Optional chaining has the same effective-call semantics as
                 // ordinary calls, but its callee can itself be another chain.
-                let optional_member = match effective_callee_expr(callee_expr) {
-                    Expr::Member(member) => Some(member),
-                    Expr::OptChain(inner) => match &*inner.base {
-                        OptChainBase::Member(member) => Some(member),
-                        OptChainBase::Call(_) => None,
-                    },
-                    _ => None,
-                };
-                if let Some(member) = optional_member
-                    && matches!(
-                        literal_member_property_name(&member.prop).as_deref(),
-                        Some("call" | "apply")
-                    )
-                {
+                if let Some(member) = call_apply_wrapper(callee_expr) {
                     self.record_call_like(chain.span(), callee_expr, &call.args, Some(member));
                 } else {
                     self.record_call_like(chain.span(), callee_expr, &call.args, None);

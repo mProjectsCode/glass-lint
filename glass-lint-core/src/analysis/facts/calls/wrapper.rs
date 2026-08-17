@@ -1,7 +1,23 @@
 use crate::analysis::facts::{
-    CallArgInfo, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span,
+    CallArgInfo, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, OptChainBase, Span,
     effective_callee_expr, literal_member_property_name,
 };
+
+pub(in crate::analysis::facts) fn call_apply_wrapper(callee: &Expr) -> Option<&MemberExpr> {
+    let member = match effective_callee_expr(callee) {
+        Expr::Member(member) => Some(member),
+        Expr::OptChain(chain) => match &*chain.base {
+            OptChainBase::Member(member) => Some(member),
+            OptChainBase::Call(_) => None,
+        },
+        _ => None,
+    }?;
+    matches!(
+        literal_member_property_name(&member.prop).as_deref(),
+        Some("call" | "apply")
+    )
+    .then_some(member)
+}
 
 impl FactBuilder<'_, '_> {
     pub(super) fn try_emit_callable_wrapper_common(
