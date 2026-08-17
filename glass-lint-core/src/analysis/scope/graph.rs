@@ -372,19 +372,40 @@ impl FrozenScopeGraph {
 
     // -- Mutation-index delegation --
 
-    pub(in crate::analysis) fn property_aliases(
+    pub(in crate::analysis) fn latest_property_assignment_in_scope(
         &self,
         receiver: &BindingKey,
         path: PathView<'_, NameId>,
-    ) -> Option<&[PropertyAliasFact]> {
-        self.data.mutations.property_aliases(receiver, path)
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> Option<&PropertyAliasFact> {
+        self.data
+            .mutations
+            .latest_property_assignment_in_scope(receiver, path, span, in_scope)
     }
 
-    pub(in crate::analysis) fn rooted_mutations(
+    pub(in crate::analysis) fn property_was_written_in_scope(
+        &self,
+        receiver: &BindingKey,
+        path: PathView<'_, NameId>,
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> bool {
+        self.data
+            .mutations
+            .property_was_written_in_scope(receiver, path, span, in_scope)
+    }
+
+    pub(in crate::analysis) fn rooted_property_was_mutated_in_scope(
         &self,
         root: PathView<'_, NameId>,
-    ) -> Option<&[RootedPropertyMutationFact]> {
-        self.data.mutations.rooted_mutations(root)
+        property: Option<NameId>,
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> bool {
+        self.data
+            .mutations
+            .rooted_property_was_mutated_in_scope(root, property, span, in_scope)
     }
 
     pub(in crate::analysis) fn is_mutable_static_object(

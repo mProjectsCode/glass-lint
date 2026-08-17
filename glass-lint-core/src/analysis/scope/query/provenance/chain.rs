@@ -114,16 +114,12 @@ impl FrozenScopeGraph {
     ) -> Option<SymbolPath> {
         let tail = name_path.as_view().tail_after(1)?;
         for prefix in tail.prefixes().rev() {
-            let Some(assignments) = self.property_aliases(receiver, prefix) else {
-                continue;
-            };
-
-            let prior_count =
-                assignments.partition_point(|assignment| assignment.span().lo <= member.span.lo);
-            let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
-                self.scope_span(assignment.scope())
-                    .is_some_and(|scope| span_contains(scope, member.span))
-            }) else {
+            let Some(assignment) =
+                self.latest_property_assignment_in_scope(receiver, prefix, member.span, |scope| {
+                    self.scope_span(scope)
+                        .is_some_and(|scope| span_contains(scope, member.span))
+                })
+            else {
                 continue;
             };
             let target = assignment.target()?;
@@ -289,15 +285,10 @@ impl FrozenScopeGraph {
         path: &glass_lint_datastructures::NamePath,
         span: Span,
     ) -> bool {
-        self.property_aliases(receiver, path.as_view())
-            .is_some_and(|assignments| {
-                assignments.iter().any(|assignment| {
-                    assignment.span().lo <= span.lo
-                        && self
-                            .scope_span(assignment.scope())
-                            .is_some_and(|scope| span_contains(scope, span))
-                })
-            })
+        self.property_was_written_in_scope(receiver, path.as_view(), span, |scope| {
+            self.scope_span(scope)
+                .is_some_and(|scope| span_contains(scope, span))
+        })
     }
 
     fn rooted_property_was_mutated_at(
@@ -319,16 +310,9 @@ impl FrozenScopeGraph {
         property: Option<glass_lint_datastructures::NameId>,
         span: Span,
     ) -> bool {
-        self.rooted_mutations(root).is_some_and(|mutations| {
-            mutations.iter().any(|mutation| {
-                mutation.span().lo <= span.lo
-                    && mutation
-                        .property()
-                        .is_none_or(|written| property.is_none_or(|expected| written == expected))
-                    && self
-                        .scope_span(mutation.scope())
-                        .is_some_and(|scope| span_contains(scope, span))
-            })
+        self.rooted_property_was_mutated_in_scope(root, property, span, |scope| {
+            self.scope_span(scope)
+                .is_some_and(|scope| span_contains(scope, span))
         })
     }
 }

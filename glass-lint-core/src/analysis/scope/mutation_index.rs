@@ -100,7 +100,7 @@ impl MutationIndex {
         }
     }
 
-    pub(super) fn property_aliases(
+    fn property_aliases(
         &self,
         receiver: &BindingKey,
         path: PathView<'_, NameId>,
@@ -111,13 +111,61 @@ impl MutationIndex {
             .map(Vec::as_slice)
     }
 
-    pub(super) fn rooted_mutations(
+    fn rooted_mutations(
         &self,
         root: PathView<'_, NameId>,
     ) -> Option<&[RootedPropertyMutationFact]> {
         self.rooted_property_mutations
             .get(root.segments())
             .map(Vec::as_slice)
+    }
+
+    pub(super) fn latest_property_assignment_in_scope(
+        &self,
+        receiver: &BindingKey,
+        path: PathView<'_, NameId>,
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> Option<&PropertyAliasFact> {
+        let assignments = self.property_aliases(receiver, path)?;
+        let prior_count = assignments.partition_point(|assignment| assignment.span().lo <= span.lo);
+        assignments[..prior_count]
+            .iter()
+            .rev()
+            .find(|assignment| in_scope(assignment.scope()))
+    }
+
+    pub(super) fn property_was_written_in_scope(
+        &self,
+        receiver: &BindingKey,
+        path: PathView<'_, NameId>,
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> bool {
+        self.property_aliases(receiver, path)
+            .is_some_and(|assignments| {
+                assignments.iter().any(|assignment| {
+                    assignment.span().lo <= span.lo && in_scope(assignment.scope())
+                })
+            })
+    }
+
+    pub(super) fn rooted_property_was_mutated_in_scope(
+        &self,
+        root: PathView<'_, NameId>,
+        property: Option<NameId>,
+        span: Span,
+        in_scope: impl Fn(ScopeId) -> bool,
+    ) -> bool {
+        self.rooted_mutations(root).is_some_and(|mutations| {
+            mutations.iter().any(|mutation| {
+                mutation.span().lo <= span.lo
+                    && mutation
+                        .property()
+                        .is_none_or(|written| property.is_none_or(|expected| written == expected))
+                    && in_scope(mutation.scope())
+            })
+        })
     }
 
     pub(super) fn is_mutable_static_object(&self, scope: ScopeId, name: NameId) -> bool {

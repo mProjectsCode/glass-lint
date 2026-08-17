@@ -106,7 +106,7 @@ first-non-local-witness order; `scope_shape_valid` must continue gating
 Status-aware `binding_resolution_at`/`resolve_binding` remain separate for
 completeness and fallback decisions.
 
-#### [ ] READ-003 — `MutationIndex` exposes storage-shaped sorted slices and leaks the sort invariant
+#### [x] READ-003 — `MutationIndex` exposes storage-shaped sorted slices and leaks the sort invariant
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -139,7 +139,11 @@ data must keep failing closed as "not written"; the scope-containment check
 dropped; do not change which writes count for `is_mutable_static_object` /
 `has_prior_eval`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added narrow `MutationIndex` queries for latest property
+assignments, property writes, and rooted mutations, with scope containment
+passed as a predicate. The provenance chain now delegates its three scans to
+those queries; raw slices remain only for prefix iteration, and all
+scope-shape/fail-closed behavior is preserved.
 
 #### [ ] READ-004 — `BindingKey::lexical(function, binding, version)` is re-assembled in three places
 
