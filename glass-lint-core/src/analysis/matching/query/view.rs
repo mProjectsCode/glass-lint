@@ -1,9 +1,7 @@
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
-mod private_network;
-pub(in crate::analysis::matching) use private_network::private_network_match;
-
+use super::super::private_network_match;
 use crate::{
     Environment,
     analysis::matching::{

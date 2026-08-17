@@ -68,7 +68,7 @@ fail-closed behavior of an empty selection when a plan has no indexed roots
 (empty evidence, not an error), and keep `push_owned_evidence` as the single
 `into_ordered` boundary for all three branches.
 
-#### [ ] READ-002 — `private_network_match` lives three levels down under `query/view` but is consumed by a sibling module via two re-export hops
+#### [x] READ-002 — `private_network_match` lives three levels down under `query/view` but is consumed by a sibling module via two re-export hops
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -101,6 +101,11 @@ still match, `query/view/tests.rs:17-23`, including the `\\`/`?` rejections at
 contract in `display_span` (`evidence.rs:190-191`), which the integration test
 `private_network_findings_cover_only_the_address`
 (`tests/integration/matching/declarative/lifecycle.rs:129-143`) pins.
+
+**Fix Applied:** Hoisted the unchanged scanner into
+`analysis/matching/private_network.rs`. The matching module now owns the single
+visibility boundary; the query view imports it directly and evidence uses the
+matching-level binding, removing both intermediate re-exports.
 
 ### Occurrence key family (`analysis/matching/occurrence`)
 

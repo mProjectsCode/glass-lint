@@ -186,7 +186,7 @@ pub fn display_span(
         return span;
     };
     let relative = if symbol == crate::api::rule::query::PRIVATE_NETWORK_EVIDENCE_SYMBOL {
-        super::query::private_network_match(source)
+        super::private_network_match(source)
     } else {
         source
             .find(symbol)

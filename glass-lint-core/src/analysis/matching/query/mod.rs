@@ -13,7 +13,6 @@ use crate::{
 
 mod view;
 use view::EventIndexView;
-pub(super) use view::private_network_match;
 
 pub(in crate::analysis) struct IndexedRootIter<'a> {
     roots: std::slice::Iter<'a, PhysicalRoot>,

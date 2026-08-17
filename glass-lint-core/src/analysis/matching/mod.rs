@@ -10,6 +10,8 @@ use crate::{
 };
 
 pub(super) mod evidence;
+mod private_network;
+pub(in crate::analysis::matching) use private_network::private_network_match;
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{
