@@ -262,9 +262,10 @@ fn nested_alternatives_respect_the_aggregate_root_budget() {
         },
     );
 
+    let normalized = normalize_query_decl(&query).unwrap();
     assert!(matches!(
-        normalize_query_decl(&query),
-        Err(crate::api::compiler::validate::QueryCompileError::UnboundedQuery { .. })
+        plan_normalized(&normalized),
+        Err(PhysicalPlanValidationError::TooManyRoots(_))
     ));
 }
 

@@ -2,7 +2,6 @@ use super::normalized::{NormalizedEmission, NormalizedQuery};
 use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
-        limits as compiler_limits,
         normalize_all::normalize_all_root,
         normalized::{
             CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedLifecycle,
@@ -170,19 +169,9 @@ fn normalize_any_root(
             let inner_root = normalize_any_root(inner, emission)?;
             if let NormalizedRoot::Any(inner_branches) = inner_root {
                 branches.extend(inner_branches.iter().cloned());
-                if branches.len() > compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
-                    return Err(QueryCompileError::UnboundedQuery {
-                        detail: "normalized alternatives exceed the physical root limit",
-                    });
-                }
             }
         } else {
             branches.push(normalize_root(b, emission)?);
-            if branches.len() > compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
-                return Err(QueryCompileError::UnboundedQuery {
-                    detail: "normalized alternatives exceed the physical root limit",
-                });
-            }
         }
     }
 

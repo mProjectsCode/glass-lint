@@ -203,7 +203,7 @@ fixture now constructs the required completion directly.
 
 ### Limits
 
-#### [ ] READ-004 — Per-rule physical-root bound has two unrelated constants and three enforcement sites
+#### [x] READ-004 — Per-rule physical-root bound has two unrelated constants and three enforcement sites
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -244,7 +244,11 @@ diagnostics `UnboundedQuery` (authored shape, `pass4_10.rs:62-67,78-97`) versus
 all queries of one rule in `compile_queries`, and keep the `Any`-flatten dedup
 behavior exact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the normalization-time pre-dedup root-count abort.
+`RootBudget` remains the single production admission point for the aggregate
+physical-root bound, and sealed plans retain the final `validate_root_set`
+check. The query-count and physical-root limits remain independent because
+they bound different quantities.
 
 ### Documentation and newtypes
 
