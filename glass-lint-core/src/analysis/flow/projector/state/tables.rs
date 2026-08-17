@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::RangeInclusive,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::InverseDelta;
 
@@ -12,16 +9,13 @@ pub(in crate::analysis::flow::projector) use updates::PropertyWriteUpdate;
 
 mod updates;
 
-use crate::{
-    analysis::{
-        facts::FactId,
-        flow::projector::history::{Checkpoint, MutationLog},
-        model::{
-            flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
-            value::{FlowObjectId, ValueId},
-        },
+use crate::analysis::{
+    facts::FactId,
+    flow::projector::history::{Checkpoint, MutationLog},
+    model::{
+        flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
+        value::{FlowObjectId, ValueId},
     },
-    api::classification::RuleIndex,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,17 +188,12 @@ impl FlowStateTable {
         }
     }
 
-    fn object_range(object: FlowObjectId) -> RangeInclusive<FlowStateKey> {
-        FlowStateKey::new(object, FlowId::new(RuleIndex::new(0), 0))
-            ..=FlowStateKey::new(object, FlowId::new(RuleIndex::new(usize::MAX), usize::MAX))
-    }
-
     pub(in crate::analysis::flow::projector) fn states_for(
         &self,
         object: FlowObjectId,
     ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> + '_ {
         self.states
-            .range(Self::object_range(object))
+            .range(FlowStateKey::object_range(object))
             .map(|(key, state)| (*key, state))
     }
 
@@ -427,7 +416,7 @@ impl FlowStateTable {
     pub(in crate::analysis::flow::projector) fn remove_states_for(&mut self, object: FlowObjectId) {
         let keys: Vec<FlowStateKey> = self
             .states
-            .range(Self::object_range(object))
+            .range(FlowStateKey::object_range(object))
             .map(|(key, _)| *key)
             .collect();
         for key in keys {

@@ -1,9 +1,13 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    ops::RangeInclusive,
+};
 
 use super::{
     FactId, FlowId, FlowObjectId, FlowReadiness, LifecycleEvidence, LifecycleRollback,
     RequirementIndex, SinkIndex,
 };
+use crate::api::classification::RuleIndex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) struct FlowState {
@@ -39,6 +43,12 @@ impl FlowStateKey {
 
     pub(in crate::analysis) fn flow(self) -> FlowId {
         self.flow
+    }
+
+    /// Range of all states for one object in the ordered state table.
+    pub(in crate::analysis) fn object_range(object: FlowObjectId) -> RangeInclusive<Self> {
+        Self::new(object, FlowId::new(RuleIndex::new(0), 0))
+            ..=Self::new(object, FlowId::new(RuleIndex::new(usize::MAX), usize::MAX))
     }
 }
 

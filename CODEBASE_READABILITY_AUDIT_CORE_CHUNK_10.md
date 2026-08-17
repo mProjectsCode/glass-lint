@@ -208,7 +208,7 @@ fixed-point worklist types.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — `object_range` encodes a range scan through fabricated `FlowId` sentinels
+#### [x] READ-006 — `object_range` encodes a range scan through fabricated `FlowId` sentinels
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -234,7 +234,10 @@ min/max construction next to the key's copies. Guardrails: keep the
 (flow) iteration order asserted by `states_for` callers in `projector/evidence.rs:47`
 and `projector/evidence.rs:86`, and the state tests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the documented `object_range` constructor onto
+`FlowStateKey`, the type that owns the ordering contract, and routed both table
+scans through it. The bounded ordered range and iteration behavior are
+unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
