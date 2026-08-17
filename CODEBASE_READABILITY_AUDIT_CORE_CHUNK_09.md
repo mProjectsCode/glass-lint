@@ -135,7 +135,7 @@ foreign path tokens (tests.rs:77-90).
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — `PendingFlowStateFinal` is a single-use intermediate that re-decomposes its key
+#### [x] READ-004 — `PendingFlowStateFinal` is a single-use intermediate that re-decomposes its key
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -160,7 +160,10 @@ must be computed once per `(flow, event)` group from active-path coverage and
 `AlternativeCompleteness` (:360-369), and emission order must remain the
 `BTreeMap` iteration order (deterministic by `(flow, event)`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the single-use `PendingFlowStateFinal` wrapper and
+returned `(event, certainty, states)` directly from pending finalization. The
+certainty calculation and deterministic `BTreeMap` iteration order are
+unchanged, and the emitter now destructures the direct result.
 
 ### Control-flow state (`state.rs`, `control.rs`)
 

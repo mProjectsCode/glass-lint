@@ -333,9 +333,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             .paths
             .pending
             .finalize(active_paths, self.run.alternatives_complete);
-        for record in finalized {
-            for pending in record.states {
-                self.emit_state_final(&pending.state, record.event, record.certainty);
+        for (event, certainty, states) in finalized {
+            for pending in states {
+                self.emit_state_final(&pending.state, event, certainty);
             }
         }
     }

@@ -332,21 +332,12 @@ struct PendingState {
     state: FlowState,
 }
 
-/// One drained pending group with the completing event and the certainty
-/// derived from active-path coverage.
-#[derive(Debug)]
-struct PendingFlowStateFinal {
-    event: FactId,
-    certainty: MatchCertainty,
-    states: Vec<PendingState>,
-}
-
 impl PendingFlowStates {
     fn finalize(
         &mut self,
         active_paths: ActivePaths,
         alternatives_complete: AlternativeCompleteness,
-    ) -> Vec<PendingFlowStateFinal> {
+    ) -> Vec<(FactId, MatchCertainty, Vec<PendingState>)> {
         let values = std::mem::take(&mut self.values);
         let mut finalized = Vec::with_capacity(values.len());
         for (key, states) in values {
@@ -367,11 +358,7 @@ impl PendingFlowStates {
             } else {
                 MatchCertainty::Possible
             };
-            finalized.push(PendingFlowStateFinal {
-                event: key.event,
-                certainty,
-                states,
-            });
+            finalized.push((key.event, certainty, states));
         }
         finalized
     }
