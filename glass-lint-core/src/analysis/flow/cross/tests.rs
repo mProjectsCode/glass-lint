@@ -1,10 +1,12 @@
+use glass_lint_datastructures::Budget;
+
 use super::*;
 use crate::{
     analysis::{
         facts::FactId,
         flow::cross::{
             sources::{SourceCandidate, SourceKey},
-            state::{CallContext, CrossFlowState, SourceBudget},
+            state::{CallContext, CrossFlowState},
         },
         model::{flow::FlowId, scope::FunctionId, value::ValueId},
         trace::QualifiedEvent,
@@ -183,19 +185,19 @@ fn propagate_pending_limit_exhausted() {
 
 #[test]
 fn source_budget_transfer_limit_is_detected() {
-    let mut budget = SourceBudget::new(10);
+    let mut budget = Budget::new(10);
     for _ in 0..10 {
-        assert!(budget.try_charge());
+        assert!(budget.try_push());
         assert!(!budget.exhausted());
     }
-    assert!(!budget.try_charge());
+    assert!(!budget.try_push());
     assert!(budget.exhausted());
 }
 
 #[test]
 fn source_budget_not_exhausted_after_stabilization() {
-    let mut budget = SourceBudget::new(100);
-    assert!(budget.try_charge());
+    let mut budget = Budget::new(100);
+    assert!(budget.try_push());
     assert!(!budget.exhausted());
 }
 

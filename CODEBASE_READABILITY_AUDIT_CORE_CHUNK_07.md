@@ -26,7 +26,7 @@ traversal skeleton repeated four times with a divergent invalid-effect gate.
 
 ### Cross-flow analysis
 
-#### [ ] READ-001 — `SourceBudget` is a `#[cfg(test)]`-only one-field shim over `Budget` whose tests re-test the library type
+#### [x] READ-001 — `SourceBudget` is a `#[cfg(test)]`-only one-field shim over `Budget` whose tests re-test the library type
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -54,7 +54,9 @@ import. Guardrails: keep fail-closed exhaustion semantics unchanged (a
 `try_charge` return of `false` still means the transfer budget is spent); note
 `Budget`'s `try_push` is the established vocabulary in this module.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the test-only `SourceBudget` wrapper and changed its
+two tests to use `Budget` directly with the established `try_push` vocabulary.
+Exhaustion behavior and the production source-propagation budget are unchanged.
 
 #### [ ] READ-002 — `EvidenceKey.kind` is a constant, unread `MatchKind` field, and `emit` allocates the same evidence symbol twice
 

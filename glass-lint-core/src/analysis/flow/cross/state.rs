@@ -1,7 +1,4 @@
 #[cfg(test)]
-use glass_lint_datastructures::Budget;
-
-#[cfg(test)]
 use crate::api::classification::RuleIndex;
 use crate::{
     analysis::{
@@ -16,35 +13,6 @@ use crate::{
     },
     project::ModuleId,
 };
-
-#[derive(Debug)]
-/// Per-transfer budget for propagating source identities through helper calls.
-///
-/// Charges each candidate insertion as one operation so that a long or
-/// cyclical propagation graph is bounded by work done, not by an arbitrary
-/// round count.
-#[cfg(test)]
-pub(super) struct SourceBudget {
-    inner: Budget,
-}
-
-#[cfg(test)]
-impl SourceBudget {
-    pub(super) fn new(operations: usize) -> Self {
-        Self {
-            inner: Budget::new(operations),
-        }
-    }
-
-    /// Charge for one candidate transfer. Returns `false` when exhausted.
-    pub(super) fn try_charge(&mut self) -> bool {
-        self.inner.try_push()
-    }
-
-    pub(super) fn exhausted(&self) -> bool {
-        self.inner.exhausted()
-    }
-}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Monotone flow state carried through one qualified call context.
