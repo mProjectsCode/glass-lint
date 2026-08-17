@@ -61,11 +61,12 @@ pub use rule_id::RuleId;
 /// Public rule-authoring and matcher types.
 pub mod rules {
     pub use crate::api::rule::{
-        ArgumentMatcher, CatalogRuleBuilder, Confidence, EventQuery, EventRequirement,
-        IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleQuery,
-        IntoLifecycleSink, IntoLifecycleSource, IntoQueryDecl, LifecycleCompletion,
-        LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink, MatchKind,
-        QueryBuildError, QueryDecl, Rule, RuleBuildError, RuleBuilder, Severity, ValueMatcher,
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, CatalogRuleBuilder, Confidence,
+        EventQuery, EventRequirement, IntoLifecycleCompletion, IntoLifecycleCondition,
+        IntoLifecycleEvent, IntoLifecycleQuery, IntoLifecycleSink, IntoLifecycleSource,
+        IntoQueryDecl, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+        LifecycleSink, MatchKind, QueryBuildError, QueryDecl, Rule, RuleBuildError, RuleBuilder,
+        Severity, ValueMatcher,
     };
 }
 

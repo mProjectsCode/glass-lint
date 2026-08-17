@@ -176,7 +176,7 @@ hand-rolled code does today.
 
 ### Public surface and namespacing
 
-#### [ ] READ-004 — `rules` facade is the only reachable public boundary but omits `pub` types the inner module claims to export
+#### [x] READ-004 — `rules` facade is the only reachable public boundary but omits `pub` types the inner module claims to export
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -212,7 +212,10 @@ public-surface integration test (`tests/integration/public_surface.rs`) already
 builds rules through the catalog route without engine storage and must keep
 passing.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ArgumentIndex` and `ArgumentConstraint` to the
+crate's canonical `rules` facade, matching the crate documentation and the
+existing public re-exports from the authoring module. Internal compiler paths
+and lifecycle-builder visibility remain unchanged.
 
 ### Rule identifier validation
 
