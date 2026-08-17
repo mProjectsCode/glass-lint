@@ -17,7 +17,7 @@ pub(super) use execution::{
 use execution::{
     ExecutionEvent, ExecutionObserver, LocalJob, LocalJobCallbacks, LocalJobCandidate,
     LocalJobExecutor, LocalJobResult, NoopExecutionObserver, ThreadLocalJobExecutor,
-    normalize_worker_limit,
+    analyze_with_observer, normalize_worker_limit,
 };
 
 use crate::{
@@ -117,12 +117,14 @@ impl LocalAnalysisTransition<'_, '_> {
     fn prepare_cached(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
         let key = self.state.artifact_fingerprint(&candidate.source);
         if let Some(local) = self.state.artifact_cache.get_local(&candidate.source, &key) {
-            self.observer.observe(ExecutionEvent::CacheHit);
+            #[cfg(test)]
+            self.observer.record_cache_hit();
             self.requests
                 .extend(self.artifacts.record_local(&candidate.path, local));
             None
         } else {
-            self.observer.observe(ExecutionEvent::CacheMiss);
+            #[cfg(test)]
+            self.observer.record_cache_miss();
             Some(LocalJob {
                 path: candidate.path,
                 source: candidate.source,
@@ -146,12 +148,14 @@ impl LocalAnalysisTransition<'_, '_> {
     fn complete(&mut self, result: LocalJobResult) {
         match result.result {
             Ok(analyzed) => {
-                artifacts::insert_and_notify(
-                    &self.state.artifact_cache,
-                    result.key,
-                    &analyzed,
-                    self.observer,
-                );
+                let evicted = self
+                    .state
+                    .artifact_cache
+                    .insert_analyzed(result.key, &analyzed);
+                #[cfg(not(test))]
+                let _ = evicted;
+                #[cfg(test)]
+                self.observer.record_cache_insert(evicted);
                 self.requests
                     .extend(self.artifacts.record_analyzed(&result.path, analyzed));
             }
@@ -162,9 +166,7 @@ impl LocalAnalysisTransition<'_, '_> {
     }
 
     fn analyze(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
-        self.observer.observe(ExecutionEvent::ParseAttempted);
-        self.observer.observe(ExecutionEvent::AnalysisAttempted);
-        self.state.analyzer.analyze_source(source)
+        analyze_with_observer(&self.state.analyzer, source, self.observer)
     }
 }
 

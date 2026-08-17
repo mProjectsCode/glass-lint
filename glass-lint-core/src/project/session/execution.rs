@@ -63,16 +63,25 @@ pub(super) enum ExecutionEvent {
     Started,
     Finished,
     Merged,
-    ParseAttempted,
-    AnalysisAttempted,
-    CacheHit,
-    CacheMiss,
-    CacheInserted,
-    CacheEvicted,
 }
 
 pub(super) trait ExecutionObserver: Send + Sync {
     fn observe(&self, event: ExecutionEvent);
+
+    #[cfg(test)]
+    fn record_parse_attempt(&self) {}
+
+    #[cfg(test)]
+    fn record_analysis_attempt(&self) {}
+
+    #[cfg(test)]
+    fn record_cache_hit(&self) {}
+
+    #[cfg(test)]
+    fn record_cache_miss(&self) {}
+
+    #[cfg(test)]
+    fn record_cache_insert(&self, _evicted: bool) {}
 }
 
 pub(super) struct NoopExecutionObserver;
@@ -152,24 +161,29 @@ impl ExecutionObserver for CountingExecutionObserver {
             ExecutionEvent::Merged => {
                 self.outstanding.fetch_sub(1, Ordering::SeqCst);
             }
-            ExecutionEvent::ParseAttempted => {
-                self.parse_attempts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::AnalysisAttempted => {
-                self.analysis_attempts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheHit => {
-                self.cache_hits.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheMiss => {
-                self.cache_misses.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheInserted => {
-                self.cache_inserts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheEvicted => {
-                self.cache_evictions.fetch_add(1, Ordering::SeqCst);
-            }
+        }
+    }
+
+    fn record_parse_attempt(&self) {
+        self.parse_attempts.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn record_analysis_attempt(&self) {
+        self.analysis_attempts.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn record_cache_hit(&self) {
+        self.cache_hits.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn record_cache_miss(&self) {
+        self.cache_misses.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn record_cache_insert(&self, evicted: bool) {
+        self.cache_inserts.fetch_add(1, Ordering::SeqCst);
+        if evicted {
+            self.cache_evictions.fetch_add(1, Ordering::SeqCst);
         }
     }
 }
@@ -187,6 +201,21 @@ pub struct InvocationCounts {
 
 pub(super) struct ThreadLocalJobExecutor {
     pool: Option<WorkerPool>,
+}
+
+pub(super) fn analyze_with_observer(
+    analyzer: &SemanticAnalyzer,
+    source: &SourceFile,
+    observer: &dyn ExecutionObserver,
+) -> Result<AnalyzedSource, ParseDiagnostic> {
+    #[cfg(not(test))]
+    let _ = observer;
+    #[cfg(test)]
+    {
+        observer.record_parse_attempt();
+        observer.record_analysis_attempt();
+    }
+    analyzer.analyze_source(source)
 }
 
 struct WorkerPool {
@@ -255,10 +284,8 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                         .into_par_iter()
                         .map(|job| {
                             observer.observe(ExecutionEvent::Started);
-                            observer.observe(ExecutionEvent::ParseAttempted);
-                            observer.observe(ExecutionEvent::AnalysisAttempted);
                             let result = catch_unwind(AssertUnwindSafe(|| {
-                                analyzer.analyze_source(&job.source)
+                                analyze_with_observer(analyzer, &job.source, observer)
                             }));
                             observer.observe(ExecutionEvent::Finished);
                             match result {
@@ -333,9 +360,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             };
             observer.observe(ExecutionEvent::Submitted);
             observer.observe(ExecutionEvent::Started);
-            observer.observe(ExecutionEvent::ParseAttempted);
-            observer.observe(ExecutionEvent::AnalysisAttempted);
-            let result = analyzer.analyze_source(&job.source);
+            let result = analyze_with_observer(analyzer, &job.source, observer);
             observer.observe(ExecutionEvent::Finished);
             callbacks.release(LocalJobResult {
                 path: job.path,

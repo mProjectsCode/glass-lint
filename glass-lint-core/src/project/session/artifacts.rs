@@ -9,14 +9,12 @@ use std::collections::BTreeMap;
 use crate::{
     ParseDiagnostic,
     analysis::{
-        AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, QualifiedRequestId,
-        ResolvedLinkInput,
+        AnalyzedSource, LocalArtifact, QualifiedRequestId, ResolvedLinkInput,
         model::module::{ModuleRequestId, ModuleRequestRole},
     },
     project::{
         ModuleId, ProjectPhaseError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
         ResolutionRequestKind, ResolutionTable, ResolverOutcome, SourceTable,
-        session::{ExecutionEvent, ExecutionObserver},
     },
 };
 
@@ -226,19 +224,6 @@ impl AnalysisArtifacts {
         let link_input =
             ResolvedLinkInput::build(analyzed, &module_ids, resolutions, &request_ids)?;
         Ok((link_input, parse_diagnostics))
-    }
-}
-
-pub(super) fn insert_and_notify(
-    cache: &ArtifactCacheHandle,
-    key: ArtifactCacheKey,
-    analyzed: &AnalyzedSource,
-    observer: &dyn ExecutionObserver,
-) {
-    let evicted = cache.insert_analyzed(key, analyzed);
-    observer.observe(ExecutionEvent::CacheInserted);
-    if evicted {
-        observer.observe(ExecutionEvent::CacheEvicted);
     }
 }
 

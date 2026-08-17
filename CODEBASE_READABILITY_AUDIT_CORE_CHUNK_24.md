@@ -144,7 +144,7 @@ builtin before constructing the core value.
 
 ### Session execution coordinates
 
-#### [ ] READ-003 — Test-only execution telemetry drives the production `ExecutionEvent` dispatch
+#### [x] READ-003 — Test-only execution telemetry drives the production `ExecutionEvent` dispatch
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -186,7 +186,14 @@ reuse); the panic-discard path must still balance outstanding accounting (the
 `discard` callback observes `Merged` at `session/mod.rs:183`) so a worker panic
 surfaces exactly once as a `WorkerPanic` execution error.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reduced `ExecutionEvent` to the four ordering events used by
+the bounded-execution tests: `Submitted`, `Started`, `Finished`, and `Merged`.
+Parse, analysis, cache-hit, cache-miss, insertion, and eviction counts now use
+`#[cfg(test)]` observer hooks placed directly around analyzer and cache
+operations, so production execution no longer dispatches discarded total-only
+events. Deleted `insert_and_notify` and folded cache insertion into the local
+analysis transition. The existing peak-bound, cache-reuse, eviction, and panic
+accounting tests continue to assert the same invariants.
 
 #### [x] READ-004 — The in-flight bound formula `workers × 2` is duplicated across the two bounded executors
 
