@@ -31,7 +31,7 @@ import special case, and a parallel `ResolvedCallee`/`CallEvent` field copy.
 
 ### Fact construction and provenance
 
-#### [ ] READ-001 — `FactProvenanceState` is a one-field façade over `OriginChannels`
+#### [x] READ-001 — `FactProvenanceState` is a one-field façade over `OriginChannels`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -60,7 +60,11 @@ the four channels, the asymmetric per-map lifecycle semantics, and the
 `OriginChannels` unchanged, so this finding removes one indirection layer, it
 does not merge maps or change control-flow join behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `FactProvenanceState` and stored `OriginChannels`
+directly in `FactBuilder`. The façade’s two non-forwarding operations now live
+on `OriginChannels`; channel count, asymmetric lifecycle semantics, and all
+checkpoint/snapshot types remain unchanged. Verified with
+`cargo test -p glass-lint-core analysis::facts`.
 
 #### [x] READ-002 — `.call`/`.apply` wrapper-member detection duplicated across two files
 

@@ -115,6 +115,16 @@ impl OriginChannels {
         self.classes.snapshot(budget)
     }
 
+    pub(in crate::analysis::facts) fn branch_provenance(
+        &self,
+        budget: &SemanticBudget,
+    ) -> BranchProvenance {
+        BranchProvenance {
+            instances: self.snapshot_instances(budget),
+            classes: self.snapshot_classes(budget),
+        }
+    }
+
     pub(in crate::analysis::facts) fn restore_instance_snapshot(
         &mut self,
         snapshot: InstanceProvenanceSnapshot,
@@ -196,6 +206,17 @@ impl OriginChannels {
         }
     }
 
+    pub(in crate::analysis::facts) fn replace_targets(
+        &mut self,
+        targets: &[ValueId],
+        replacement: &TargetProvenance,
+        budget: &SemanticBudget,
+    ) {
+        for &target in targets {
+            self.replace_target(target, replacement, budget);
+        }
+    }
+
     pub(in crate::analysis::facts) fn instance_origin(
         &self,
         value: ValueId,
@@ -246,163 +267,5 @@ impl OriginChannels {
         budget: &SemanticBudget,
     ) {
         self.static_string_origins.insert(value, origin, budget);
-    }
-}
-
-/// Thin coordinator over the four provenance channels.
-///
-/// Each lifecycle operation is defined once on [`OriginChannels`] with the
-/// correct per-map semantics; this type keeps the domain vocabulary used by
-/// control-flow orchestration.
-pub(in crate::analysis::facts) struct FactProvenanceState {
-    origins: OriginChannels,
-}
-
-impl FactProvenanceState {
-    pub(in crate::analysis::facts) fn new() -> Self {
-        Self {
-            origins: OriginChannels::new(),
-        }
-    }
-
-    pub(in crate::analysis::facts) fn checkpoint(&mut self) -> ProvenanceCheckpoint {
-        self.origins.checkpoint()
-    }
-
-    pub(in crate::analysis::facts) fn restore_branch_entry(
-        &mut self,
-        checkpoint: &ProvenanceCheckpoint,
-    ) {
-        self.origins.restore_branch_entry(checkpoint);
-    }
-
-    pub(in crate::analysis::facts) fn restore_instance_alternative(
-        &mut self,
-        checkpoint: &ProvenanceCheckpoint,
-    ) {
-        self.origins.restore_instance_alternative(checkpoint);
-    }
-
-    /// Complete a control region whose instance origins can flow out of one
-    /// modeled alternative, but whose class origins cannot.
-    pub(in crate::analysis::facts) fn finish_control_region(
-        &mut self,
-        checkpoint: &mut ProvenanceCheckpoint,
-    ) {
-        self.origins.finish_control_region(checkpoint);
-    }
-
-    pub(in crate::analysis::facts) fn snapshot_instances(
-        &self,
-        budget: &SemanticBudget,
-    ) -> InstanceProvenanceSnapshot {
-        self.origins.snapshot_instances(budget)
-    }
-
-    pub(in crate::analysis::facts) fn branch_provenance(
-        &self,
-        budget: &SemanticBudget,
-    ) -> BranchProvenance {
-        BranchProvenance {
-            instances: self.snapshot_instances(budget),
-            classes: self.origins.snapshot_classes(budget),
-        }
-    }
-
-    pub(in crate::analysis::facts) fn restore_instance_snapshot(
-        &mut self,
-        snapshot: InstanceProvenanceSnapshot,
-        checkpoint: &mut ProvenanceCheckpoint,
-    ) {
-        self.origins.restore_instance_snapshot(snapshot, checkpoint);
-    }
-
-    pub(in crate::analysis::facts) fn retain_common_instance(
-        &mut self,
-        snapshot: &InstanceProvenanceSnapshot,
-        budget: &SemanticBudget,
-    ) {
-        self.origins.retain_common_instance(snapshot, budget);
-    }
-
-    pub(in crate::analysis::facts) fn finish_branch_with_else(
-        &mut self,
-        checkpoint: &mut ProvenanceCheckpoint,
-        then: &BranchProvenance,
-        budget: &SemanticBudget,
-    ) {
-        self.origins
-            .finish_branch_with_else(checkpoint, then, budget);
-    }
-
-    pub(in crate::analysis::facts) fn finish_branch_without_else(
-        &mut self,
-        checkpoint: &mut ProvenanceCheckpoint,
-    ) {
-        self.origins.finish_branch_without_else(checkpoint);
-    }
-
-    pub(in crate::analysis::facts) fn instance_origin(
-        &self,
-        value: ValueId,
-    ) -> Option<ClassIdentity> {
-        self.origins.instance_origin(value)
-    }
-
-    pub(in crate::analysis::facts) fn record_instance_origin(
-        &mut self,
-        value: ValueId,
-        origin: ClassIdentity,
-        budget: &SemanticBudget,
-    ) {
-        self.origins.record_instance_origin(value, origin, budget);
-    }
-
-    pub(in crate::analysis::facts) fn record_class_origin(
-        &mut self,
-        value: ValueId,
-        origin: ClassIdentity,
-        budget: &SemanticBudget,
-    ) {
-        self.origins.record_class_origin(value, origin, budget);
-    }
-
-    pub(in crate::analysis::facts) fn class_origin(&self, value: ValueId) -> Option<ClassIdentity> {
-        self.origins.class_origin(value)
-    }
-
-    pub(in crate::analysis::facts) fn instance_callable(
-        &self,
-        value: ValueId,
-    ) -> Option<InstanceCallable> {
-        self.origins.instance_callable(value)
-    }
-
-    pub(in crate::analysis::facts) fn static_string_origin(
-        &self,
-        value: ValueId,
-    ) -> Option<ByteRange> {
-        self.origins.static_string_origin(value)
-    }
-
-    pub(in crate::analysis::facts) fn record_static_string_origin(
-        &mut self,
-        value: ValueId,
-        origin: ByteRange,
-        budget: &SemanticBudget,
-    ) {
-        self.origins
-            .record_static_string_origin(value, origin, budget);
-    }
-
-    pub(in crate::analysis::facts) fn replace_targets(
-        &mut self,
-        targets: &[ValueId],
-        replacement: &TargetProvenance,
-        budget: &SemanticBudget,
-    ) {
-        for &target in targets {
-            self.origins.replace_target(target, replacement, budget);
-        }
     }
 }

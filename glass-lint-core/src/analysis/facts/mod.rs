@@ -41,7 +41,7 @@ pub(in crate::analysis) use calls::ResolvedCallee;
 pub(in crate::analysis::facts) use calls::call_apply_wrapper;
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
-use provenance::{FactProvenanceState, TargetProvenance};
+use provenance::{OriginChannels, TargetProvenance};
 use smol_str::{SmolStr, ToSmolStr};
 pub(in crate::analysis) use stream::FactStream;
 use swc_common::{Span, Spanned};
@@ -90,7 +90,7 @@ pub(in crate::analysis) struct FactBuilder<'builder, 'resolver> {
     /// Call results are retained for effective-call and value-flow projections.
     call_results: call_results::CallResultTable,
     /// Provenance and instance state with checkpoint/rollback semantics.
-    provenance: FactProvenanceState,
+    provenance: OriginChannels,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts.
     interface: ModuleInterface,
@@ -140,7 +140,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             stream: FactStream::with_limit(max_facts),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
-            provenance: FactProvenanceState::new(),
+            provenance: OriginChannels::new(),
             interface: ModuleInterface::default(),
         }
     }
