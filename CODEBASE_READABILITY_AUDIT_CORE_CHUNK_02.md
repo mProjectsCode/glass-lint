@@ -113,7 +113,7 @@ asserts a name-exhausted stream is neither valid nor projectable.
 
 ### Pattern normalization
 
-#### [ ] READ-003 — pattern walk threads `(path, path_known, default, rest)` as four scalar parameters with constant destructure/rebuild
+#### [x] READ-003 — pattern walk threads `(path, path_known, default, rest)` as four scalar parameters with constant destructure/rebuild
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -148,7 +148,9 @@ recording a bogus `EMPTY` path as if it were the root. Callers
 (`functions.rs:89-97`, `construction.rs:113-117`, `assignments.rs:122-125`)
 observe only leaf output, so no caller change is needed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Introduced a private `PatternWalkContext` for recursive state
+and centralized segment appending/invalidation so a failed append always sets
+`path_known` false. Verified with `make fmt && make ci`.
 
 ### Origin-map journaling
 
