@@ -4,7 +4,7 @@ use super::endpoint::{LifecycleCallEndpoint, LifecycleCallTarget};
 use crate::api::rule::query::{
     EventQuery, LifecycleQuery, MemberChain, QueryBuildError,
     canonical::CanonicalCollection,
-    checked_chain, checked_name, limits,
+    checked_name, limits,
     value::{ArgumentConstraints, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 
@@ -74,7 +74,7 @@ impl LifecycleEvent {
         if member.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        let member = checked_chain(member)?;
+        let member = MemberChain::parse(member)?;
         Ok(LifecycleEventBuilder {
             event: LifecycleEventKind::MemberCall {
                 member,
@@ -342,7 +342,7 @@ impl LifecycleSink {
         if chain.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        let chain = checked_chain(chain)?;
+        let chain = MemberChain::parse(chain)?;
         let target = target(&chain);
         let endpoint = LifecycleCallEndpoint::new(chain, target);
         let kind = match index {

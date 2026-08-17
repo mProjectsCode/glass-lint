@@ -1,8 +1,8 @@
 //! Public event-query constructors and argument adapters.
 
 use super::{
-    ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec, IdentitySpec, ModuleSpecifierPattern,
-    QueryBuildError, QueryDecl, ValueMatcher, checked_chain, checked_module_export,
+    ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec, IdentitySpec, MemberChain,
+    ModuleSpecifierPattern, QueryBuildError, QueryDecl, ValueMatcher, checked_module_export,
     checked_module_name, checked_name,
 };
 
@@ -53,7 +53,7 @@ impl EventQuery {
 
     /// Rooted member call, e.g. `document.createElement(...)`.
     pub fn member_call_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain = checked_chain(chain)?;
+        let chain = MemberChain::parse(chain)?;
         let path = chain.path().clone();
         Ok(Self::from_parts(
             EventSpec::MemberCall {
@@ -65,7 +65,7 @@ impl EventQuery {
 
     /// Heuristic member call.
     pub fn member_call_heuristic(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain = checked_chain(chain)?;
+        let chain = MemberChain::parse(chain)?;
         Ok(Self::from_parts(
             EventSpec::MemberCall {
                 member: chain.path().clone(),
@@ -82,7 +82,7 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let module = checked_module_name(module)?;
-        let path = checked_chain(member)?.into_path();
+        let path = MemberChain::parse(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberCall { member: path },
             IdentitySpec::ModuleNamespace { module },
@@ -94,7 +94,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let path = checked_chain(member)?.into_path();
+        let path = MemberChain::parse(member)?.into_path();
         let module = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::MemberCall { member: path },
@@ -104,7 +104,7 @@ impl EventQuery {
 
     /// Rooted member read.
     pub fn member_read_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let path = checked_chain(chain)?.into_path();
+        let path = MemberChain::parse(chain)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberRead {
                 member: path.clone(),
@@ -115,7 +115,7 @@ impl EventQuery {
 
     /// Rooted member-property write, for example `document.onkeydown = fn`.
     pub fn property_write_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let path = checked_chain(chain)?.into_path();
+        let path = MemberChain::parse(chain)?.into_path();
         Ok(Self::from_parts(
             EventSpec::PropertyWrite {
                 property: path.clone(),
@@ -130,7 +130,7 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let module = checked_module_name(module)?;
-        let path = checked_chain(member)?.into_path();
+        let path = MemberChain::parse(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberRead { member: path },
             IdentitySpec::ModuleNamespace { module },
@@ -142,7 +142,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let path = checked_chain(member)?.into_path();
+        let path = MemberChain::parse(member)?.into_path();
         let module = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::MemberRead { member: path },
@@ -229,7 +229,7 @@ impl EventQuery {
 
     /// Rooted constructor, e.g. `new WebAssembly.Module(...)`.
     pub fn constructor_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let path = checked_chain(chain)?.into_path();
+        let path = MemberChain::parse(chain)?.into_path();
         Ok(Self::from_parts(
             EventSpec::Construct,
             IdentitySpec::Rooted { path },

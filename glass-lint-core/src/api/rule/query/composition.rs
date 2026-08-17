@@ -2,7 +2,7 @@
 
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
-    MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId, checked_chain,
+    MatchKind, MemberChain, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate, VarId,
     checked_module_export, explain_expression, lifecycle::IntoLifecycleQuery, limits,
 };
 
@@ -38,7 +38,7 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let (module_str, export_str) = checked_module_export(module, export)?;
-        let member_path = checked_chain(member)?.into_path();
+        let member_path = MemberChain::parse(member)?.into_path();
         let symbol = format!("{module_str}.{export_str}");
         let identity = IdentitySpec::ModuleExport {
             module: module_str,
@@ -60,8 +60,8 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let source_chain = checked_chain(source_str)?;
-        let member_chain = checked_chain(member)?;
+        let source_chain = MemberChain::parse(source_str)?;
+        let member_chain = MemberChain::parse(member)?;
         let source_path = source_chain.path().clone();
         let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };
@@ -81,8 +81,8 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let source_chain = checked_chain(source_str)?;
-        let member_chain = checked_chain(member)?;
+        let source_chain = MemberChain::parse(source_str)?;
+        let member_chain = MemberChain::parse(member)?;
         let source_path = source_chain.path().clone();
         let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };

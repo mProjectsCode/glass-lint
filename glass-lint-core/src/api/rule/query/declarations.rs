@@ -47,20 +47,24 @@ impl MemberChain {
     }
 }
 
-pub(crate) fn checked_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
-    let value: SmolStr = value.into().trim().to_owned().into();
-    if value.trim().is_empty() {
-        return Err(QueryBuildError::EmptyIdentityName);
+fn checked_text(
+    value: impl Into<String>,
+    empty_error: QueryBuildError,
+) -> Result<String, QueryBuildError> {
+    let value = value.into();
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(empty_error);
     }
-    Ok(value)
+    Ok(trimmed.to_owned())
+}
+
+pub(crate) fn checked_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
+    checked_text(value, QueryBuildError::EmptyIdentityName).map(Into::into)
 }
 
 pub(crate) fn checked_module_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
-    let value: SmolStr = value.into().trim().to_owned().into();
-    if value.is_empty() {
-        return Err(QueryBuildError::EmptyModuleSpecifier);
-    }
-    Ok(value)
+    checked_text(value, QueryBuildError::EmptyModuleSpecifier).map(Into::into)
 }
 
 pub(crate) fn checked_module_export(
@@ -70,10 +74,6 @@ pub(crate) fn checked_module_export(
     let module = checked_module_name(module)?;
     let export = checked_name(export)?;
     Ok((module, export))
-}
-
-pub(crate) fn checked_chain(value: impl Into<String>) -> Result<MemberChain, QueryBuildError> {
-    MemberChain::parse(value)
 }
 
 pub(crate) const PRIVATE_NETWORK_EVIDENCE_SYMBOL: &str = "private network address";

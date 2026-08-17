@@ -202,7 +202,7 @@ leaving `CatalogLifecycleQueryBuilder` over `DeferredBuilder<LifecycleStages>`.
 
 ### Query-boundary validation (`api/rule/query/declarations.rs` and callers)
 
-#### [ ] READ-004 — Query-boundary string validation is a thin, near-duplicated helper layer with the emptiness check re-expressed about ten times
+#### [x] READ-004 — Query-boundary string validation is a thin, near-duplicated helper layer with the emptiness check re-expressed about ten times
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -243,7 +243,10 @@ as inline checks so stored evidence symbols and literal-string predicates are
 never re-written; and keep `member_call`/`build_call_sink` pre-checks so blank
 input still surfaces `EmptyIdentityName` rather than `MalformedChain`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized trimmed name/module-specifier validation in one
+`checked_text` helper and removed the no-op `checked_chain` alias. Callers now
+use `MemberChain::parse` directly; intentionally untrimmed literal and evidence
+symbol validation remains unchanged.
 
 ### Query errors (`api/rule/query/error.rs`)
 

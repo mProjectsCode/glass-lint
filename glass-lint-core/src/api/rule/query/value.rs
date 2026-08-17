@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{QueryBuildError, canonical::CanonicalCollection, checked_chain, limits};
+use super::{MemberChain, QueryBuildError, canonical::CanonicalCollection, limits};
 
 /// A validated authored argument position in a call query.
 ///
@@ -106,7 +106,7 @@ where
         limits::MAX_STATIC_ALTERNATIVES,
         QueryBuildError::EmptyCollection("rooted expression paths"),
         "rooted expression paths",
-        |value| checked_chain(value).map(|chain| chain.as_str().to_owned()),
+        |value| MemberChain::parse(value).map(|chain| chain.as_str().to_owned()),
     )?
     .into_vec())
 }

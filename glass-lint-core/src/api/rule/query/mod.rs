@@ -37,8 +37,8 @@ pub(crate) mod lifecycle;
 pub(crate) mod limits;
 pub(crate) mod value;
 pub(crate) use declarations::{
-    MemberChain, PRIVATE_NETWORK_EVIDENCE_SYMBOL, checked_chain, checked_module_export,
-    checked_module_name, checked_name,
+    MemberChain, PRIVATE_NETWORK_EVIDENCE_SYMBOL, checked_module_export, checked_module_name,
+    checked_name,
 };
 pub(crate) use explanation::explain_expression;
 pub use expression::QueryExpr;
