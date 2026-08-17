@@ -193,7 +193,7 @@ parameter back explicitly rather than re-introducing an unused one.
 `occurrences_for_instance` and stopped threading it through the instance-match
 caller. Returned-object lookup retains its name-table parameter.
 
-#### [ ] READ-006 — `PackageKeyPredicate`'s doc references the deleted `PackageOccurrenceIter` name
+#### [x] READ-006 — `PackageKeyPredicate`'s doc references the deleted `PackageOccurrenceIter` name
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -213,6 +213,9 @@ is broken and the wording refers to a symbol that no longer exists.
 `[`BorrowedPackageOccurrenceIter`]` and reword to name the actual consumer
 (the scan in `BorrowedPackageOccurrenceIter::next`, `occurrence.rs:323-364`).
 Guardrails: none beyond the doc text; no behavior changes.
+
+**Fix Applied:** Updated the intra-doc link and wording to the existing
+`BorrowedPackageOccurrenceIter` scan.
 
 ## Systemic Themes
 

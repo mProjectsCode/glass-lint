@@ -216,8 +216,8 @@ impl Iterator for BorrowedOccurrenceIter<'_> {
 ///
 /// Package clauses match every module-export key whose module satisfies
 /// the pattern and whose export equals the target. This predicate is
-/// a concrete type so the lazy [`PackageOccurrenceIter`] can call it
-/// without boxing a closure.
+/// a concrete type so the lazy [`BorrowedPackageOccurrenceIter`] scan can use
+/// it without boxing a closure.
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct PackageKeyPredicate<'a> {
     pattern: &'a crate::api::rule::ModuleSpecifierPattern,
