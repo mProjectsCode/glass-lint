@@ -57,16 +57,20 @@ impl ModuleInterface {
                 // record_pattern_locals re-inserts the same names, which is a
                 // no-op because add_local is idempotent.
                 for declarator in &variable.decls {
+                    let binding = match &declarator.name {
+                        swc_ecma_ast::Pat::Ident(binding) => Some(binding),
+                        _ => None,
+                    };
                     let names = self.record_pattern_locals(&declarator.name);
                     for name in names {
-                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
+                        if let Some(binding) = binding
                             && let Some(id) =
                                 resolver.function_id_for_expr(&Expr::Ident(binding.id.clone()))
                         {
                             self.add_function_export(name.clone(), id);
                         }
                         self.add_export(name.clone(), ModuleExport::Local { name });
-                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name {
+                        if let Some(binding) = binding {
                             let value_id = resolver.resolve_ident_id(&binding.id);
                             if let Some(value) = resolver.static_string_value(value_id) {
                                 self.add_static_string(binding.id.sym.to_string(), value);

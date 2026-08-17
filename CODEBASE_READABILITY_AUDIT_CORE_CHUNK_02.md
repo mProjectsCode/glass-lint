@@ -188,7 +188,7 @@ Verified with `make fmt && make ci`.
 
 ### Interface construction
 
-#### [ ] READ-005 — `record_export_decl`'s `Var` arm matches `Pat::Ident` twice per declarator
+#### [x] READ-005 — `record_export_decl`'s `Var` arm matches `Pat::Ident` twice per declarator
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -213,7 +213,9 @@ still runs first and the visitor's later idempotent re-insert of locals stays a
 no-op; the interface's `observe`-based merge fills only `None` slots in each
 `ExportEntry`, so export observation semantics are identical.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted the optional identifier binding once per declarator
+and reused it for function-export and static-string handling, leaving local
+exports unconditional. Verified with `make fmt && make ci`.
 
 ### Construction paths
 
