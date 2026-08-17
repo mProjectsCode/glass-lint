@@ -335,7 +335,7 @@ impl<'a> ResolvedProgram<'a> {
         completion: &AnalysisCompletion,
         program_span: Span,
     ) -> BTreeMap<SmolStr, SymbolCallProvenance> {
-        if !completion.capabilities.export_origins().is_enabled() {
+        if !completion.capabilities.availability().is_enabled() {
             return BTreeMap::new();
         }
         interface

@@ -386,7 +386,7 @@ impl SemanticFacts {
         environment: &crate::Environment,
         capabilities: DerivedPhaseCapabilities,
     ) -> Self {
-        let index = Self::build_index(&stream, environment, capabilities.fact_index());
+        let index = Self::build_index(&stream, environment, capabilities.availability());
         Self {
             stream,
             index,

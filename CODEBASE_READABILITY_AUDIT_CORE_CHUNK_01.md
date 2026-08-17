@@ -171,7 +171,7 @@ member resolution and its `receiver`/`syntactic_path` population are unchanged.
 `resolve_fallback_callee`, retaining the optional member early return. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-005 — `DerivedPhaseCapabilities` exposes three identical per-phase accessors over one flag
+#### [x] READ-005 — `DerivedPhaseCapabilities` exposes three identical per-phase accessors over one flag
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -195,7 +195,9 @@ value through and delete the wrapper. Guardrails: preserve the documented
 note, and the fail-closed behavior where incomplete analysis disables every
 derived phase together.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the three identical phase-named getters with one
+`availability()` accessor and migrated all callers. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-006 — `ConstructionMetadata` is a one-call relay struct between two phases
 

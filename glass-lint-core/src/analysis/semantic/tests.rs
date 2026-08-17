@@ -72,9 +72,9 @@ fn scope_shape_failure_disables_derived_phases() {
     let mut completion = AnalysisCompletion::new();
     completion.record_scope_issue(1);
 
-    assert!(!completion.capabilities.fact_index().is_enabled());
-    assert!(!completion.capabilities.effects().is_enabled());
-    assert!(!completion.capabilities.export_origins().is_enabled());
+    assert!(!completion.capabilities.availability().is_enabled());
+    assert!(!completion.capabilities.availability().is_enabled());
+    assert!(!completion.capabilities.availability().is_enabled());
     assert!(!completion.status.is_complete());
 }
 

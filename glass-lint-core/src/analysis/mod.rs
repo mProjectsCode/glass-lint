@@ -68,15 +68,7 @@ impl DerivedPhaseCapabilities {
         self.availability = DerivedPhaseAvailability::DisabledByIncompleteAnalysis;
     }
 
-    pub(in crate::analysis) const fn export_origins(self) -> DerivedPhaseAvailability {
-        self.availability
-    }
-
-    pub(in crate::analysis) const fn fact_index(self) -> DerivedPhaseAvailability {
-        self.availability
-    }
-
-    pub(in crate::analysis) const fn effects(self) -> DerivedPhaseAvailability {
+    pub(in crate::analysis) const fn availability(self) -> DerivedPhaseAvailability {
         self.availability
     }
 }

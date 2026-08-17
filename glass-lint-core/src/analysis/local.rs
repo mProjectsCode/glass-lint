@@ -404,7 +404,7 @@ impl SemanticArtifact {
             FunctionEffects::collect_with_availability(
                 self.facts.stream(),
                 self.effect_limit,
-                self.derived_capabilities.effects(),
+                self.derived_capabilities.availability(),
             )
         })
     }
