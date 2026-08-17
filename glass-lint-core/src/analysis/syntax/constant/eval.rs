@@ -286,14 +286,7 @@ impl EvalState {
                 PropOrSpread::Prop(property) => {
                     let (key, value) = match &**property {
                         Prop::Shorthand(ident) => {
-                            let value = if self.consume_node() {
-                                let value = self.lookup_ident(lookup, ident);
-                                self.depth -= 1;
-                                value
-                            } else {
-                                ConstValue::Unknown
-                            };
-                            (ident.sym.to_smolstr(), value)
+                            (ident.sym.to_smolstr(), self.evaluate_ident(lookup, ident))
                         }
                         Prop::KeyValue(property) => {
                             let Some(key) = self.contextual_property_name(&property.key, lookup)
@@ -348,6 +341,15 @@ impl EvalState {
             return ConstValue::Unknown;
         }
         lookup.ident(ident, self)
+    }
+
+    fn evaluate_ident(&mut self, lookup: &impl Lookup, ident: &Ident) -> ConstValue {
+        if !self.consume_node() {
+            return ConstValue::Unknown;
+        }
+        let value = self.lookup_ident(lookup, ident);
+        self.depth -= 1;
+        value
     }
 
     fn lookup_member(&mut self, lookup: &impl Lookup, member: &MemberExpr) -> ConstValue {

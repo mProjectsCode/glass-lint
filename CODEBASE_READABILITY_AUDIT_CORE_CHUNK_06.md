@@ -93,7 +93,7 @@ used it for both object spreads and `Object.assign`. The saturating key bound
 and fail-closed result are unchanged; `ConstValue::object` and `bounded()` still
 provide their separate outer admission checks.
 
-#### [ ] READ-003 — Shorthand-property arm manually mirrors evaluator budget accounting
+#### [x] READ-003 — Shorthand-property arm manually mirrors evaluator budget accounting
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -118,7 +118,10 @@ shorthand arm. Guardrail: shorthand property keys must keep charging one
 node/depth unit plus one lookup so object literals with many shorthand keys
 observe the same `MAX_DEPTH`/`MAX_NODES`/`MAX_LOOKUPS` bounds as other shapes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EvalState::evaluate_ident` to own the shorthand
+property's node/depth and lookup accounting, and routed the shorthand arm
+through it. Its budget behavior is unchanged while the accounting sequence now
+has one implementation.
 
 ## Systemic Themes
 
