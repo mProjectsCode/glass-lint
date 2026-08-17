@@ -238,19 +238,20 @@ impl ProjectLinker {
             }) => self.resolve_imported_identity(module, &authored_module, &authored_export),
             Some(SymbolCallProvenance::Global { name }) => ExportResolution::Global { name },
             Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
-                static_string.map_or_else(
-                    || ExportResolution::Qualified {
+                ExportResolution::from_optional_static_string(
+                    static_string,
+                    ExportResolution::Qualified {
                         module,
                         export: name.to_smolstr(),
                     },
-                    |value| ExportResolution::StaticString { value },
                 )
             }
         }
     }
 
     fn resolve_value_export(&self, module: ModuleId, export_name: &SmolStr) -> ExportResolution {
-        self.modules
+        let static_string = self
+            .modules
             .get(&module)
             .and_then(|project_module| {
                 project_module
@@ -258,14 +259,14 @@ impl ProjectLinker {
                     .interface()
                     .static_string(export_name)
             })
-            .map(str::to_owned)
-            .map_or_else(
-                || ExportResolution::Qualified {
-                    module,
-                    export: export_name.to_smolstr(),
-                },
-                |value| ExportResolution::StaticString { value },
-            )
+            .map(str::to_owned);
+        ExportResolution::from_optional_static_string(
+            static_string,
+            ExportResolution::Qualified {
+                module,
+                export: export_name.to_smolstr(),
+            },
+        )
     }
 
     fn resolve_namespace_export(

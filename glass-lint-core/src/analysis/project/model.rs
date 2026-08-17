@@ -98,6 +98,13 @@ pub(in crate::analysis) enum ExportResolution {
 }
 
 impl ExportResolution {
+    pub(in crate::analysis::project) fn from_optional_static_string(
+        value: Option<String>,
+        fallback: Self,
+    ) -> Self {
+        value.map_or(fallback, |value| Self::StaticString { value })
+    }
+
     /// Convert to a call provenance when this identity maps to an external
     /// module export or a known global. Returns `None` for qualified,
     /// static-string, and unknown identities.

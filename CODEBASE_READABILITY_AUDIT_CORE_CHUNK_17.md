@@ -228,7 +228,7 @@ unchanged.
 
 ### Export identity conversions (`analysis/project/linker/export.rs`, `analysis/project/identities.rs`)
 
-#### [ ] READ-006 — Static-string-vs-qualified `ExportResolution` construction is repeated
+#### [x] READ-006 — Static-string-vs-qualified `ExportResolution` construction is repeated
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -255,8 +255,11 @@ fallback for the two export.rs paths and the `Unknown` fallback for the
 effect-return path, and preserve the Local-provenance precedence (static
 string wins over qualified) inside `resolve_local_export`.
 
-**Fix Applied:** None so far.
-
+**Fix Applied:** Added the target-owned
+`ExportResolution::from_optional_static_string` constructor and used it for
+the qualified/static-string export paths and the local returned-value path.
+Fallback identity selection and local-provenance precedence remain unchanged;
+no inverse conversion or compatibility wrapper was introduced.
 ## Systemic Themes
 
 - **Two-phase lifecycle re-encoding.** The transient-to-immutable boundary

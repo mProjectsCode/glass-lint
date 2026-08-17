@@ -81,14 +81,12 @@ impl ProjectSemanticModel {
                 SymbolCallProvenance::Global { name } => {
                     ExportResolution::Global { name: name.clone() }
                 }
-                SymbolCallProvenance::Local => self
-                    .module_fact_stream(target.module())
-                    .and_then(|stream| stream.values().static_string(returned.value()))
-                    .map_or(ExportResolution::Unknown, |value| {
-                        ExportResolution::StaticString {
-                            value: value.to_owned(),
-                        }
-                    }),
+                SymbolCallProvenance::Local => ExportResolution::from_optional_static_string(
+                    self.module_fact_stream(target.module())
+                        .and_then(|stream| stream.values().static_string(returned.value()))
+                        .map(str::to_owned),
+                    ExportResolution::Unknown,
+                ),
                 SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
             };
             match resolution {
