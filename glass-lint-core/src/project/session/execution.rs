@@ -355,5 +355,5 @@ pub(super) fn normalize_worker_limit(requested: usize) -> NonZeroUsize {
 }
 
 pub const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
-    worker_limit.get().saturating_mul(2)
+    crate::bounds::in_flight_window(worker_limit.get())
 }

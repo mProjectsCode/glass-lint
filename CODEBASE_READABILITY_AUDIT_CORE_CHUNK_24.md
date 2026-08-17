@@ -176,7 +176,7 @@ surfaces exactly once as a `WorkerPanic` execution error.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — The in-flight bound formula `workers × 2` is duplicated across the two bounded executors
+#### [x] READ-004 — The in-flight bound formula `workers × 2` is duplicated across the two bounded executors
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -209,7 +209,9 @@ assertion (`project/tests/mod.rs:200-203`) and the batch `max_in_flight`
 vector-slot behavior in `lint/batch.rs` (including the `with_max_in_flight`
 override at `batch.rs:46-49`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized the default in-flight window formula in
+`bounds::in_flight_window` and reused it from both the batch executor and the
+project-session bound, preserving the nonzero and saturating behavior.
 
 ### Module ownership advertisement
 

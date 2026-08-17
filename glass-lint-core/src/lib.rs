@@ -26,6 +26,7 @@ macro_rules! impl_test_id_constructor {
 
 mod analysis;
 mod api;
+mod bounds;
 mod config;
 mod diagnostic;
 mod ecma_version;

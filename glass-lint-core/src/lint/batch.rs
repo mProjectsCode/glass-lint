@@ -14,9 +14,12 @@ use std::{
 
 use rayon::ThreadPool;
 
-use crate::project::{
-    AnalysisReport, LocalExecutionError, ProjectError, ProjectExecutionError, ProjectRelativePath,
-    SourceFile,
+use crate::{
+    bounds::in_flight_window,
+    project::{
+        AnalysisReport, LocalExecutionError, ProjectError, ProjectExecutionError,
+        ProjectRelativePath, SourceFile,
+    },
 };
 
 /// Configuration for a bounded batch lint operation.
@@ -34,7 +37,7 @@ impl BatchOptions {
     }
 
     fn from_workers(workers: usize) -> Self {
-        let max_in_flight = workers.saturating_mul(2).max(1);
+        let max_in_flight = in_flight_window(workers);
         Self {
             workers: NonZeroUsize::new(workers).unwrap_or(NonZeroUsize::MIN),
             max_in_flight: NonZeroUsize::new(max_in_flight).unwrap_or(NonZeroUsize::MIN),
