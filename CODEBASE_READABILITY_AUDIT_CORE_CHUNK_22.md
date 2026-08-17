@@ -119,7 +119,7 @@ user-facing parse diagnostic (with range) and the completion-status code
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — `parser_range` rebuilds a full `SourceLineIndex` for a single error span
+#### [x] READ-003 — `parser_range` rebuilds a full `SourceLineIndex` for a single error span
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -153,7 +153,11 @@ exists to centralize. Guardrails: keep returning `None` for dummy and
 out-of-order spans, keep returning `InvalidSourceBoundary::OutOfBounds` on
 failure, and keep the existing `parser_range` test coverage (parse/tests.rs:53-77).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a per-`SourceParser` `OnceLock<SourceLineIndex>` and
+made parser diagnostics initialize and reuse it lazily. Successful `parse()`
+consumes that cached index, building it only when needed, while successful
+`parse_program_only()` still avoids line-index construction. Existing parser
+range validation and diagnostics behavior remain unchanged.
 
 ### Diagnostics (`diagnostic.rs`, `lib.rs`)
 

@@ -1,5 +1,7 @@
 //! Bounded JavaScript/TypeScript parsing and source-position conversion.
 
+use std::sync::OnceLock;
+
 use glass_lint_datastructures::SourceRange;
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
@@ -164,6 +166,7 @@ pub struct SourceParser {
     file: Lrc<swc_common::SourceFile>,
     syntax: Syntax,
     depth_guard: SyntaxDepthGuard,
+    lines: OnceLock<SourceLineIndex>,
 }
 
 impl SourceParser {
@@ -194,6 +197,7 @@ impl SourceParser {
                 DepthScanner::raw_bound(source.source()),
                 max_syntax_depth,
             ),
+            lines: OnceLock::new(),
         })
     }
 
@@ -211,9 +215,13 @@ impl SourceParser {
 
     pub(crate) fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
         let program = self.parse_program()?;
-        let lines = SourceLineIndex::from_text(self.source.source().clone());
+        let program = self.lower_program(program);
+        let lines = self
+            .lines
+            .into_inner()
+            .unwrap_or_else(|| SourceLineIndex::from_text(self.source.source().clone()));
         Ok(ParsedSource {
-            program: self.lower_program(program),
+            program,
             source_start: self.file.start_pos,
             lines,
         })
@@ -304,7 +312,8 @@ impl SourceParser {
 
         let start = span.lo.0.checked_sub(self.file.start_pos.0)?;
         let end = span.hi.0.checked_sub(self.file.start_pos.0)?;
-        SourceLineIndex::from_text(self.source.source().clone())
+        self.lines
+            .get_or_init(|| SourceLineIndex::from_text(self.source.source().clone()))
             .range_from_offsets(start, end)
             .ok()
     }
