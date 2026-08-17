@@ -80,26 +80,21 @@ impl FactBuilder<'_, '_> {
                 if let OptChainBase::Member(member) = &*chain.base {
                     return self.resolve_member_callee(member);
                 }
-                let resolved = self.resolver.resolve_expr(effective);
-                let callee_span = self.byte_range(effective.span())?;
-                let target_function = self.resolver.function_id_for_expr(effective);
-                Some(ResolvedCallee::from_resolved(
-                    &resolved,
-                    callee_span,
-                    target_function,
-                ))
+                self.resolve_fallback_callee(effective)
             }
-            _ => {
-                let resolved = self.resolver.resolve_expr(effective);
-                let callee_span = self.byte_range(effective.span())?;
-                let target_function = self.resolver.function_id_for_expr(effective);
-                Some(ResolvedCallee::from_resolved(
-                    &resolved,
-                    callee_span,
-                    target_function,
-                ))
-            }
+            _ => self.resolve_fallback_callee(effective),
         }
+    }
+
+    fn resolve_fallback_callee(&mut self, effective: &Expr) -> Option<ResolvedCallee> {
+        let resolved = self.resolver.resolve_expr(effective);
+        let callee_span = self.byte_range(effective.span())?;
+        let target_function = self.resolver.function_id_for_expr(effective);
+        Some(ResolvedCallee::from_resolved(
+            &resolved,
+            callee_span,
+            target_function,
+        ))
     }
 
     pub(in crate::analysis::facts) fn resolve_member_callee(

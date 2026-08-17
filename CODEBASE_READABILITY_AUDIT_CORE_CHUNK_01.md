@@ -146,7 +146,7 @@ routed fact argument projections, class-name extraction, and call-origin
 resolution through it, preserving sequence side-effect traversal in the
 callee-child walker. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — `resolve_call_callee` contains two byte-identical fallback arms
+#### [x] READ-004 — `resolve_call_callee` contains two byte-identical fallback arms
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -167,7 +167,9 @@ cases have returned. Guardrails: keep `effective` (the `effective_callee_expr`
 result) as the single operand and the early `OptChainBase::Member` return so
 member resolution and its `receiver`/`syntactic_path` population are unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized ordinary and optional-chain fallback lowering in
+`resolve_fallback_callee`, retaining the optional member early return. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-005 — `DerivedPhaseCapabilities` exposes three identical per-phase accessors over one flag
 
