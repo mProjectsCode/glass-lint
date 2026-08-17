@@ -60,7 +60,14 @@ impl UsageProjector<'_, '_> {
 
     pub(super) fn project(&mut self) {
         for usage in self.effect.uses() {
-            let event = usage.event();
+            let Some(event) = (match usage {
+                EffectUse::PropertyWrite { event, .. } | EffectUse::CallReceiver { event, .. } => {
+                    Some(*event)
+                }
+                EffectUse::CallArgument { call_id, .. } => self.effect.call_event(*call_id),
+            }) else {
+                continue;
+            };
             if !self.context.matches_use(self.effect, usage) {
                 continue;
             }

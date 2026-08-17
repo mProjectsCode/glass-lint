@@ -114,7 +114,7 @@ must preserve `value_matches` to distinguish partial writes from completion.
 
 ### Flow effect summaries (`flow/effect/domain.rs`, `effect/mod.rs`)
 
-#### [ ] READ-003 — `EffectUse::CallArgument` and `CallReceiver` re-store the `event` and argument position already owned by `EffectCall`
+#### [x] READ-003 — `EffectUse::CallArgument` and `CallReceiver` re-store the `event` and argument position already owned by `EffectCall`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -155,7 +155,11 @@ the `CallPropagation` `through` ordering (propagation.rs:246); keep budget
 charging per recorded use/call; and keep the `uses` ordering deterministic by
 fact sequence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the duplicated event from `EffectUse::CallArgument` and
+derive it through the owning `EffectCallId` in the propagation loop. Kept
+`CallReceiver.event` because receiver uses can remain after a call record is
+dropped on budget exhaustion; this preserves the documented fail-closed
+behavior without adding an aggregate call-event type.
 
 #### [x] READ-004 — `CallEffectRef` is a two-step borrow wrapper whose only production method is `shape()`; `call_fact` is test-only
 

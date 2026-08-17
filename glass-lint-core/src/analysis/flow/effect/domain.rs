@@ -51,23 +51,12 @@ pub(in crate::analysis) enum EffectUse {
     },
     CallArgument {
         call_id: EffectCallId,
-        event: FactId,
         argument_index: usize,
     },
     CallReceiver {
         event: FactId,
         receiver: ParameterRef,
     },
-}
-
-impl EffectUse {
-    pub(in crate::analysis) fn event(&self) -> FactId {
-        match self {
-            Self::PropertyWrite { event, .. }
-            | Self::CallArgument { event, .. }
-            | Self::CallReceiver { event, .. } => *event,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

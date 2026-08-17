@@ -109,6 +109,10 @@ impl FunctionEffect {
         &self.calls
     }
 
+    pub(in crate::analysis) fn call_event(&self, call_id: EffectCallId) -> Option<FactId> {
+        self.calls.get(call_id.index()).map(|call| call.event)
+    }
+
     pub(in crate::analysis) fn uses(&self) -> &[EffectUse] {
         &self.uses
     }
@@ -184,7 +188,6 @@ impl FunctionEffect {
             }
             self.uses.push(EffectUse::CallArgument {
                 call_id,
-                event: fact.id(),
                 argument_index: argument.index(),
             });
         }
