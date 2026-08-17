@@ -226,7 +226,7 @@ recording and deterministic evidence order are unchanged.
 and fact emission into `record_new_expr`, preserving the resolve → visit →
 emit order. Verified with `make fmt && make ci`.
 
-#### [ ] READ-007 — Duplicated function-scope lookup and `set_function` in enter/exit facts
+#### [x] READ-007 — Duplicated function-scope lookup and `set_function` in enter/exit facts
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -245,7 +245,9 @@ helper used by both emitters. Guardrails: keep `register_function_parameters`
 and the `Enter`/`Exit` payload difference strictly in the two emitters; `Exit`
 must remain free of parameter data per the flow-marker contract.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `set_function_at` and reused it for both Enter and
+Exit fact emitters, preserving their distinct payload behavior. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-008 — 36 identical budget-exhausted guards in the visitor
 

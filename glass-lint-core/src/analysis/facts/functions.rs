@@ -13,7 +13,7 @@ use crate::analysis::{
         ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, Expr, FactBuilder,
         FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
     },
-    model::fact::ClassIdentity,
+    model::{fact::ClassIdentity, scope::FunctionId},
     syntax::{literal_member_property_name, unwrap_transparent_expr},
 };
 
@@ -69,6 +69,13 @@ impl FactBuilder<'_, '_> {
         self.traversal.current_class()
     }
 
+    fn set_function_at(&mut self, span: Span) -> Option<FunctionId> {
+        let scope = self.scope_at(span)?;
+        let id = self.resolver.function_scope_at(scope);
+        self.traversal.set_function(id);
+        Some(id)
+    }
+
     /// Emit a function boundary with parameter bindings owned by its body.
     ///
     /// Only `Enter` facts carry resolved parameter bindings; `Exit` facts are
@@ -79,11 +86,9 @@ impl FactBuilder<'_, '_> {
         span: Span,
         parameters: impl IntoIterator<Item = (usize, &'pat Pat)>,
     ) {
-        let Some(scope) = self.scope_at(span) else {
+        let Some(id) = self.set_function_at(span) else {
             return;
         };
-        let id = self.resolver.function_scope_at(scope);
-        self.traversal.set_function(id);
         let mut bindings = Vec::new();
         for (parameter_index, parameter) in parameters {
             self.parameter_bindings(
@@ -106,11 +111,9 @@ impl FactBuilder<'_, '_> {
     }
 
     fn emit_function_exit_fact(&mut self, span: Span) {
-        let Some(scope) = self.scope_at(span) else {
+        let Some(id) = self.set_function_at(span) else {
             return;
         };
-        let id = self.resolver.function_scope_at(scope);
-        self.traversal.set_function(id);
         self.emit(
             span,
             FactPayload::Function {
