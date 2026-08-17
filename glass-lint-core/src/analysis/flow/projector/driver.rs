@@ -16,7 +16,7 @@ use crate::{
         },
         trace::TraceArena,
     },
-    api::classification::RuleEvidenceTable,
+    api::{classification::RuleEvidenceTable, compiler::object_flow::CompletionMode},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,7 +378,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     .collect()
             });
         for flow in updated {
-            self.emit_if_ready(flow, object, event);
+            self.emit_if(
+                object,
+                flow,
+                event,
+                Some(CompletionMode::Configuration),
+                false,
+            );
         }
     }
 

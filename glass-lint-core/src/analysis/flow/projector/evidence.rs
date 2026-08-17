@@ -58,7 +58,13 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     self.flow_state
                         .record_requirement(key.object(), key.flow(), index, event);
                 }
-                self.emit_if_ready(key.flow(), key.object(), event);
+                self.emit_if(
+                    key.object(),
+                    key.flow(),
+                    event,
+                    Some(CompletionMode::Configuration),
+                    false,
+                );
             }
         }
     }
@@ -103,7 +109,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     self.flow_state
                         .record_sink(key.object(), key.flow(), index, sink_fact);
                 }
-                self.emit_completed_sink(key.object(), flow_id, sink_fact);
+                self.emit_if(key.object(), flow_id, sink_fact, None, true);
             }
         }
     }
@@ -145,49 +151,39 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 })
                 .collect()
         };
-        let ready: Vec<(FlowObjectId, FlowId)> = values
+        let objects: Vec<(FlowObjectId, FlowId)> = values
             .into_iter()
             .filter_map(|(flow_id, value)| {
                 let object = self.object_for(value)?;
-                let state = self.flow_state.state(object, flow_id)?;
-                let flow = self.inputs.plan.get(flow_id)?;
-                state
-                    .is_ready(flow.readiness())
-                    .then_some((object, flow_id))
+                Some((object, flow_id))
             })
             .collect();
-        for (object, flow_id) in ready {
-            self.emit_completed_sink(object, flow_id, sink_fact);
+        for (object, flow_id) in objects {
+            self.emit_if(object, flow_id, sink_fact, None, true);
         }
     }
 
-    fn emit_completed_sink(&mut self, object: FlowObjectId, flow: FlowId, sink_fact: FactId) {
+    pub(super) fn emit_if(
+        &mut self,
+        object: FlowObjectId,
+        flow: FlowId,
+        match_fact: FactId,
+        completion_mode: Option<CompletionMode>,
+        require_sinks: bool,
+    ) {
         let state = self.flow_state.state(object, flow).cloned();
         let Some(state) = state else {
             return;
         };
         let ready = self.inputs.plan.get(flow).is_some_and(|flow| {
             let readiness = flow.readiness();
-            state.is_ready(readiness) && state.sinks_ready(readiness)
+            completion_mode.is_none_or(|mode| flow.completion_mode() == mode)
+                && state.is_ready(readiness)
+                && (!require_sinks || state.sinks_ready(readiness))
         });
         if ready {
-            self.emit_state(&state, sink_fact);
+            self.emit_state(&state, match_fact);
         }
-    }
-
-    /// Emit a requirement-only match when its state is complete.
-    pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: FlowObjectId, event: FactId) {
-        let state = self.flow_state.state(object, flow).cloned();
-        let Some(state) = state else {
-            return;
-        };
-        let ready = self.inputs.plan.get(flow).is_some_and(|f| {
-            f.completion_mode() == CompletionMode::Configuration && state.is_ready(f.readiness())
-        });
-        if !ready {
-            return;
-        }
-        self.emit_state(&state, event);
     }
 
     /// Defer one ready state until every alternative reaching the fact has

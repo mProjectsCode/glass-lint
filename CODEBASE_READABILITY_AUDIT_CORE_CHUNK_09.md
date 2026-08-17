@@ -238,7 +238,7 @@ completion-reason path.
 
 ### Evidence emission (`evidence.rs`)
 
-#### [ ] READ-007 — Ready-check-and-emit spine duplicated across the two emission helpers
+#### [x] READ-007 — Ready-check-and-emit spine duplicated across the two emission helpers
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -264,7 +264,11 @@ assigned here — `emit_state` must still only queue via `queue_state`
 path may not change, and the two predicates must remain distinguishable
 (`sinks_ready` vs configuration-mode) in the unified signature.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Consolidated configuration, direct-sink, and helper-sink
+readiness into one `emit_if` helper. Its explicit completion-mode and
+`require_sinks` parameters preserve the three predicates while centralizing
+state cloning, plan lookup, readiness checks, and queued emission; replay
+suppression and final certainty handling remain in their existing layers.
 
 ## Systemic Themes
 
