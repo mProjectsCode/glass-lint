@@ -132,54 +132,44 @@ impl FlowSources {
     /// calls.  Each edge records that the destination key should receive
     /// candidates from the source key when the source key changes.
     fn build_adjacency(&mut self, project: &ProjectSemanticModel, call_graph: &QualifiedCallGraph) {
-        for module in project.modules() {
-            let stream = module.local().facts().stream();
-            for effect in module.local().effects().iter_effects() {
-                if effect.is_invalid() {
+        super::graph::for_each_valid_call(project, |module_id, effect, call, stream| {
+            let Some(target) = call_graph.get(QualifiedEvent::new(module_id, call.event())) else {
+                return;
+            };
+            let Some(target_effect) = project.effect(target) else {
+                return;
+            };
+
+            let result = stream
+                .call_shape(call.event())
+                .map_or(ValueId::UNKNOWN, |shape| shape.result());
+            let to = SourceKey::new(module_id, effect.id(), result);
+
+            for returned in target_effect
+                .returns()
+                .iter()
+                .filter(|r| r.parameter().is_none())
+            {
+                let root = target_effect.root_value(returned.value());
+                let from = SourceKey::new(target.module(), target.function(), root);
+                self.add_edge(from, to);
+            }
+
+            for argument in call.arguments() {
+                if !argument.is_root()
+                    || !target_effect.returns().iter().any(|returned| {
+                        returned.parameter().is_some_and(|parameter| {
+                            parameter.index() == argument.index() && parameter.is_root()
+                        })
+                    })
+                {
                     continue;
                 }
-                for call in effect.calls() {
-                    let Some(target) =
-                        call_graph.get(QualifiedEvent::new(module.id(), call.event()))
-                    else {
-                        continue;
-                    };
-                    let Some(target_effect) = project.effect(target) else {
-                        continue;
-                    };
-
-                    let result = stream
-                        .call_shape(call.event())
-                        .map_or(ValueId::UNKNOWN, |shape| shape.result());
-                    let to = SourceKey::new(module.id(), effect.id(), result);
-
-                    for returned in target_effect
-                        .returns()
-                        .iter()
-                        .filter(|r| r.parameter().is_none())
-                    {
-                        let root = target_effect.root_value(returned.value());
-                        let from = SourceKey::new(target.module(), target.function(), root);
-                        self.add_edge(from, to);
-                    }
-
-                    for argument in call.arguments() {
-                        if !argument.is_root()
-                            || !target_effect.returns().iter().any(|returned| {
-                                returned.parameter().is_some_and(|parameter| {
-                                    parameter.index() == argument.index() && parameter.is_root()
-                                })
-                            })
-                        {
-                            continue;
-                        }
-                        let root = effect.root_value(argument.value());
-                        let from = SourceKey::new(module.id(), effect.id(), root);
-                        self.add_edge(from, to);
-                    }
-                }
+                let root = effect.root_value(argument.value());
+                let from = SourceKey::new(module_id, effect.id(), root);
+                self.add_edge(from, to);
             }
-        }
+        });
     }
 }
 
@@ -211,29 +201,26 @@ impl FlowSources {
             // every call.
             let source_index =
                 build_bound_source_index(flows.iter().map(|(id, flow)| (*id, *flow)), names);
-            for effect in module.local().effects().iter_effects() {
-                if effect.is_invalid() {
-                    continue;
-                }
-                for call in effect.calls() {
+            super::graph::for_each_valid_call_in_module(
+                module,
+                |module_id, effect, call, stream| {
                     let Some(shape) = stream.call_shape(call.event()) else {
-                        continue;
+                        return;
                     };
                     let args = shape.effective_args();
-                    let candidates = source_index.candidates_for_call(&shape);
-                    let Some(candidates) = candidates else {
-                        continue;
+                    let Some(candidates) = source_index.candidates_for_call(&shape) else {
+                        return;
                     };
                     for candidate in candidates {
                         if candidate.matches_call(&matcher, args) {
                             self.add_candidate(
-                                SourceKey::new(module.id(), effect.id(), shape.result()),
+                                SourceKey::new(module_id, effect.id(), shape.result()),
                                 SourceCandidate::new(candidate.flow_id(), call.event()),
                             );
                         }
                     }
-                }
-            }
+                },
+            );
         }
     }
 

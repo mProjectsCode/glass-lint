@@ -8,7 +8,7 @@ use crate::{
         ProjectSemanticModel, QualifiedFunctionId,
         flow::cross::{
             MAX_CONTEXTS,
-            graph::QualifiedCallGraph,
+            graph::{QualifiedCallGraph, for_each_valid_call},
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState},
         },
@@ -138,61 +138,61 @@ impl ContextWorklist {
         call_graph: &QualifiedCallGraph,
         source_flows: &BTreeSet<FlowId>,
     ) {
-        for module in project.modules() {
-            if self.is_exhausted() {
+        let mut exhausted = false;
+        for_each_valid_call(project, |module_id, effect, call, _| {
+            if exhausted || self.is_exhausted() {
+                exhausted = true;
                 return;
             }
-            for effect in module.local().effects().iter_effects() {
-                for call in effect.calls() {
-                    let Some(target) =
-                        call_graph.get(QualifiedEvent::new(module.id(), call.event()))
-                    else {
-                        continue;
-                    };
-                    for argument in call.arguments() {
-                        if !argument.is_root() {
-                            continue;
-                        }
-                        let root = effect.root_value(argument.value());
-                        let source_key = SourceKey::new(module.id(), effect.id(), root);
-                        let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
-                        let present = candidates
-                            .iter()
-                            .map(|candidate| candidate.flow_id())
-                            .collect::<BTreeSet<_>>();
-                        for candidate in candidates {
-                            let state = CrossFlowState::known(
-                                candidate.flow_id(),
-                                QualifiedEvent::new(module.id(), candidate.event()),
-                            );
-                            self.enqueue_parameters(
-                                project,
-                                target.module(),
-                                target.function(),
-                                argument.index(),
-                                &state,
-                                target.module() != module.id(),
-                            );
-                        }
+            let Some(target) = call_graph.get(QualifiedEvent::new(module_id, call.event())) else {
+                return;
+            };
+            for argument in call.arguments() {
+                if !argument.is_root() {
+                    continue;
+                }
+                let root = effect.root_value(argument.value());
+                let source_key = SourceKey::new(module_id, effect.id(), root);
+                let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
+                let present = candidates
+                    .iter()
+                    .map(|candidate| candidate.flow_id())
+                    .collect::<BTreeSet<_>>();
+                for candidate in candidates {
+                    let state = CrossFlowState::known(
+                        candidate.flow_id(),
+                        QualifiedEvent::new(module_id, candidate.event()),
+                    );
+                    self.enqueue_parameters(
+                        project,
+                        target.module(),
+                        target.function(),
+                        argument.index(),
+                        &state,
+                        target.module() != module_id,
+                    );
+                }
 
-                        // A call-site without a source candidate is still a
-                        // modeled reaching alternative. Carry it through the
-                        // same parameter/call projection with an explicit
-                        // unknown source so it can downgrade a matching
-                        // witness to Possible without contributing evidence.
-                        for &flow in source_flows.difference(&present) {
-                            self.enqueue_parameters(
-                                project,
-                                target.module(),
-                                target.function(),
-                                argument.index(),
-                                &CrossFlowState::unknown(flow),
-                                target.module() != module.id(),
-                            );
-                        }
-                    }
+                // A call-site without a source candidate is still a
+                // modeled reaching alternative. Carry it through the
+                // same parameter/call projection with an explicit
+                // unknown source so it can downgrade a matching
+                // witness to Possible without contributing evidence.
+                for &flow in source_flows.difference(&present) {
+                    self.enqueue_parameters(
+                        project,
+                        target.module(),
+                        target.function(),
+                        argument.index(),
+                        &CrossFlowState::unknown(flow),
+                        target.module() != module_id,
+                    );
+                }
+                if self.is_exhausted() {
+                    exhausted = true;
+                    return;
                 }
             }
-        }
+        });
     }
 }

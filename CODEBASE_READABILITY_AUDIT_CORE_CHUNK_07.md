@@ -213,7 +213,7 @@ the corresponding projection step, and `project_context` still performs the
 final unbounded pass through the same owner, preserving the propagated-event
 ordering and crossed-flag calculation.
 
-#### [ ] READ-006 — The module→effect→call traversal skeleton is repeated in four places with a divergent invalid-effect gate
+#### [x] READ-006 — The module→effect→call traversal skeleton is repeated in four places with a divergent invalid-effect gate
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -256,7 +256,12 @@ targets/missing shapes (including in `seed_from_calls`, which today does not
 resolve a shape), and the `seed_from_calls` distinction that unknown-source
 alternatives must still be seeded for calls without a candidate.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a graph-owned valid-call visitor, with a module-scoped
+variant for the per-module source index. The call graph, source candidate and
+adjacency passes, and context seeding now share the deterministic
+module→effect→call traversal and invalid-effect gate while retaining their
+consumer-specific shape and target handling. Context seeding still includes
+unknown-source alternatives and stops at the same retained-context limit.
 
 ## Systemic Themes
 
