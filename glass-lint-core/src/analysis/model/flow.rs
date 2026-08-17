@@ -428,6 +428,10 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
         }
     }
 
+    pub(in crate::analysis) fn complete(&self, readiness: FlowReadiness) -> bool {
+        self.requirements_ready(readiness) && self.sinks_ready(readiness)
+    }
+
     pub(in crate::analysis) fn requirement_entries(
         &self,
     ) -> impl Iterator<Item = (RequirementIndex, Vec<E>)> {

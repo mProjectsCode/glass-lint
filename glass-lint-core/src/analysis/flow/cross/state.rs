@@ -158,10 +158,7 @@ impl CrossFlowState {
     }
 
     fn classify_sink(&self, recorded: bool, readiness: FlowReadiness) -> EvidenceTransition {
-        if self.source.is_some()
-            && self.evidence.requirements_ready(readiness)
-            && self.evidence.sinks_ready(readiness)
-        {
+        if self.source.is_some() && self.evidence.complete(readiness) {
             EvidenceTransition::Ready
         } else if recorded {
             EvidenceTransition::Advanced

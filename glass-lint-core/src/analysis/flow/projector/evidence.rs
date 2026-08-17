@@ -178,8 +178,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let ready = self.inputs.plan.get(flow).is_some_and(|flow| {
             let readiness = flow.readiness();
             completion_mode.is_none_or(|mode| flow.completion_mode() == mode)
-                && state.is_ready(readiness)
-                && (!require_sinks || state.sinks_ready(readiness))
+                && if require_sinks {
+                    state.complete(readiness)
+                } else {
+                    state.is_ready(readiness)
+                }
         });
         if ready {
             self.emit_state(&state, match_fact);

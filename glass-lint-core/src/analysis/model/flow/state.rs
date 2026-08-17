@@ -129,8 +129,8 @@ impl FlowState {
         self.evidence.remove_sink_event(index, &event)
     }
 
-    pub(in crate::analysis) fn sinks_ready(&self, readiness: FlowReadiness) -> bool {
-        self.evidence.sinks_ready(readiness)
+    pub(in crate::analysis) fn complete(&self, readiness: FlowReadiness) -> bool {
+        self.evidence.complete(readiness)
     }
 
     pub(in crate::analysis) fn requirement_entries(

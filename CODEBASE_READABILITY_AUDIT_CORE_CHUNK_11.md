@@ -196,7 +196,7 @@ and keep the `Building`→`Frozen` freeze ordering on `FactStream` unchanged
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — Requirement and sink readiness are re-conjoined by every sink-completion caller
+#### [x] READ-005 — Requirement and sink readiness are re-conjoined by every sink-completion caller
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -227,7 +227,10 @@ requirements-only checks; they are not the conjunction. Guardrails:
 `SinkReadiness::Configuration` must still allow completion with zero recorded
 sinks (via `sinks_ready`'s trivial-true arm, `flow.rs:426`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `complete` to `LifecycleEvidence` and forwarded it
+through `FlowState`, then routed sink-anchored projector and cross-flow checks
+through that owner-level conjunction. Configuration-only emission remains
+requirements-only. Verified with `make fmt && make ci`.
 
 #### [x] READ-006 — `FlowLimits::test_new` duplicates `test_with_operation_limit` with a hard-coded budget
 
