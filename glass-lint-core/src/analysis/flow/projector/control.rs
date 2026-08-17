@@ -168,7 +168,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     baseline: self.paths.frontier.snapshot_paths(),
                     try_exit: None,
                     catch_exit: None,
-                    normal_exit: None,
                     abrupt_exits: Vec::new(),
                     has_finally: false,
                     normal_count: 0,
@@ -198,7 +197,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let incoming = if let Ok(ControlFrame::Try {
             try_exit,
             catch_exit,
-            normal_exit,
             abrupt_exits,
             has_finally,
             normal_count,
@@ -210,7 +208,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
             let mut normal = try_exit.clone().unwrap_or_default();
             normal.extend(current.iter().copied());
             *normal_count = normal.len();
-            *normal_exit = Some(normal.clone());
             let mut incoming = normal;
             incoming.extend(abrupt_exits.iter().map(|(_, environment)| *environment));
             incoming
@@ -225,7 +222,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let Ok(ControlFrame::Try {
             try_exit,
             catch_exit,
-            normal_exit,
             abrupt_exits,
             has_finally,
             normal_count,
@@ -251,7 +247,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             self.paths.frontier.replace_paths(normal);
         } else {
             let mut paths = try_exit.unwrap_or_default();
-            paths.extend(catch_exit.unwrap_or_else(|| normal_exit.unwrap_or_default()));
+            paths.extend(catch_exit.unwrap_or_default());
             paths.extend(self.paths.frontier.take_paths());
             self.join_paths(paths);
         }

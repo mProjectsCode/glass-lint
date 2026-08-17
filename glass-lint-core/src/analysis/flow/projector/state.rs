@@ -239,7 +239,6 @@ pub(super) enum ControlFrame {
         baseline: Vec<FlowEnvironment>,
         try_exit: Option<Vec<FlowEnvironment>>,
         catch_exit: Option<Vec<FlowEnvironment>>,
-        normal_exit: Option<Vec<FlowEnvironment>>,
         abrupt_exits: Vec<(AbruptExit, FlowEnvironment)>,
         has_finally: bool,
         normal_count: usize,

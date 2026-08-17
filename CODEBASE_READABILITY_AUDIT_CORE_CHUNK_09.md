@@ -164,7 +164,7 @@ must be computed once per `(flow, event)` group from active-path coverage and
 
 ### Control-flow state (`state.rs`, `control.rs`)
 
-#### [ ] READ-005 — `ControlFrame::Try::normal_exit` is written, cloned, and never meaningfully read
+#### [x] READ-005 — `ControlFrame::Try::normal_exit` is written, cloned, and never meaningfully read
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -196,7 +196,10 @@ if desired. Guardrail: `normal_count` and the `after[..normal_len]` finally
 indexing (control.rs:240-251) must remain untouched, and `try`/`catch` shapes
 without `finally` must still fall back to empty vectors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unused `ControlFrame::Try::normal_exit` field,
+its initializer, destructuring, and clone assignment. The no-`finally` path
+now falls back directly from `catch_exit`, while the existing `normal_count`
+and finally-path indexing remain unchanged.
 
 ### Mutation history (`history.rs`)
 
