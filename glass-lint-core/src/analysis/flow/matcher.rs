@@ -111,11 +111,11 @@ impl ArgumentData for CallArgInfo {
     }
 
     fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject> {
-        values.static_object(self.value)
+        values.object_and_chain(self.value).0
     }
 
     fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath> {
-        values.rooted_member(self.value)
+        values.object_and_chain(self.value).1
     }
 }
 

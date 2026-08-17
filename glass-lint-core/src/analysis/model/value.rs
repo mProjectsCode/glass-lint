@@ -271,6 +271,14 @@ impl ValueTable {
         self.get(terminal)
     }
 
+    pub(in crate::analysis) fn object_and_chain(
+        &self,
+        id: ValueId,
+    ) -> (Option<&StaticObject>, Option<&NamePath>) {
+        self.resolve(id)
+            .map_or((None, None), Value::object_and_chain)
+    }
+
     pub fn resolve_id(&self, id: ValueId) -> Option<ValueId> {
         self.resolve_terminal(id)
     }
@@ -294,16 +302,14 @@ impl ValueTable {
         }
     }
 
+    #[cfg(test)]
     pub fn static_object(&self, id: ValueId) -> Option<&StaticObject> {
-        self.resolve(id)
-            .map(Value::object_and_chain)
-            .and_then(|(object, _)| object)
+        self.object_and_chain(id).0
     }
 
+    #[cfg(test)]
     pub fn rooted_member(&self, id: ValueId) -> Option<&NamePath> {
-        self.resolve(id)
-            .map(Value::object_and_chain)
-            .and_then(|(_, chain)| chain)
+        self.object_and_chain(id).1
     }
 
     pub fn exhausted(&self) -> bool {

@@ -226,8 +226,8 @@ impl<'a> MatcherEvaluator<'a> {
         &'b self,
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
+        let (object, rooted_chain) = self.values.object_and_chain(argument.value);
         let value = self.values.resolve(argument.value);
-        let (object, rooted_chain) = value.map_or((None, None), Value::object_and_chain);
         let static_string =
             self.identity
                 .static_string(argument.value, &argument.provenance, value);

@@ -195,7 +195,7 @@ behavior remain unchanged.
 
 ### Shared argument matching (`flow/matcher.rs`)
 
-#### [ ] READ-005 — `ArgumentData for CallArgInfo` is a second implementation of the `CallArgInfo` → argument-view conversion with a different static-string resolution
+#### [x] READ-005 — `ArgumentData for CallArgInfo` is a second implementation of the `CallArgInfo` → argument-view conversion with a different static-string resolution
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
