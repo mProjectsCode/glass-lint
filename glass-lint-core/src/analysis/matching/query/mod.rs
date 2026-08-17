@@ -7,12 +7,69 @@ use crate::{
     },
     api::compiler::{
         physical::PhysicalRoot,
-        rule::{CompiledMatcherPlan, EventSpec, IdentityConstraint},
+        rule::{CompiledMatcherPlan, EventSpec, EvidenceDescriptor, IdentityConstraint},
     },
 };
 
 mod view;
 use view::EventIndexView;
+
+pub(in crate::analysis) enum IndexedRoot<'a> {
+    IndexedScan {
+        identity: &'a IdentityConstraint,
+        event: &'a EventSpec,
+        evidence: &'a EvidenceDescriptor,
+    },
+    ReturnedSubject {
+        producer: &'a IdentityConstraint,
+        member: &'a SymbolPath,
+        event: &'a EventSpec,
+        evidence: &'a EvidenceDescriptor,
+    },
+    InstanceSubject {
+        constructor: &'a IdentityConstraint,
+        member: &'a SymbolPath,
+        evidence: &'a EvidenceDescriptor,
+    },
+}
+
+impl<'a> IndexedRoot<'a> {
+    fn from_physical(root: &'a PhysicalRoot) -> Option<Self> {
+        match root {
+            PhysicalRoot::IndexedScan {
+                identity,
+                event,
+                evidence,
+            } => Some(Self::IndexedScan {
+                identity,
+                event,
+                evidence,
+            }),
+            PhysicalRoot::ReturnedSubject {
+                producer,
+                member,
+                event,
+                evidence,
+            } => Some(Self::ReturnedSubject {
+                producer,
+                member,
+                event,
+                evidence,
+            }),
+            PhysicalRoot::InstanceSubject {
+                constructor,
+                member,
+                evidence,
+                ..
+            } => Some(Self::InstanceSubject {
+                constructor,
+                member,
+                evidence,
+            }),
+            PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => None,
+        }
+    }
+}
 
 pub(in crate::analysis) struct IndexedRootIter<'a> {
     roots: std::slice::Iter<'a, PhysicalRoot>,
@@ -27,17 +84,10 @@ impl<'a> IndexedRootIter<'a> {
 }
 
 impl<'a> Iterator for IndexedRootIter<'a> {
-    type Item = &'a PhysicalRoot;
+    type Item = IndexedRoot<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.roots.find(|root| {
-            matches!(
-                root,
-                PhysicalRoot::IndexedScan { .. }
-                    | PhysicalRoot::ReturnedSubject { .. }
-                    | PhysicalRoot::InstanceSubject { .. }
-            )
-        })
+        self.roots.find_map(IndexedRoot::from_physical)
     }
 }
 
@@ -54,7 +104,7 @@ impl OccurrenceIndexes {
         let mut evidence = Vec::new();
         for root in roots {
             match root {
-                PhysicalRoot::IndexedScan {
+                IndexedRoot::IndexedScan {
                     identity,
                     event,
                     evidence: ev,
@@ -65,7 +115,7 @@ impl OccurrenceIndexes {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
                 }
-                PhysicalRoot::ReturnedSubject {
+                IndexedRoot::ReturnedSubject {
                     producer,
                     member,
                     event,
@@ -78,7 +128,7 @@ impl OccurrenceIndexes {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
                 }
-                PhysicalRoot::InstanceSubject {
+                IndexedRoot::InstanceSubject {
                     constructor,
                     member,
                     evidence: ev,
@@ -87,9 +137,6 @@ impl OccurrenceIndexes {
                     if let Some(occurrences) = self.occurrences_for_instance(constructor, member) {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
-                }
-                PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => {
-                    unreachable!("indexed root iterator yielded a non-indexed root")
                 }
             }
         }

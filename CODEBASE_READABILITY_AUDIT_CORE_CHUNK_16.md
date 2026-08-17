@@ -39,7 +39,7 @@ ordered by how broad a change each implies.
 
 ### Query root dispatch and view placement (`analysis/matching/query`)
 
-#### [ ] READ-001 — `IndexedRootIter` filters by a set its consumer re-states in `unreachable!` match arms
+#### [x] READ-001 — `IndexedRootIter` filters by a set its consumer re-states in `unreachable!` match arms
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -67,6 +67,12 @@ deterministic evidence order (push in root order exactly as today), keep the
 fail-closed behavior of an empty selection when a plan has no indexed roots
 (empty evidence, not an error), and keep `push_owned_evidence` as the single
 `into_ordered` boundary for all three branches.
+
+**Fix Applied:** Made `IndexedRootIter` yield a bounded `IndexedRoot` enum
+containing only the three occurrence-evaluated root variants. The consumer now
+matches that exhaustive enum, so non-indexed roots are filtered structurally
+and cannot reach an `unreachable!` panic; root order and evidence normalization
+remain unchanged.
 
 #### [x] READ-002 — `private_network_match` lives three levels down under `query/view` but is consumed by a sibling module via two re-export hops
 
