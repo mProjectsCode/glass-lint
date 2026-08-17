@@ -81,7 +81,7 @@ model readiness enums directly on `CompiledObjectFlow`, and updated analysis
 callers to use `SinkReadiness`. The configuration-versus-sink distinction and
 readiness behavior remain unchanged; verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — Two lockstepped emptiness policies: IdentityConstraint::is_empty vs is_identity_empty
+#### [x] READ-002 — Two lockstepped emptiness policies: IdentityConstraint::is_empty vs is_identity_empty
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -112,6 +112,13 @@ exactness identical, and add a test asserting
 `IdentityConstraint::from(spec).is_empty() == is_identity_empty(spec)` for each
 variant — the `From<&IdentitySpec>` lowering at `mod.rs:151-180` makes the
 parity contract directly testable on the same `spec`.
+
+**Fix Applied:** Centralized trimmed text and module/export emptiness helpers
+in the compiler module and made both identity policies delegate to them.
+Added a parity test covering every identity variant, including the distinct
+`Any`/`Heuristic` vocabulary. Rooted and private-network identities remain
+non-empty. Verified with the focused compiler test and clippy; `make fmt` and
+`make ci` follow.
 
 ### [api::compiler::validate]
 

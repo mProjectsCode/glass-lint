@@ -2,7 +2,10 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
-    compiler::normalized::{NormalizedSubject, ObjectSlot},
+    compiler::{
+        identity_module_export_is_empty, identity_text_is_empty,
+        normalized::{NormalizedSubject, ObjectSlot},
+    },
     rule::query::{EventSpec, IdentitySpec, VarId},
 };
 
@@ -379,18 +382,20 @@ pub(crate) fn classify_lifecycle_source<'a>(
 /// `PrivateNetworkAddress` are never empty.
 pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
     match identity {
-        IdentitySpec::Global { name } | IdentitySpec::Heuristic { name } => name.trim().is_empty(),
+        IdentitySpec::Global { name } | IdentitySpec::Heuristic { name } => {
+            identity_text_is_empty(name)
+        }
         IdentitySpec::ModuleExport { module, export } => {
-            module.trim().is_empty() || export.trim().is_empty()
+            identity_module_export_is_empty(module, export)
         }
         IdentitySpec::PackageModuleExport { module, export } => {
-            module.as_str().trim().is_empty() || export.trim().is_empty()
+            identity_module_export_is_empty(module.as_str(), export)
         }
-        IdentitySpec::ModuleNamespace { module } => module.trim().is_empty(),
-        IdentitySpec::PackageModuleNamespace { module } => module.as_str().trim().is_empty(),
+        IdentitySpec::ModuleNamespace { module } => identity_text_is_empty(module),
+        IdentitySpec::PackageModuleNamespace { module } => identity_text_is_empty(module.as_str()),
         IdentitySpec::Rooted { path } => path.is_empty(),
-        IdentitySpec::LiteralString { predicate } => predicate.trim().is_empty(),
-        IdentitySpec::PackageSpecifier { pattern } => pattern.as_str().trim().is_empty(),
+        IdentitySpec::LiteralString { predicate } => identity_text_is_empty(predicate),
+        IdentitySpec::PackageSpecifier { pattern } => identity_text_is_empty(pattern.as_str()),
         IdentitySpec::PrivateNetworkAddress => false,
     }
 }

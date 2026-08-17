@@ -2,6 +2,8 @@ mod error;
 mod pass1_3;
 mod pass4_10;
 
+#[cfg(test)]
+pub(crate) use error::is_identity_empty;
 pub(crate) use error::{
     ContradictionKind, LifecycleSource, QueryCompileError, SubjectRelation, SubjectRelationError,
     classify_lifecycle_source, classify_subject_relation, is_valid_identity_event_pair,

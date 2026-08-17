@@ -68,6 +68,15 @@ use crate::api::{
 pub(crate) struct CompiledMatcherPlan {
     physical_plan: PhysicalPlan,
 }
+
+fn identity_text_is_empty(value: &str) -> bool {
+    value.trim().is_empty()
+}
+
+fn identity_module_export_is_empty(module: &str, export: &str) -> bool {
+    identity_text_is_empty(module) || identity_text_is_empty(export)
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum IdentityConstraint {
     Any {
@@ -109,18 +118,18 @@ impl IdentityConstraint {
     /// `PrivateNetworkAddress` are never empty.
     pub(crate) fn is_empty(&self) -> bool {
         match self {
-            Self::Any { name } | Self::Global { name } => name.trim().is_empty(),
+            Self::Any { name } | Self::Global { name } => identity_text_is_empty(name),
             Self::ModuleExport { module, export } => {
-                module.trim().is_empty() || export.trim().is_empty()
+                identity_module_export_is_empty(module, export)
             }
             Self::PackageModuleExport { module, export } => {
-                module.as_str().trim().is_empty() || export.trim().is_empty()
+                identity_module_export_is_empty(module.as_str(), export)
             }
-            Self::ModuleNamespace { module } => module.trim().is_empty(),
-            Self::PackageModuleNamespace { module } => module.as_str().trim().is_empty(),
+            Self::ModuleNamespace { module } => identity_text_is_empty(module),
+            Self::PackageModuleNamespace { module } => identity_text_is_empty(module.as_str()),
             Self::Rooted { path } => path.is_empty(),
-            Self::LiteralString { predicate } => predicate.trim().is_empty(),
-            Self::PackageSpecifier { pattern } => pattern.as_str().trim().is_empty(),
+            Self::LiteralString { predicate } => identity_text_is_empty(predicate),
+            Self::PackageSpecifier { pattern } => identity_text_is_empty(pattern.as_str()),
             Self::PrivateNetworkAddress => false,
         }
     }
