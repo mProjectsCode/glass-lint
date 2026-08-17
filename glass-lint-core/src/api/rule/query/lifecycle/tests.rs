@@ -247,8 +247,7 @@ fn lifecycle_event_member_call_builds_with_args() {
     let event: LifecycleEvent = LifecycleEvent::member_call("addEventListener")
         .unwrap()
         .arg(0, ValueMatcher::static_string().try_equals("load").unwrap())
-        .unwrap()
-        .build();
+        .unwrap();
     assert!(
         matches!(event.kind(), LifecycleEventKind::MemberCall { member, .. } if member.as_str() == "addEventListener")
     );

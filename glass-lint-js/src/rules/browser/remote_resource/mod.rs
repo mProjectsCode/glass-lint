@@ -86,8 +86,7 @@ fn remote_element_query(
                 .arg(0, ValueMatcher::static_string().try_equals(property)?)
                 .unwrap()
                 .arg(1, remote_url)
-                .unwrap()
-                .build()),
+                .unwrap()),
         ]))
         .completion(LifecycleCompletion::any_sink(
             [

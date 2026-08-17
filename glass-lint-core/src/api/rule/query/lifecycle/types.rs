@@ -67,53 +67,35 @@ impl LifecycleEvent {
         })
     }
 
-    pub fn member_call(
-        member: impl Into<String>,
-    ) -> Result<LifecycleEventBuilder, QueryBuildError> {
+    pub fn member_call(member: impl Into<String>) -> Result<Self, QueryBuildError> {
         let member = member.into();
         if member.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
         let member = MemberChain::parse(member)?;
-        Ok(LifecycleEventBuilder {
-            event: LifecycleEventKind::MemberCall {
+        Ok(Self {
+            kind: LifecycleEventKind::MemberCall {
                 member,
                 arguments: ArgumentConstraints::new(),
             },
         })
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LifecycleEventBuilder {
-    event: LifecycleEventKind,
-}
-
-impl LifecycleEventBuilder {
     pub fn arg(
         mut self,
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
         let index = ArgumentIndex::try_from_usize(index)?;
-        if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
-            arguments.push(index, matcher)?;
-        }
+        let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.kind else {
+            return Err(QueryBuildError::ArgumentsRequireCallEvent);
+        };
+        arguments.push(index, matcher)?;
         Ok(self)
-    }
-
-    pub fn build(self) -> LifecycleEvent {
-        LifecycleEvent { kind: self.event }
     }
 }
 
 define_lifecycle_adapter!(IntoLifecycleEvent, into_lifecycle_event, LifecycleEvent);
-
-impl IntoLifecycleEvent for LifecycleEventBuilder {
-    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
-        Ok(self.build())
-    }
-}
 
 // ── LifecycleCondition ────────────────────────────────────────────────
 
@@ -377,6 +359,4 @@ define_lifecycle_adapter!(
 
 mod private {
     pub trait Sealed {}
-
-    impl Sealed for super::LifecycleEventBuilder {}
 }

@@ -163,8 +163,7 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
                         .arg(0, ValueMatcher::static_string().try_equals("src").unwrap())
                         .unwrap()
                         .arg(1, ValueMatcher::any_value())
-                        .unwrap()
-                        .build(),
+                        .unwrap(),
                 ))
                 .completion(LifecycleCompletion::any_sink([
                     LifecycleSink::argument_of_member("document.head.appendChild", 0),

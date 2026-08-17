@@ -237,8 +237,7 @@ fn member_call_configuration_stays_with_its_receiver() {
             LifecycleEvent::member_call("configure")
                 .unwrap()
                 .arg(0, ValueMatcher::static_string().try_equals("yes").unwrap())
-                .unwrap()
-                .build(),
+                .unwrap(),
         ))
         .completion(LifecycleCompletion::any_sink([
             LifecycleSink::argument_of_member("document.head.appendChild", 0),

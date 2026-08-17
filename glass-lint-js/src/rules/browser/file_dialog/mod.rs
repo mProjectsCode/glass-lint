@@ -33,8 +33,7 @@ pub fn rule() -> Rule {
                         .arg(0, ValueMatcher::static_string().try_equals("type").unwrap())
                         .unwrap()
                         .arg(1, ValueMatcher::static_string().try_equals("file").unwrap())
-                        .unwrap()
-                        .build()),
+                        .unwrap()),
                 ]))
                 .completion(LifecycleCompletion::configuration())
                 .build(),

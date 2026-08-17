@@ -96,7 +96,7 @@ remaining catalog path. Verified with `cargo test -p glass-lint-core api::rule::
 
 ### Lifecycle event construction
 
-#### [ ] READ-002 — `LifecycleEventBuilder` re-implements the `EventQuery::with_arg` idiom with a `build()` ceremony and a hand-written sealed adapter
+#### [x] READ-002 — `LifecycleEventBuilder` re-implements the `EventQuery::with_arg` idiom with a `build()` ceremony and a hand-written sealed adapter
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

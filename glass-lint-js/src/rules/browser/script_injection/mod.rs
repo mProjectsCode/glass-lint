@@ -32,8 +32,7 @@ pub fn rule() -> Rule {
                         .arg(0, ValueMatcher::static_string().try_equals("src").unwrap())
                         .unwrap()
                         .arg(1, ValueMatcher::static_string())
-                        .unwrap()
-                        .build()),
+                        .unwrap()),
                 ]))
                 .completion(LifecycleCompletion::any_sink([
                     LifecycleSink::argument_of_member("document.head.appendChild", 0),
