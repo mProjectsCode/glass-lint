@@ -48,7 +48,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 Ok(ControlFrame::Branch { base, .. }) => {
                     *base = self.paths.frontier.snapshot_paths();
                 }
-                _ => self.mark_control_stack_incomplete(),
+                _ => self.mark_incomplete(),
             },
             ControlKind::BranchElse => {
                 let base = if let Ok(ControlFrame::Branch {
@@ -58,7 +58,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     *then_exit = Some(self.paths.frontier.snapshot_paths());
                     base.clone()
                 } else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 self.paths.frontier.replace_paths(base);
@@ -68,7 +68,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     base, then_exit, ..
                 }) = self.paths.control.pop_region(region)
                 else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 let mut paths = then_exit.unwrap_or(base);
@@ -93,7 +93,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             }
             ControlKind::LoopUpdate => {
                 let Ok(continues) = self.paths.control.take_loop_continues() else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 self.paths.frontier.append_paths(continues);
@@ -102,7 +102,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             }
             ControlKind::LoopEnd => {
                 let Ok(seed) = self.paths.control.take_loop_seed(region) else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 self.finish_loop(seed, fact);
@@ -131,7 +131,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     *has_default |= is_default;
                     (baseline.clone(), self.paths.frontier.take_paths())
                 } else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 let mut paths = baseline;
@@ -146,7 +146,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     ..
                 }) = self.paths.control.pop_region(region)
                 else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 let mut paths = self.paths.frontier.take_paths();
@@ -182,7 +182,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     *try_exit = Some(self.paths.frontier.take_paths());
                     baseline.clone()
                 } else {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 };
                 self.paths.frontier.replace_paths(baseline);
@@ -215,7 +215,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             incoming.extend(abrupt_exits.iter().map(|(_, environment)| *environment));
             incoming
         } else {
-            self.mark_control_stack_incomplete();
+            self.mark_incomplete();
             return;
         };
         self.join_paths(incoming);
@@ -232,7 +232,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ..
         }) = self.paths.control.pop_region(region)
         else {
-            self.mark_control_stack_incomplete();
+            self.mark_incomplete();
             return;
         };
         if has_finally {
@@ -244,7 +244,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     break;
                 };
                 if self.paths.control.route_abrupt(kind, environment).is_err() {
-                    self.mark_control_stack_incomplete();
+                    self.mark_incomplete();
                     return;
                 }
             }
@@ -269,7 +269,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .route_abrupt(abrupt, environment)
                 .is_err()
             {
-                self.mark_control_stack_incomplete();
+                self.mark_incomplete();
                 return;
             }
         }

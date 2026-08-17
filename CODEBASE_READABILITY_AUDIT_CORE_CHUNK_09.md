@@ -68,7 +68,7 @@ an unreachable environment and no witness).
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — `mark_incomplete` and `mark_control_stack_incomplete` are identical twins
+#### [x] READ-002 — `mark_incomplete` and `mark_control_stack_incomplete` are identical twins
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -94,7 +94,11 @@ budget failures, add a dedicated `FlowCompletionReason` bit at that point
 rather than a parallel forwarding method. Guardrail: all call sites must still
 degrade certainty to `Possible` (they all currently reach `run.mark_incomplete`).
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the duplicate `mark_control_stack_incomplete`
+forwarder and updated all control-stack callers to use the single
+`mark_incomplete` method. The projector still records the same alternatives
+incompleteness and therefore preserves the existing possible-certainty
+behavior.
 
 ### Projector state machine (`mod.rs`)
 

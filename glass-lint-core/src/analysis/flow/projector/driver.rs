@@ -66,10 +66,6 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.run.mark_incomplete();
     }
 
-    pub(super) fn mark_control_stack_incomplete(&mut self) {
-        self.run.mark_incomplete();
-    }
-
     pub(super) fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match fact.payload() {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
@@ -200,7 +196,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         fixed_point.converge(&mut *self, seed.body_start, body_end);
 
         if self.paths.control.pop_loop().is_err() {
-            self.mark_control_stack_incomplete();
+            self.mark_incomplete();
             return;
         }
 
@@ -226,7 +222,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             }
             FunctionBoundary::Exit => match self.paths.control.pop_function() {
                 Ok(caller) => self.paths.frontier.replace_paths(caller),
-                Err(_) => self.mark_control_stack_incomplete(),
+                Err(_) => self.mark_incomplete(),
             },
         }
     }

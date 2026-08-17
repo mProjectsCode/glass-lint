@@ -117,7 +117,7 @@ impl LoopFixedPoint {
     /// completing.
     fn fail(&mut self, projector: &mut ObjectFlowProjector<'_, '_, '_>) {
         self.complete = false;
-        projector.mark_control_stack_incomplete();
+        projector.mark_incomplete();
     }
 
     /// Drive the fixed point until the replay frontier converges or the bounds
