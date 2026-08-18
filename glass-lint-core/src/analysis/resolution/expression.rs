@@ -1,5 +1,7 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
+use std::sync::Arc;
+
 use glass_lint_datastructures::SymbolPath;
 use smol_str::ToSmolStr;
 
@@ -20,7 +22,7 @@ struct ResolutionSeed {
 }
 
 enum ResolutionStart {
-    Cached(ResolvedValue),
+    Cached(Arc<ResolvedValue>),
     Cycle,
     Active(ResolutionGuard),
 }
@@ -30,7 +32,11 @@ struct ResolutionGuard {
 }
 
 impl ResolutionGuard {
-    fn commit(self, cache: &mut super::ResolverCache, value: ResolvedValue) -> ResolvedValue {
+    fn commit(
+        self,
+        cache: &mut super::ResolverCache,
+        value: Arc<ResolvedValue>,
+    ) -> Arc<ResolvedValue> {
         cache
             .resolved_values
             .insert(self.key.clone(), value.clone());
@@ -45,7 +51,7 @@ impl ResolutionSeed {
         final_id: ValueId,
         call: SymbolCallProvenance,
         module_member: Option<SymbolMemberProvenance>,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         ResolvedValue::with_provenance(
             final_id,
             self.provenance.with_call_identity(call, module_member),
@@ -57,14 +63,14 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_string_literal(
         &mut self,
         value: &swc_ecma_ast::Str,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         self.intern_static_string(value.value.to_string_lossy().to_string())
     }
 
     pub(in crate::analysis) fn resolve_template(
         &mut self,
         template: &swc_ecma_ast::Tpl,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         self.intern_evaluated(template)
     }
 
@@ -73,7 +79,7 @@ impl Resolver<'_> {
     fn intern_evaluated<'a>(
         &mut self,
         node: impl Into<syntax_constant::EvalNode<'a>>,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         let id = self.intern_const_value(syntax_constant::evaluate(node, &self.scopes), None);
         ResolvedValue::local(id)
     }
@@ -130,7 +136,7 @@ impl Resolver<'_> {
 
     /// Resolve an identifier while preserving its position-sensitive
     /// provenance and cached arena identity.
-    pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> ResolvedValue {
+    pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> Arc<ResolvedValue> {
         let key = Self::ident_key(ident);
         self.resolve_seed(&key, ident.span, |resolver| {
             let seed = resolver.scopes.ident_value_seed(ident);
@@ -191,17 +197,20 @@ impl Resolver<'_> {
 
     /// Resolve a member expression while preserving its position-sensitive
     /// provenance and cached arena identity.
-    pub(in crate::analysis) fn resolve_member(&mut self, member: &MemberExpr) -> ResolvedValue {
+    pub(in crate::analysis) fn resolve_member(
+        &mut self,
+        member: &MemberExpr,
+    ) -> Arc<ResolvedValue> {
         let key = Self::member_key(member);
         self.resolve_seed(&key, member.span, |resolver| {
             let seed = resolver.scopes.member_value_seed(member);
-            let syntactic_chain = seed.syntactic_chain.clone();
+            let syntactic_chain = seed
+                .syntactic_chain
+                .as_ref()
+                .and_then(|path| resolver.name_path(path));
             // Prefer the alias-expanded path. Falling back to a rooted member keeps
             // direct global/`this` access available when no local alias is present.
-            let rooted_chain = seed
-                .rooted_chain
-                .clone()
-                .and_then(|path| resolver.scopes.symbol_path(&path));
+            let rooted_chain = seed.rooted_chain;
             let module_member = seed.module_member;
             let scoped_call = match &module_member {
                 Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
@@ -213,12 +222,7 @@ impl Resolver<'_> {
                 None => SymbolCallProvenance::Local,
             };
             let id = resolver.intern_call_value(&scoped_call, rooted_chain.as_ref(), seed.binding);
-            let returned_member = seed.returned_member.and_then(|(source, member)| {
-                Some((
-                    resolver.scopes.symbol_path(&source)?,
-                    resolver.scopes.symbol_path(&member)?,
-                ))
-            });
+            let returned_member = seed.returned_member;
             ResolutionSeed {
                 provisional_id: id,
                 provenance: ResolutionProvenance::from_parts(
@@ -233,7 +237,7 @@ impl Resolver<'_> {
         })
     }
 
-    pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> ResolvedValue {
+    pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> Arc<ResolvedValue> {
         let Some(expr) = unwrap_transparent_expr(expr) else {
             return Self::unknown();
         };
@@ -272,7 +276,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_binary(
         &mut self,
         binary: &swc_ecma_ast::BinExpr,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         self.intern_evaluated(binary)
     }
 
@@ -281,7 +285,7 @@ impl Resolver<'_> {
         key: &ResolutionKey,
         span: swc_common::Span,
         build: F,
-    ) -> ResolvedValue
+    ) -> Arc<ResolvedValue>
     where
         F: FnOnce(&mut Self) -> ResolutionSeed,
     {
@@ -306,7 +310,11 @@ impl Resolver<'_> {
         ResolutionStart::Active(ResolutionGuard { key: key.clone() })
     }
 
-    fn finalize_seed(&mut self, seed: ResolutionSeed, span: swc_common::Span) -> ResolvedValue {
+    fn finalize_seed(
+        &mut self,
+        seed: ResolutionSeed,
+        span: swc_common::Span,
+    ) -> Arc<ResolvedValue> {
         let call = if seed.provisional_id == ValueId::UNKNOWN
             && !matches!(seed.provenance.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()

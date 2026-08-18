@@ -1,13 +1,15 @@
-use glass_lint_datastructures::{NamePath, SymbolPath};
+use std::sync::Arc;
+
+use glass_lint_datastructures::{ByteRange, NamePath};
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 
 use crate::analysis::{
     facts::{
-        Callee, Expr, FactBuilder, InstanceCallable, MemberExpr, OptChainBase,
-        SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
+        Callee, Expr, FactBuilder, InstanceCallable, MemberExpr, OptChainBase, ValueId, VisitWith,
     },
     model::{fact::ClassIdentity, scope::FunctionId},
+    resolution::ResolvedValue,
     syntax::{
         effective_callee_expr, is_bind_property, literal_member_property_name,
         unwrap_transparent_expr,
@@ -16,25 +18,19 @@ use crate::analysis::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::analysis) struct ResolvedCallee {
-    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) resolved: Arc<ResolvedValue>,
     pub(in crate::analysis) receiver: Option<ValueId>,
-    pub(in crate::analysis) callee_span: glass_lint_datastructures::ByteRange,
+    pub(in crate::analysis) callee_span: ByteRange,
     pub(in crate::analysis) callee_name: Option<SmolStr>,
-    pub(in crate::analysis) call_provenance: SymbolCallProvenance,
     pub(in crate::analysis) syntactic_path: Option<NamePath>,
-    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
-    pub(in crate::analysis) module_member: Option<SymbolMemberProvenance>,
-    pub(in crate::analysis) returned_member: Option<(SymbolPath, SymbolPath)>,
-    pub(in crate::analysis) bound_arguments:
-        Option<Vec<Option<crate::analysis::scope::BoundArgument>>>,
     pub(in crate::analysis) instance_class: Option<ClassIdentity>,
     pub(in crate::analysis) target_function: Option<FunctionId>,
 }
 
 impl ResolvedCallee {
     pub(super) fn from_resolved(
-        resolved: &crate::analysis::resolution::ResolvedValue,
-        callee_span: glass_lint_datastructures::ByteRange,
+        resolved: Arc<ResolvedValue>,
+        callee_span: ByteRange,
         target_function: Option<FunctionId>,
         receiver: Option<ValueId>,
         callee_name: Option<SmolStr>,
@@ -42,16 +38,11 @@ impl ResolvedCallee {
         instance_class: Option<ClassIdentity>,
     ) -> Self {
         Self {
-            value: resolved.id,
+            resolved,
             receiver,
             callee_span,
             callee_name,
-            call_provenance: resolved.provenance.call.clone(),
             syntactic_path,
-            rooted_chain: resolved.provenance.rooted_chain.clone(),
-            module_member: resolved.provenance.module_member.clone(),
-            returned_member: resolved.provenance.returned_member.clone(),
-            bound_arguments: resolved.provenance.bound_arguments.clone(),
             instance_class,
             target_function,
         }
@@ -76,7 +67,7 @@ impl FactBuilder<'_, '_> {
                 let callee_name = Some(ident.sym.to_smolstr());
                 let target_function = self.resolver.function_id_for_expr(effective);
                 Some(ResolvedCallee::from_resolved(
-                    &resolved,
+                    resolved,
                     callee_span,
                     target_function,
                     None,
@@ -101,7 +92,7 @@ impl FactBuilder<'_, '_> {
         let callee_span = self.byte_range(effective.span())?;
         let target_function = self.resolver.function_id_for_expr(effective);
         Some(ResolvedCallee::from_resolved(
-            &resolved,
+            resolved,
             callee_span,
             target_function,
             None,
@@ -116,10 +107,7 @@ impl FactBuilder<'_, '_> {
         member: &MemberExpr,
     ) -> Option<ResolvedCallee> {
         let resolved = self.resolver.resolve_member(member);
-        let syntactic_path = self
-            .resolver
-            .syntactic_member_chain(member)
-            .and_then(|chain| self.name_path(&chain));
+        let syntactic_path = self.resolver.syntactic_member_chain(member);
         let receiver_origin = self.instance_origin_for_expr(&member.obj);
         let instance_class = receiver_origin.or_else(|| {
             self.resolver
@@ -137,7 +125,7 @@ impl FactBuilder<'_, '_> {
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
         Some(ResolvedCallee::from_resolved(
-            &resolved,
+            resolved,
             callee_span,
             target_function,
             receiver,
@@ -168,6 +156,7 @@ impl FactBuilder<'_, '_> {
                 .provenance
                 .rooted_chain
                 .as_ref()
+                .and_then(|chain| self.resolver.symbol_path(chain))
                 .is_some_and(|chain| chain.eq_chain("this"));
         if is_this { self.current_class() } else { None }
     }

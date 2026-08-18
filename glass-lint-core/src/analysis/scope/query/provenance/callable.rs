@@ -141,6 +141,7 @@ impl FrozenScopeGraph {
                 None
             } else {
                 self.callable_member_chain_from_resolution(resolution)
+                    .and_then(|path| self.name_path(&path))
             },
             binding,
             constant,

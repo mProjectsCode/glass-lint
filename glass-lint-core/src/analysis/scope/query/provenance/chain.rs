@@ -1,4 +1,5 @@
-use glass_lint_datastructures::{PathView, SymbolPath};
+use glass_lint_datastructures::{NamePath, PathView, SymbolPath};
+use smol_str::SmolStr;
 
 use crate::analysis::{
     scope::{
@@ -12,30 +13,38 @@ use crate::analysis::{
 impl FrozenScopeGraph {
     pub(in crate::analysis) fn global_callable_member_at(
         &self,
-        chain: &SymbolPath,
+        chain: &NamePath,
         span: Span,
-    ) -> Option<SymbolPath> {
+    ) -> Option<SmolStr> {
         let view = chain.as_view();
         if view.len() != 2 {
             return None;
         }
-        let root = view.first_segment()?;
-        let member = view.last_segment()?;
-        if !self.is_global_member(root, member) || !self.unshadowed_global_at(root, span) {
+        let root = *view.first_segment()?;
+        let member = *view.last_segment()?;
+        let root_name = self.resolve_name_id(root)?;
+        let member_name = self.resolve_name_id(member)?;
+        if !self.is_global_member(root_name.as_str(), member_name.as_str())
+            || !self.unshadowed_global_at(root_name.as_str(), span)
+        {
             return None;
         }
 
-        let receiver = self.binding_key_for_name(root, span)?;
-        let path = self.name_path(&SymbolPath::from_chain(member))?;
+        let receiver = self.binding_key_for_name(root_name.as_str(), span)?;
+        let path = NamePath::from_ids([member]);
         let written = self.property_was_written_at(&receiver, &path, span);
         if written {
             return None;
         }
-        if self.rooted_property_was_mutated_at(&root.as_str().into(), Some(member), span) {
+        if self.rooted_property_ids_were_mutated_at(
+            PathView::new(std::slice::from_ref(&root)),
+            Some(member),
+            span,
+        ) {
             return None;
         }
 
-        Some(member.as_str().into())
+        Some(member_name)
     }
 
     pub(in crate::analysis) fn resolve_rooted_member_chain(

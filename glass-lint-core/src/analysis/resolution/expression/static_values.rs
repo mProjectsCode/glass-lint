@@ -25,7 +25,7 @@ impl Resolver<'_> {
         }
     }
 
-    pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
+    pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<NamePath> {
         let expr = unwrap_transparent_expr(expr)?;
         let terminal = effective_terminal_expr(expr)?;
         match terminal {
@@ -34,31 +34,39 @@ impl Resolver<'_> {
                     .resolve_ident(ident)
                     .provenance
                     .rooted_chain
-                    .clone()
+                    .as_ref()
+                    .map(|path| self.canonical_rooted_path(path))
                     .or_else(|| {
                         ident
                             .span
                             .is_dummy()
-                            .then(|| SymbolPath::from(ident.sym.as_ref()))
+                            .then(|| self.name_path(&SymbolPath::from(ident.sym.as_ref())))
+                            .flatten()
                     }),
                 _ => None,
             },
-            TransparentTerminal::Member(member) => {
-                self.resolve_member(member).provenance.rooted_chain.clone()
-            }
+            TransparentTerminal::Member(member) => self
+                .resolve_member(member)
+                .provenance
+                .rooted_chain
+                .as_ref()
+                .map(|path| self.canonical_rooted_path(path)),
         }
     }
 
     pub(in crate::analysis) fn syntactic_member_chain(
         &self,
         member: &MemberExpr,
-    ) -> Option<SymbolPath> {
+    ) -> Option<NamePath> {
         let key = Self::member_key(member);
         self.cache
             .resolved_values
             .get(&key)
             .and_then(|value| value.provenance.syntactic_chain.clone())
-            .or_else(|| crate::analysis::syntax::member_expression_chain(member))
+            .or_else(|| {
+                crate::analysis::syntax::member_expression_chain(member)
+                    .and_then(|path| self.name_path(&path))
+            })
     }
 
     pub(in crate::analysis) fn class_provenance(
@@ -73,19 +81,23 @@ impl Resolver<'_> {
         }
     }
 
-    pub(in crate::analysis) fn unknown() -> ResolvedValue {
+    pub(in crate::analysis) fn unknown() -> Arc<ResolvedValue> {
         Self::archive_unknown_with_reason(UnknownReason::Unresolved)
     }
 
     pub(in crate::analysis::resolution) fn archive_unknown_with_reason(
         reason: UnknownReason,
-    ) -> ResolvedValue {
-        let mut value = ResolvedValue::local(ValueId::UNKNOWN);
-        Arc::make_mut(&mut value.provenance).call = SymbolCallProvenance::Unknown(reason);
-        value
+    ) -> Arc<ResolvedValue> {
+        ResolvedValue::with_provenance(
+            ValueId::UNKNOWN,
+            super::ResolutionProvenance::with_call(SymbolCallProvenance::Unknown(reason)),
+        )
     }
 
-    pub(in crate::analysis::resolution) fn interned_value(&self, id: ValueId) -> ResolvedValue {
+    pub(in crate::analysis::resolution) fn interned_value(
+        &self,
+        id: ValueId,
+    ) -> Arc<ResolvedValue> {
         if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
             return Self::archive_unknown_with_reason(UnknownReason::BudgetExhausted {
                 limit: MAX_VALUES,
@@ -94,17 +106,20 @@ impl Resolver<'_> {
         ResolvedValue::local(id)
     }
 
-    pub(in crate::analysis) fn intern_static_string(&mut self, value: String) -> ResolvedValue {
+    pub(in crate::analysis) fn intern_static_string(
+        &mut self,
+        value: String,
+    ) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::StaticString(value));
         self.interned_value(id)
     }
 
-    pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
+    pub(in crate::analysis) fn static_number(&mut self, value: usize) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::StaticNumber(value));
         self.interned_value(id)
     }
 
-    pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
+    pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::StaticArray(values));
         self.interned_value(id)
     }
@@ -112,7 +127,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn static_object_shape(
         &mut self,
         object: crate::analysis::model::value::StaticObject,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::StaticObject(object));
         self.interned_value(id)
     }
@@ -120,17 +135,17 @@ impl Resolver<'_> {
     fn intern_object_id(
         &mut self,
         object: crate::analysis::model::value::ResolvedObjectId,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::Object(object));
         self.interned_value(id)
     }
 
-    pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
+    pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> Arc<ResolvedValue> {
         let id = self.values.intern_value(Value::RootedMember { path });
         self.interned_value(id)
     }
 
-    pub(in crate::analysis) fn fresh_object_value(&mut self) -> ResolvedValue {
+    pub(in crate::analysis) fn fresh_object_value(&mut self) -> Arc<ResolvedValue> {
         let Some(object) = self.values.allocate_object_id() else {
             return Self::unknown();
         };
@@ -140,7 +155,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn fresh_object_value_at(
         &mut self,
         span: swc_common::Span,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         let key = span.into();
         if let Some(value) = self.cache.fresh_values.get(&key).copied() {
             return ResolvedValue::local(value);

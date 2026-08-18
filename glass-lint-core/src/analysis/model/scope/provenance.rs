@@ -60,7 +60,7 @@ pub enum BoundArgument {
 #[derive(Debug, Clone)]
 pub struct IdentValueSeed {
     pub(in crate::analysis) call: SymbolCallProvenance,
-    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    pub(in crate::analysis) rooted_chain: Option<NamePath>,
     pub(in crate::analysis) binding: Option<BindingKey>,
     pub(in crate::analysis) constant: ConstValue,
     pub(in crate::analysis) bound_arguments: Option<Vec<Option<BoundArgument>>>,

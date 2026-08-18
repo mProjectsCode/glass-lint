@@ -78,8 +78,14 @@ impl FactBuilder<'_, '_> {
         let result = self.call_result(span);
         let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
-        let rooted_chain = self.rooted_path(resolved.rooted_chain.as_ref());
-        let returned_member = self.returned_path(resolved.returned_member.as_ref());
+        let rooted_chain = resolved
+            .resolved
+            .provenance
+            .rooted_chain
+            .as_ref()
+            .map(|path| self.rooted_name_path(path));
+        let returned_member =
+            Self::returned_path(resolved.resolved.provenance.returned_member.as_ref());
         let event = CallEvent::from_resolved(
             resolved,
             result,
@@ -98,7 +104,7 @@ impl FactBuilder<'_, '_> {
         args: &[ExprOrSpread],
     ) -> Vec<CallArgInfo> {
         let mut effective_args: Vec<CallArgInfo> = Vec::new();
-        if let Some(arguments) = resolved.bound_arguments.as_deref() {
+        if let Some(arguments) = resolved.resolved.provenance.bound_arguments.as_deref() {
             for argument in arguments {
                 effective_args.push(
                     argument

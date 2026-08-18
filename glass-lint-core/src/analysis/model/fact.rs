@@ -262,15 +262,15 @@ impl CallEvent {
         unwrap: Option<Box<CallUnwrap>>,
     ) -> Self {
         Self {
-            callee: resolved.value,
+            callee: resolved.resolved.id,
             receiver: resolved.receiver,
             result,
             callee_span: resolved.callee_span,
             callee_name,
-            call_provenance: resolved.call_provenance,
+            call_provenance: resolved.resolved.provenance.call.clone(),
             syntactic_path: resolved.syntactic_path,
             rooted_chain,
-            module_member: resolved.module_member,
+            module_member: resolved.resolved.provenance.module_member.clone(),
             returned_member,
             instance_class: resolved.instance_class,
             target_function: resolved.target_function,

@@ -4,6 +4,9 @@
 //! and modeled `.bind()` calls preserve callable identity, and CommonJS
 //! recognition requires an unshadowed global `require` binding.
 
+use std::sync::Arc;
+
+use glass_lint_datastructures::NamePath;
 use smol_str::ToSmolStr;
 
 use crate::analysis::{
@@ -21,7 +24,7 @@ impl Resolver<'_> {
     pub(super) fn call_provenance_at(
         &self,
         id: ValueId,
-        rooted: Option<&glass_lint_datastructures::SymbolPath>,
+        rooted: Option<&NamePath>,
         span: swc_common::Span,
     ) -> SymbolCallProvenance {
         let provenance = self.call_provenance_for_value(id);
@@ -33,9 +36,7 @@ impl Resolver<'_> {
         }
         rooted
             .and_then(|chain| self.scopes.global_callable_member_at(chain, span))
-            .map_or(provenance, |name| SymbolCallProvenance::Global {
-                name: name.to_smolstr(),
-            })
+            .map_or(provenance, |name| SymbolCallProvenance::Global { name })
     }
 
     /// Check that an identifier is the unshadowed CommonJS/global loader name.
@@ -51,7 +52,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_call_expression(
         &mut self,
         call: &swc_ecma_ast::CallExpr,
-    ) -> ResolvedValue {
+    ) -> Arc<ResolvedValue> {
         if let Some(request) = recognize_dynamic_import_call(call, self) {
             let import_call = SymbolCallProvenance::ModuleExport {
                 module: request.module().into(),
@@ -87,7 +88,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn intern_call_value(
         &mut self,
         call: &SymbolCallProvenance,
-        rooted: Option<&glass_lint_datastructures::SymbolPath>,
+        rooted: Option<&NamePath>,
         binding: Option<crate::analysis::model::scope::BindingKey>,
     ) -> ValueId {
         let value = match call {

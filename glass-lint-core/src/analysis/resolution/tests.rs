@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use glass_lint_datastructures::{NameTable, SymbolPath};
 use swc_ecma_ast::Stmt;
@@ -75,16 +75,27 @@ fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
 
 #[test]
 fn provenance_identity_replacement_preserves_resolution_details() {
+    let mut names = NameTable::default();
+    for name in ["source", "root", "returned", "member", "alias"] {
+        names.intern(name).unwrap();
+    }
+    let rooted = names.lookup_path(&SymbolPath::from("source.root")).unwrap();
+    let returned_source = names
+        .lookup_path(&SymbolPath::from("returned.source"))
+        .unwrap();
+    let returned_member = names
+        .lookup_path(&SymbolPath::from("returned.member"))
+        .unwrap();
+    let syntactic = names
+        .lookup_path(&SymbolPath::from("source.alias"))
+        .unwrap();
     let provenance = ResolutionProvenance::from_parts(
-        Some(SymbolPath::from("source.root")),
+        Some(rooted.clone()),
         SymbolCallProvenance::Local,
         None,
-        Some((
-            SymbolPath::from("returned.source"),
-            SymbolPath::from("returned.member"),
-        )),
+        Some((returned_source.clone(), returned_member.clone())),
         None,
-        Some(SymbolPath::from("source.alias")),
+        Some(syntactic.clone()),
     );
     let finalized = provenance.with_call_identity(
         SymbolCallProvenance::Global {
@@ -96,21 +107,12 @@ fn provenance_identity_replacement_preserves_resolution_details() {
         }),
     );
 
-    assert_eq!(
-        finalized.rooted_chain,
-        Some(SymbolPath::from("source.root"))
-    );
+    assert_eq!(finalized.rooted_chain, Some(rooted));
     assert_eq!(
         finalized.returned_member,
-        Some((
-            SymbolPath::from("returned.source"),
-            SymbolPath::from("returned.member"),
-        ))
+        Some((returned_source, returned_member,))
     );
-    assert_eq!(
-        finalized.syntactic_chain,
-        Some(SymbolPath::from("source.alias"))
-    );
+    assert_eq!(finalized.syntactic_chain, Some(syntactic));
     assert!(finalized.bound_arguments.is_none());
     assert!(matches!(
         finalized.call,
@@ -121,6 +123,38 @@ fn provenance_identity_replacement_preserves_resolution_details() {
         Some(SymbolMemberProvenance::ModuleNamespace { ref module, ref member })
             if module == "pkg" && member == "fetch"
     ));
+}
+
+#[test]
+fn canonical_rooted_path_strips_this_in_the_name_path_domain() {
+    let mut names = NameTable::default();
+    for name in ["this", "app", "fetch"] {
+        names.intern(name).unwrap();
+    }
+    let scopes = ScopeGraph::create_for_test(names.clone()).freeze();
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
+    let rooted = names
+        .lookup_path(&SymbolPath::from("this.app.fetch"))
+        .unwrap();
+    let expected = names.lookup_path(&SymbolPath::from("app.fetch")).unwrap();
+
+    assert_eq!(resolver.canonical_rooted_path(&rooted), expected);
+    assert_eq!(resolver.canonical_rooted_path(&expected), expected);
+}
+
+#[test]
+fn resolution_cache_shares_the_complete_resolved_value() {
+    let source = "fetch;";
+    let parsed = crate::parse_test_source(source, "resolved-cache.js").unwrap();
+    let ident = last_named_identifier(&parsed.program, "fetch");
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::collect(&parsed.program, source, &budget);
+
+    let first = resolver.resolve_ident(&ident);
+    let second = resolver.resolve_ident(&ident);
+
+    assert!(Arc::ptr_eq(&first, &second));
 }
 
 #[test]

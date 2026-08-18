@@ -1,6 +1,6 @@
 //! Argument projections used by call facts and interprocedural flow.
 
-use glass_lint_datastructures::SymbolPath;
+use glass_lint_datastructures::NamePath;
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
@@ -207,7 +207,7 @@ impl FactBuilder<'_, '_> {
 
     /// Resolve the rooted identity of a call target without treating a raw
     /// local name as stronger provenance than the resolver can prove.
-    pub(super) fn resolve_target_chain(&mut self, target: &Expr) -> Option<SymbolPath> {
+    pub(super) fn resolve_target_chain(&mut self, target: &Expr) -> Option<NamePath> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(target);
         match effective {
@@ -216,14 +216,16 @@ impl FactBuilder<'_, '_> {
                 .resolve_ident(ident)
                 .provenance
                 .rooted_chain
-                .clone()
-                .or_else(|| Some(SymbolPath::from(ident.sym.as_ref()))),
+                .as_ref()
+                .map(|path| self.resolver.canonical_rooted_path(path))
+                .or_else(|| self.resolver.name_path(&ident.sym.as_ref().into())),
             Expr::Member(member) => self
                 .resolver
                 .resolve_member(member)
                 .provenance
                 .rooted_chain
-                .clone(),
+                .as_ref()
+                .map(|path| self.resolver.canonical_rooted_path(path)),
             _ => self.resolver.rooted_expr_chain(effective),
         }
     }

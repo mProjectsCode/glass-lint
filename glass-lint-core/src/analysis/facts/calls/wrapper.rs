@@ -60,8 +60,7 @@ impl FactBuilder<'_, '_> {
         let Some(resolved) = self.resolve_call_callee(target) else {
             return;
         };
-        let chain = chain.unwrap_or_default().without_this_prefix();
-        let chain_path = self.name_path(&chain);
+        let chain_path = chain;
         let unwrap = Some(Box::new(CallUnwrap {
             chain_path,
             effective_args,

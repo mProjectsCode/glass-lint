@@ -21,7 +21,7 @@ impl FactBuilder<'_, '_> {
             .provenance
             .rooted_chain
             .as_ref()
-            .and_then(|path| self.name_path(path));
+            .map(|path| self.rooted_name_path(path));
         let callee_span = effective_callee.span();
 
         let (callee_name, provenance) = match effective_callee {

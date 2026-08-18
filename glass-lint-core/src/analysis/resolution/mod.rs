@@ -43,31 +43,31 @@ use crate::analysis::{
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolutionProvenance {
     /// Canonical rooted spelling, when the value can be followed safely.
-    pub(super) rooted_chain: Option<SymbolPath>,
+    pub(super) rooted_chain: Option<NamePath>,
     /// Callable provenance used by global and module-export call matchers.
     pub(super) call: SymbolCallProvenance,
     /// Namespace provenance for member matchers, retained independently from
     /// `call` because a namespace member can also be read without being called.
     pub(super) module_member: Option<SymbolMemberProvenance>,
     /// Provenance for a member read from a function or constructor result.
-    pub(super) returned_member: Option<(SymbolPath, SymbolPath)>,
+    pub(super) returned_member: Option<(NamePath, NamePath)>,
     /// Arguments captured by a modeled callable value such as `bind`.
     pub(super) bound_arguments: Option<Vec<Option<BoundArgument>>>,
     /// The source spelling before aliases are expanded.
-    pub(super) syntactic_chain: Option<SymbolPath>,
+    pub(super) syntactic_chain: Option<NamePath>,
 }
 
 impl ResolutionProvenance {
     fn from_parts(
-        rooted_chain: Option<SymbolPath>,
+        rooted_chain: Option<NamePath>,
         call: SymbolCallProvenance,
         module_member: Option<SymbolMemberProvenance>,
-        returned_member: Option<(SymbolPath, SymbolPath)>,
+        returned_member: Option<(NamePath, NamePath)>,
         bound_arguments: Option<Vec<Option<BoundArgument>>>,
-        syntactic_chain: Option<SymbolPath>,
+        syntactic_chain: Option<NamePath>,
     ) -> Self {
         Self {
             rooted_chain,
@@ -118,20 +118,17 @@ impl ResolutionProvenance {
 /// provenances (callable, member, returned-member, bound-arguments), and
 /// both the syntactic and rooted chain spellings. Fields default to absent
 /// or local so a new resolution path cannot accidentally inherit provenance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolvedValue {
     /// The interned abstract value. `UNKNOWN` is reserved for expressions the
     /// resolver cannot describe precisely enough to match.
     pub(super) id: ValueId,
-    pub(super) provenance: Arc<ResolutionProvenance>,
+    pub(super) provenance: ResolutionProvenance,
 }
 
 impl ResolvedValue {
-    fn with_provenance(id: ValueId, provenance: ResolutionProvenance) -> Self {
-        Self {
-            id,
-            provenance: Arc::new(provenance),
-        }
+    fn with_provenance(id: ValueId, provenance: ResolutionProvenance) -> Arc<Self> {
+        Arc::new(Self { id, provenance })
     }
 
     /// Build a value with no callable or member provenance.
@@ -139,7 +136,7 @@ impl ResolvedValue {
     /// Unknown, static, and freshly allocated object values all use this
     /// representation. Keeping the default fields here prevents a new
     /// resolution path from accidentally inheriting provenance.
-    pub(super) fn local(id: ValueId) -> Self {
+    pub(super) fn local(id: ValueId) -> Arc<Self> {
         Self::with_provenance(id, ResolutionProvenance::local())
     }
 }
@@ -164,7 +161,7 @@ struct ResolverCache {
     fresh_values: HashMap<ParserSpanKey, ValueId>,
     /// Cached expression resolutions keyed by source position. Resolution
     /// is position-sensitive and idempotent.
-    resolved_values: HashMap<ResolutionKey, ResolvedValue>,
+    resolved_values: HashMap<ResolutionKey, Arc<ResolvedValue>>,
     /// Active lookups used to break recursive resolution cycles.
     resolving: HashSet<ResolutionKey>,
 }
@@ -230,14 +227,12 @@ impl Resolver<'_> {
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.
-    pub(super) fn rooted_value(&self, chain: &SymbolPath) -> Value {
+    pub(super) fn rooted_value(&self, chain: &NamePath) -> Value {
         // `this.` is syntax context rather than part of the provider-rooted
         // identity. Canonicalize it before interning so aliases of
         // `this.app.foo` share the same frozen value as `app.foo`.
-        let chain = chain.without_this_prefix();
-        self.names
-            .lookup_path(&chain)
-            .map_or(Value::Unknown, |path| Value::RootedMember { path })
+        let chain = self.canonical_rooted_path(chain);
+        Value::RootedMember { path: chain }
     }
 
     #[cfg(test)]
@@ -318,6 +313,21 @@ impl Resolver<'_> {
 
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.names.lookup_path(path)
+    }
+
+    pub(super) fn symbol_path(&self, path: &NamePath) -> Option<SymbolPath> {
+        self.names.resolve_path(path)
+    }
+
+    pub(super) fn canonical_rooted_path(&self, path: &NamePath) -> NamePath {
+        let Some(this) = self.names.lookup("this") else {
+            return path.clone();
+        };
+        if path.first_segment() == Some(&this) {
+            path.without_first_segment().unwrap_or_default()
+        } else {
+            path.clone()
+        }
     }
 
     pub(super) fn name_table_exhausted(&self) -> bool {

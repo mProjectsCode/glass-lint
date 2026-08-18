@@ -122,11 +122,14 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         path.and_then(|path| self.name_path(&path.without_this_prefix()))
     }
 
+    pub(super) fn rooted_name_path(&self, path: &NamePath) -> NamePath {
+        self.resolver.canonical_rooted_path(path)
+    }
+
     pub(super) fn returned_path(
-        &self,
-        paths: Option<&(SymbolPath, SymbolPath)>,
+        paths: Option<&(NamePath, NamePath)>,
     ) -> Option<(NamePath, NamePath)> {
-        paths.and_then(|(source, member)| Some((self.name_path(source)?, self.name_path(member)?)))
+        paths.cloned()
     }
 
     #[cfg(test)]
