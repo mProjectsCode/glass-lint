@@ -8,9 +8,9 @@
 //!
 //! Identity maps use [`OriginMap`] with checkpoint/rollback so that branching
 //! only pays for entries actually modified inside a branch, not for every live
-//! entry. [`snapshot`](OriginMap::snapshot) (a full clone into an opaque
-//! [`OriginSnapshot`]) is used only at join points where the state of one
-//! branch must be intersected with another.
+//! entry. Ordinary two-way joins snapshot only values changed since their
+//! checkpoint; full opaque snapshots are reserved for exception paths that
+//! must restore a complete prior state.
 
 use swc_common::Spanned;
 use swc_ecma_ast::{
@@ -151,22 +151,31 @@ impl FactBuilder<'_, '_> {
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
                 let handler_origins = self.provenance.snapshot_instances(self.resolver.budget());
-                self.provenance
-                    .restore_instance_snapshot(try_origins, &mut checkpoint);
+                self.provenance.restore_instance_snapshot(
+                    try_origins,
+                    &mut checkpoint,
+                    self.resolver.budget(),
+                );
                 self.provenance
                     .retain_common_instance(&handler_origins, self.resolver.budget());
             }
         } else if stmt.finalizer.is_some() {
-            self.provenance
-                .restore_instance_snapshot(try_origins, &mut checkpoint);
+            self.provenance.restore_instance_snapshot(
+                try_origins,
+                &mut checkpoint,
+                self.resolver.budget(),
+            );
             self.provenance
                 .retain_common_instance(&incoming_snapshot, self.resolver.budget());
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
-            self.provenance
-                .restore_instance_snapshot(incoming_snapshot, &mut checkpoint);
+            self.provenance.restore_instance_snapshot(
+                incoming_snapshot,
+                &mut checkpoint,
+                self.resolver.budget(),
+            );
         }
         self.provenance.finish_control_region(&mut checkpoint);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
@@ -198,7 +207,9 @@ impl FactBuilder<'_, '_> {
         visit_test(self);
         self.emit_control(then_span, ControlKind::BranchThen, region);
         visit_then(self);
-        let then = self.provenance.branch_provenance(self.resolver.budget());
+        let then = self
+            .provenance
+            .branch_provenance(&checkpoint, self.resolver.budget());
         self.provenance.restore_branch_entry(&checkpoint);
         if let Some(else_span) = else_span {
             self.emit_control(else_span, ControlKind::BranchElse, region);

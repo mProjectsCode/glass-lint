@@ -1,4 +1,4 @@
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::analysis::{SemanticBudget, model::value::ValueId};
 
@@ -29,6 +29,16 @@ pub(in crate::analysis) struct OriginSnapshot<V> {
     map: HashMap<ValueId, V>,
 }
 
+/// Values changed by one branch relative to its owning checkpoint.
+///
+/// Unlike [`OriginSnapshot`], this does not duplicate entries that remain
+/// untouched in both alternatives. Those entries are already known to be
+/// common at the join because rollback restores the checkpoint state before
+/// the second alternative is visited.
+pub(in crate::analysis) struct OriginBranchSnapshot<V> {
+    changes: HashMap<ValueId, Option<V>>,
+}
+
 /// Single-use transaction token for one origin-map branch.
 #[derive(Debug)]
 pub(in crate::analysis) struct OriginCheckpoint {
@@ -38,6 +48,7 @@ pub(in crate::analysis) struct OriginCheckpoint {
 
 enum LogEntry<V> {
     Upsert { key: ValueId, had_old: Option<V> },
+    Replace { old: HashMap<ValueId, V> },
 }
 
 impl<V: Clone> OriginMap<V> {
@@ -73,6 +84,7 @@ impl<V: Clone> OriginMap<V> {
                         self.map.remove(&key);
                     }
                 },
+                LogEntry::Replace { old } => self.map = old,
             }
         }
     }
@@ -113,6 +125,73 @@ impl<V: Clone> OriginMap<V> {
         }
     }
 
+    /// Capture only values changed since `checkpoint` for a two-way branch.
+    pub fn branch_snapshot(
+        &self,
+        checkpoint: &OriginCheckpoint,
+        budget: &SemanticBudget,
+    ) -> OriginBranchSnapshot<V>
+    where
+        V: PartialEq,
+    {
+        debug_assert!(checkpoint.active);
+        debug_assert!(checkpoint.position <= self.log.len());
+        budget.try_charge();
+
+        let branch_log = &self.log[checkpoint.position..];
+        if branch_log
+            .iter()
+            .any(|entry| matches!(entry, LogEntry::Replace { .. }))
+        {
+            return OriginBranchSnapshot {
+                changes: self.changes_since(checkpoint),
+            };
+        }
+        let mut changes = HashMap::with_capacity(branch_log.len());
+        for entry in branch_log {
+            if let LogEntry::Upsert { key, .. } = entry {
+                changes
+                    .entry(*key)
+                    .or_insert_with(|| self.map.get(key).cloned());
+            }
+        }
+        OriginBranchSnapshot { changes }
+    }
+
+    fn changes_since(&self, checkpoint: &OriginCheckpoint) -> HashMap<ValueId, Option<V>>
+    where
+        V: PartialEq,
+    {
+        let branch_log = &self.log[checkpoint.position..];
+        let mut baseline = self.map.clone();
+        for entry in branch_log.iter().rev() {
+            match entry {
+                LogEntry::Upsert { key, had_old } => match had_old {
+                    Some(old) => {
+                        baseline.insert(*key, old.clone());
+                    }
+                    None => {
+                        baseline.remove(key);
+                    }
+                },
+                LogEntry::Replace { old } => baseline.clone_from(old),
+            }
+        }
+
+        let mut changes = HashMap::new();
+        for (key, value) in &self.map {
+            if baseline.get(key) != Some(value) {
+                changes.insert(*key, Some(value.clone()));
+            }
+        }
+        for key in baseline.keys() {
+            if !self.map.contains_key(key) {
+                changes.insert(*key, None);
+            }
+        }
+        changes
+    }
+
     /// Replace the full contents with `snapshot` and rebase its owning
     /// checkpoint at the new log position.
     ///
@@ -124,10 +203,15 @@ impl<V: Clone> OriginMap<V> {
         &mut self,
         snapshot: OriginSnapshot<V>,
         checkpoint: &mut OriginCheckpoint,
+        budget: &SemanticBudget,
     ) {
         debug_assert!(checkpoint.active);
-        self.map = snapshot.map;
-        self.log.clear();
+        self.restore(checkpoint);
+        let old = std::mem::replace(&mut self.map, snapshot.map);
+        if self.open_checkpoints > 1 {
+            budget.try_charge();
+            self.log.push(LogEntry::Replace { old });
+        }
         checkpoint.position = self.log.len();
     }
 
@@ -161,12 +245,69 @@ impl<V: Clone + PartialEq> OriginMap<V> {
     /// `other` for the same key, removing every other entry. This is the
     /// branch-intersection step at control-flow joins.
     pub fn retain_common(&mut self, other: &OriginSnapshot<V>, budget: &SemanticBudget) {
-        let to_remove: Vec<ValueId> = self
+        let log_changes = self.open_checkpoints > 0;
+        for (key, old) in self
             .map
+            .extract_if(|value, origin| other.map.get(value) != Some(origin))
+        {
+            if log_changes {
+                budget.try_charge();
+                self.log.push(LogEntry::Upsert {
+                    key,
+                    had_old: Some(old),
+                });
+            }
+        }
+    }
+
+    /// Intersect two branch alternatives using only the keys changed relative
+    /// to their shared checkpoint.
+    pub fn retain_common_branch(
+        &mut self,
+        other: &OriginBranchSnapshot<V>,
+        checkpoint: &OriginCheckpoint,
+        budget: &SemanticBudget,
+    ) {
+        debug_assert!(checkpoint.active);
+        debug_assert!(checkpoint.position <= self.log.len());
+
+        let branch_log = &self.log[checkpoint.position..];
+        let mut to_remove = Vec::with_capacity(other.changes.len().min(self.map.len()));
+        for (key, then_value) in &other.changes {
+            if self.map.get(key) != then_value.as_ref() {
+                to_remove.push(*key);
+            }
+        }
+
+        if branch_log
             .iter()
-            .filter(|(value, origin)| other.map.get(*value) != Some(*origin))
-            .map(|(value, _)| *value)
-            .collect();
+            .any(|entry| matches!(entry, LogEntry::Replace { .. }))
+        {
+            let else_changes = self.changes_since(checkpoint);
+            to_remove.extend(
+                else_changes
+                    .keys()
+                    .filter(|key| !other.changes.contains_key(*key))
+                    .copied(),
+            );
+            for key in to_remove {
+                self.remove(key, budget);
+            }
+            return;
+        }
+
+        let mut visited_else = HashSet::with_capacity(branch_log.len());
+        for entry in branch_log {
+            if let LogEntry::Upsert { key, had_old } = entry {
+                if other.changes.contains_key(key) || !visited_else.insert(*key) {
+                    continue;
+                }
+                if self.map.get(key) != had_old.as_ref() {
+                    to_remove.push(*key);
+                }
+            }
+        }
+
         for key in to_remove {
             self.remove(key, budget);
         }

@@ -196,13 +196,17 @@ impl FactBuilder<'_, '_> {
 
     /// Resolve positional arguments.
     pub(super) fn args_info(&mut self, args: &[ExprOrSpread]) -> Vec<CallArgInfo> {
-        args.iter()
-            .map(|arg| {
-                let mut info = self.arg_info(&arg.expr);
-                info.spread = arg.spread.is_some();
-                info
-            })
-            .collect()
+        let mut infos = Vec::with_capacity(args.len());
+        self.append_args_info(args, &mut infos);
+        infos
+    }
+
+    pub(super) fn append_args_info(&mut self, args: &[ExprOrSpread], infos: &mut Vec<CallArgInfo>) {
+        for arg in args {
+            let mut info = self.arg_info(&arg.expr);
+            info.spread = arg.spread.is_some();
+            infos.push(info);
+        }
     }
 
     /// Resolve the rooted identity of a call target without treating a raw

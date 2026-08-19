@@ -2,7 +2,10 @@ use glass_lint_datastructures::ByteRange;
 
 use crate::analysis::{
     SemanticBudget,
-    facts::{OriginCheckpoint, OriginMap, OriginSnapshot, instance::InstanceCallable},
+    facts::{
+        OriginBranchSnapshot, OriginCheckpoint, OriginMap, OriginSnapshot,
+        instance::InstanceCallable,
+    },
     model::{fact::ClassIdentity, value::ValueId},
 };
 
@@ -24,8 +27,14 @@ pub(in crate::analysis::facts) struct ProvenanceCheckpoint {
 }
 
 pub(in crate::analysis::facts) struct BranchProvenance {
-    instances: InstanceProvenanceSnapshot,
-    classes: OriginSnapshot<ClassIdentity>,
+    instances: InstanceBranchProvenance,
+    classes: OriginBranchSnapshot<ClassIdentity>,
+}
+
+pub(in crate::analysis::facts) struct InstanceBranchProvenance {
+    origins: OriginBranchSnapshot<ClassIdentity>,
+    callables: OriginBranchSnapshot<InstanceCallable>,
+    static_strings: OriginBranchSnapshot<ByteRange>,
 }
 
 pub(in crate::analysis::facts) struct InstanceProvenanceSnapshot {
@@ -107,20 +116,22 @@ impl OriginChannels {
         }
     }
 
-    pub(in crate::analysis::facts) fn snapshot_classes(
-        &self,
-        budget: &SemanticBudget,
-    ) -> OriginSnapshot<ClassIdentity> {
-        self.classes.snapshot(budget)
-    }
-
     pub(in crate::analysis::facts) fn branch_provenance(
         &self,
+        checkpoint: &ProvenanceCheckpoint,
         budget: &SemanticBudget,
     ) -> BranchProvenance {
         BranchProvenance {
-            instances: self.snapshot_instances(budget),
-            classes: self.snapshot_classes(budget),
+            instances: InstanceBranchProvenance {
+                origins: self.instances.branch_snapshot(&checkpoint.instance, budget),
+                callables: self
+                    .instance_callables
+                    .branch_snapshot(&checkpoint.callable, budget),
+                static_strings: self
+                    .static_string_origins
+                    .branch_snapshot(&checkpoint.static_string, budget),
+            },
+            classes: self.classes.branch_snapshot(&checkpoint.class, budget),
         }
     }
 
@@ -128,13 +139,20 @@ impl OriginChannels {
         &mut self,
         snapshot: InstanceProvenanceSnapshot,
         checkpoint: &mut ProvenanceCheckpoint,
+        budget: &SemanticBudget,
     ) {
         self.instances
-            .restore_snapshot(snapshot.origins, &mut checkpoint.instance);
-        self.instance_callables
-            .restore_snapshot(snapshot.callables, &mut checkpoint.callable);
-        self.static_string_origins
-            .restore_snapshot(snapshot.static_strings, &mut checkpoint.static_string);
+            .restore_snapshot(snapshot.origins, &mut checkpoint.instance, budget);
+        self.instance_callables.restore_snapshot(
+            snapshot.callables,
+            &mut checkpoint.callable,
+            budget,
+        );
+        self.static_string_origins.restore_snapshot(
+            snapshot.static_strings,
+            &mut checkpoint.static_string,
+            budget,
+        );
     }
 
     pub(in crate::analysis::facts) fn retain_common_instance(
@@ -156,12 +174,19 @@ impl OriginChannels {
         budget: &SemanticBudget,
     ) {
         self.instances
-            .retain_common(&then.instances.origins, budget);
-        self.classes.retain_common(&then.classes, budget);
-        self.instance_callables
-            .retain_common(&then.instances.callables, budget);
-        self.static_string_origins
-            .retain_common(&then.instances.static_strings, budget);
+            .retain_common_branch(&then.instances.origins, &checkpoint.instance, budget);
+        self.classes
+            .retain_common_branch(&then.classes, &checkpoint.class, budget);
+        self.instance_callables.retain_common_branch(
+            &then.instances.callables,
+            &checkpoint.callable,
+            budget,
+        );
+        self.static_string_origins.retain_common_branch(
+            &then.instances.static_strings,
+            &checkpoint.static_string,
+            budget,
+        );
         self.instances.commit(&mut checkpoint.instance);
         self.classes.commit(&mut checkpoint.class);
         self.instance_callables.commit(&mut checkpoint.callable);

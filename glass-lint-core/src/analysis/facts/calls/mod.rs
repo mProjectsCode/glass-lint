@@ -103,8 +103,10 @@ impl FactBuilder<'_, '_> {
         resolved: &callee::ResolvedCallee,
         args: &[ExprOrSpread],
     ) -> Vec<CallArgInfo> {
-        let mut effective_args: Vec<CallArgInfo> = Vec::new();
-        if let Some(arguments) = resolved.resolved.provenance.bound_arguments.as_deref() {
+        let bound_arguments = resolved.resolved.provenance.bound_arguments.as_deref();
+        let bound_len = bound_arguments.map_or(0, <[_]>::len);
+        let mut effective_args = Vec::with_capacity(bound_len.saturating_add(args.len()));
+        if let Some(arguments) = bound_arguments {
             for argument in arguments {
                 effective_args.push(
                     argument
@@ -113,7 +115,7 @@ impl FactBuilder<'_, '_> {
                 );
             }
         }
-        effective_args.extend(self.args_info(args));
+        self.append_args_info(args, &mut effective_args);
         effective_args
     }
 

@@ -40,7 +40,9 @@ mod visitor;
 pub(in crate::analysis) use calls::ResolvedCallee;
 pub(in crate::analysis::facts) use calls::call_apply_wrapper;
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
-pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
+pub(in crate::analysis) use origin_map::{
+    OriginBranchSnapshot, OriginCheckpoint, OriginMap, OriginSnapshot,
+};
 use provenance::{OriginChannels, TargetProvenance};
 use smol_str::{SmolStr, ToSmolStr};
 pub(in crate::analysis) use stream::FactStream;
